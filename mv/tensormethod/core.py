@@ -96,7 +96,7 @@ class Field:
         symmetry=None,
         **kwargs,
     ):
-        """Field("A", dynkin="1 0 0 1 1", charges={"y": "1/6"})"""
+        """Field("A", dynkin="1 0 0 1 1", charges={"y": 1})"""
 
         # Initialise charges
         if charges is None:
@@ -115,7 +115,6 @@ class Field:
         self.dynkin = dynkin
         self.comm = comm
         self.is_conj = is_conj
-        self.y = charges["y"]  # hypercharge
 
     def __call__(self, indices):
         dynkin_ints = [int(i) for i in self.dynkin.split()]
@@ -142,6 +141,11 @@ class Field:
     def __repr__(self):
         maybe_conj = "†" if self.is_conj else ""
         return self.label + maybe_conj + f"({self.dynkin})({self.charges['y']})"
+
+    @property
+    def y(self):
+        """Return the hypercharge as a sympy rational object"""
+        return self.charges["y"]
 
     @property
     def dynkin_ints(self):
@@ -190,6 +194,7 @@ class Field:
     def __str__(self):
         return self.__repr__()
 
+    @property
     def _dict(self):
         return (
             self.label,
