@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import sympy.tensor.tensor as tensor
+from sympy import Rational, flatten
 
 ISOSPIN = tensor.TensorIndexType("Isospin", metric=True, dummy_fmt="I", dim=2)
 COLOUR = tensor.TensorIndexType("Colour", metric=None, dummy_fmt="C", dim=3)
@@ -84,7 +85,140 @@ class Index(tensor.TensorIndex):
         return Index.get_tensor_index_types()[idx[0]]
 
 
-class Field(tensor.Tensor):
+class Field:
+    def __init__(
+        self,
+        label: str,
+        dynkin: str,
+        charges=None,
+        is_conj=False,
+        comm=0,
+        symmetry=None,
+        **kwargs,
+    ):
+        """Field("A", dynkin="1 0 0 1 1", charges={"y": "1/6"})"""
+
+        # Initialise charges
+        if charges is None:
+            charges = {"y": 0}
+
+        # make sure charges contains hypercharge
+        assert "y" in charges.keys()
+
+        # For SU(2) and SU(3), indices will always be symmetric
+        if symmetry is None:
+            symmetry = [[1]] * len([i for i in dynkin.split() if int(i)])
+
+        self.symmetry = symmetry
+        self.charges = charges
+        self.label = label
+        self.dynkin = dynkin
+        self.comm = comm
+        self.is_conj = is_conj
+        self.y = charges["y"]  # hypercharge
+
+    def __call__(self, indices):
+        dynkin_ints = [int(i) for i in self.dynkin.split()]
+        su2_plus, su2_minus, su3_up, su3_down, su2 = dynkin_ints
+        index_types = (
+            [UNDOTTED] * su2_plus
+            + [DOTTED] * su2_minus
+            + [COLOUR] * (su3_up + su3_down)
+            + [ISOSPIN] * su2
+        )
+
+        # make sure names of indices are correct (to avoid user confusion)
+        assert_consistent_indices(indices.split(), index_types)
+        return IndexedField(
+            label=self.label,
+            indices=indices,
+            dynkin=self.dynkin,
+            charges=self.charges,
+            is_conj=self.is_conj,
+            symmetry=self.symmetry,
+            comm=self.comm,
+        )
+
+    def __repr__(self):
+        maybe_conj = "†" if self.is_conj else ""
+        return self.label + maybe_conj + f"({self.dynkin})({self.charges['y']})"
+
+    @property
+    def dynkin_ints(self):
+        return tuple([int(i) for i in self.dynkin.split()])
+
+    @property
+    def lorentz_irrep(self):
+        return self.dynkin_ints[:2]
+
+    @property
+    def sm_irrep(self):
+        return self.dynkin_ints[2:]
+
+    @property
+    def colour_irrep(self):
+        return self.sm_irrep[:2]
+
+    @property
+    def isospin_irrep(self):
+        return self.sm_irrep[2:]
+
+    @property
+    def quantum_numbers(self):
+        return self.sm_irrep + (self.y,)
+
+    @property
+    def is_scalar(self):
+        return self.lorentz_irrep == (0, 0)
+
+    @property
+    def is_left_fermion(self):
+        return self.lorentz_irrep == (1, 0)
+
+    @property
+    def is_right_fermion(self):
+        return self.lorentz_irrep == (0, 1)
+
+    @property
+    def is_fermion(self):
+        return self.is_left_fermion or self.is_right_fermion
+
+    @property
+    def is_vector(self):
+        return self.lorentz_irrep == (1, 1)
+
+    def __str__(self):
+        return self.__repr__()
+
+    def _dict(self):
+        return (
+            self.label,
+            self.dynkin,
+            self.charges,
+            self.is_conj,
+            self.comm,
+            self.symmetry,
+        )
+
+    def __eq__(self, other):
+        if not isinstance(other, self.__class__):
+            return False
+        return self._dict == other._dict
+
+    @property
+    def conj(self):
+        dynkin = self.lorentz_irrep[::-1] + self.colour_irrep[::-1] + self.isospin_irrep
+        return self.__class__(
+            label=self.label,
+            dynkin=" ".join(str(d) for d in dynkin),
+            charges={k: -v for k, v in self.charges.items()},
+            is_conj=(not self.is_conj),
+            symmetry=self.symmetry,
+            comm=self.comm,
+        )
+
+
+class IndexedField(tensor.Tensor, Field):
     def __new__(cls, label: str, indices: str, symmetry=None, **kwargs):
         if isinstance(indices, str):
             indices = indices.split()
@@ -98,10 +232,20 @@ class Field(tensor.Tensor):
         index_types = [i.tensor_index_type for i in tensor_indices]
         tensor_head = tensor.tensorhead(label, index_types, sym=symmetry)
 
-        return super(Field, cls).__new__(cls, tensor_head, tensor_indices)
+        return super(IndexedField, cls).__new__(cls, tensor_head, tensor_indices)
 
-    def __init__(self, label, indices, charges=None, is_conj=False, **kwargs):
-        """Initialises Field object.
+    def __init__(
+        self,
+        label,
+        indices,
+        dynkin,
+        charges=None,
+        is_conj=False,
+        symmetry=None,
+        comm=0,
+        **kwargs,
+    ):
+        """Initialises IndexedField object.
 
         label: str
         indices: space separated str or list of str
@@ -109,26 +253,48 @@ class Field(tensor.Tensor):
         is_conj: bool
 
         """
-        # Initialise field with only hypercharge (= to 0)
+        # Initialise charges again (in case initialised independently)
         if charges is None:
             charges = {"y": 0}
-        if "y" not in charges.keys():
-            charges = {**charges, "y": 0}
+        assert "y" in charges.keys()
 
-        self.label = label
-        self.index_names = indices.split() if isinstance(indices, str) else indices
-        self.charges = charges
-        self.y = charges["y"]  # hypercharge
-        self.is_conj = is_conj
+        Field.__init__(
+            self,
+            label=label,
+            dynkin=dynkin,
+            charges=charges,
+            is_conj=is_conj,
+            symmetry=symmetry,
+            comm=comm,
+        )
+
+        self.index_labels = indices
+
+    @classmethod
+    def from_indices(cls, label: str, indices: str, **kwargs):
+        return cls(label=label, indices=indices, dynkin=get_dynkin(indices), **kwargs)
+
+    @property
+    def field(self):
+        return Field(
+            self.label,
+            self.dynkin,
+            self.charges,
+            self.is_conj,
+            self.symmetry,
+            self.comm,
+        )
 
     @property
     def conj(self):
         """Returns a copy of self but conjugated"""
-        return Field(
+        return self.__class__.from_indices(
             label=self.label,
-            indices=[i.conj.label for i in self.indices],
+            indices=" ".join(i.conj.label for i in self.indices),
             charges={k: -v for k, v in self.charges.items()},
             is_conj=(not self.is_conj),
+            symmetry=self.symmetry,
+            comm=self.comm,
         )
 
     @property
@@ -139,42 +305,19 @@ class Field(tensor.Tensor):
         return {k: tuple(v) for k, v in result.items()}
 
     @property
-    def dynkins(self):
+    def _dynkins(self):
         return {k: Index.dynkin(v) for k, v in self.indices_by_type.items()}
 
     @property
-    def sm_dynkins(self):
-        dynkins = self.dynkins
-        return dynkins["Colour"], dynkins["Isospin"]
-
-    @property
-    def lorentz_dynkins(self):
-        dynkins = self.dynkins
-        return dynkins["Undotted"], dynkins["Dotted"]
-
-    @property
-    def quantum_numbers(self):
-        return self.sm_dynkins + (self.y,)
-
-    @property
-    def is_scalar(self):
-        return self.lorentz_dynkins == (0, 0)
-
-    @property
-    def is_left_fermion(self):
-        return self.lorentz_dynkins == (1, 0)
-
-    @property
-    def is_right_fermion(self):
-        return self.lorentz_dynkins == (0, 1)
-
-    @property
-    def is_fermion(self):
-        return self.is_left_fermion or self.is_right_fermion
-
-    @property
     def _dict(self):
-        return (self.label, self.indices, self.charges, self.is_conj)
+        return (
+            self.label,
+            self.index_labels,
+            self.charges,
+            self.is_conj,
+            self.symmetry,
+            self.comm,
+        )
 
     def __mul__(self, other):
         pass
@@ -183,7 +326,7 @@ class Field(tensor.Tensor):
         pass
 
     def __repr__(self):
-        sympy_repr = super(Field, self).__repr__()
+        sympy_repr = super(self.__class__, self).__repr__()
         if self.is_conj:
             split_sympy_repr = sympy_repr.split("(")
             new_repr = [split_sympy_repr[0] + "†("] + split_sympy_repr[1:]
@@ -201,3 +344,26 @@ class Field(tensor.Tensor):
 
 class Operator(tensor.TensMul):
     pass
+
+
+def assert_consistent_indices(indices, index_types):
+    assert len(indices) == len(index_types)
+    for i, t in zip(indices, index_types):
+        # make sure index names match
+        assert Index(i).tensor_index_type == t
+
+
+def get_dynkin(indices):
+    """get_dynkin("u0 c0 -c1 i0") => "1 0 1 1 1"""
+    dynkin = {
+        "Undotted": {True: 0},
+        "Dotted": {True: 0},
+        "Colour": {True: 0, False: 0},
+        "Isospin": {True: 0},
+    }
+    for i in indices.split():
+        idx = Index(i)
+        dynkin[idx.index_type][idx.is_up] += 1
+
+    flat_dynkin = flatten(map(lambda x: list(x.values()), dynkin.values()))
+    return " ".join(str(x) for x in flat_dynkin)
