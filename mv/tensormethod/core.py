@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+
+from typing import List, Tuple
+
 import sympy.tensor.tensor as tensor
 from sympy import Rational, flatten
 
@@ -33,10 +36,17 @@ class Index(tensor.TensorIndex):
 
     @property
     def conj(self):
+        # conj takes you between dotted and undotted
         if self.index_type in Index.get_lorentz_index_types().values():
             if self.index_type == "Undotted":
                 return Index(label=self.label.replace("u", "d"))
             return Index(label=self.label.replace("d", "u"))
+
+        # conj does nothing to isospin indices (implicit epsilon)
+        if self.index_type == "Isospin":
+            return self
+
+        # generally lower index (only affects colour here)
         return -self
 
     @property
@@ -116,7 +126,12 @@ class Field:
         self.comm = comm
         self.is_conj = is_conj
 
-    def __call__(self, indices):
+    def __call__(self, indices: str) -> "IndexedField":
+        """Returns an IndexedField object.
+
+        Indices must match dynkin structure.
+
+        """
         dynkin_ints = [int(i) for i in self.dynkin.split()]
         su2_plus, su2_minus, su3_up, su3_down, su2 = dynkin_ints
         index_types = (
@@ -127,11 +142,10 @@ class Field:
         )
 
         # make sure names of indices are correct (to avoid user confusion)
-        assert_consistent_indices(indices.split(), index_types)
+        assert_consistent_indices(indices.split(), index_types, (su3_up, su3_down))
         return IndexedField(
             label=self.label,
             indices=indices,
-            dynkin=self.dynkin,
             charges=self.charges,
             is_conj=self.is_conj,
             symmetry=self.symmetry,
@@ -243,7 +257,6 @@ class IndexedField(tensor.Tensor, Field):
         self,
         label,
         indices,
-        dynkin,
         charges=None,
         is_conj=False,
         symmetry=None,
@@ -257,6 +270,9 @@ class IndexedField(tensor.Tensor, Field):
         charges: dict (must contain "y" as key)
         is_conj: bool
 
+        Dynkin information from Field used to create correct indices for
+        IndexedField.
+
         """
         # Initialise charges again (in case initialised independently)
         if charges is None:
@@ -266,7 +282,7 @@ class IndexedField(tensor.Tensor, Field):
         Field.__init__(
             self,
             label=label,
-            dynkin=dynkin,
+            dynkin=get_dynkin(indices),
             charges=charges,
             is_conj=is_conj,
             symmetry=symmetry,
@@ -274,10 +290,6 @@ class IndexedField(tensor.Tensor, Field):
         )
 
         self.index_labels = indices
-
-    @classmethod
-    def from_indices(cls, label: str, indices: str, **kwargs):
-        return cls(label=label, indices=indices, dynkin=get_dynkin(indices), **kwargs)
 
     @property
     def field(self):
@@ -293,7 +305,7 @@ class IndexedField(tensor.Tensor, Field):
     @property
     def conj(self):
         """Returns a copy of self but conjugated"""
-        return self.__class__.from_indices(
+        return self.__class__(
             label=self.label,
             indices=" ".join(i.conj.label for i in self.indices),
             charges={k: -v for k, v in self.charges.items()},
@@ -304,6 +316,9 @@ class IndexedField(tensor.Tensor, Field):
 
     @property
     def indices_by_type(self):
+        """Returns a dictionary mapping index type to tuple of indices.
+
+        """
         result = {k: [] for k in Index.get_index_types().values()}
         for i in self.indices:
             result[i.index_type].append(i)
@@ -311,6 +326,10 @@ class IndexedField(tensor.Tensor, Field):
 
     @property
     def _dynkins(self):
+        """Returns a dictionary of 2-tuples of integers mapping index type to (raised,
+        lowered) indices.
+
+        """
         return {k: Index.dynkin(v) for k, v in self.indices_by_type.items()}
 
     @property
@@ -351,11 +370,28 @@ class Operator(tensor.TensMul):
     pass
 
 
-def assert_consistent_indices(indices, index_types):
+def assert_consistent_indices(
+    indices: List[str],
+    index_types: List[tensor.TensorIndexType],
+    colour: Tuple[int, int],
+):
     assert len(indices) == len(index_types)
+    up_count, down_count = 0, 0
     for i, t in zip(indices, index_types):
         # make sure index names match
         assert Index(i).tensor_index_type == t
+
+        # keep track of raised and lowered indices for colour
+        if t == COLOUR:
+            if i[0] == "-":
+                down_count += 1
+            else:
+                up_count += 1
+        else:
+            # make sure no lowered indices for the SU2s
+            assert i[0] != "-"
+
+    assert (up_count, down_count) == colour
 
 
 def get_dynkin(indices):
