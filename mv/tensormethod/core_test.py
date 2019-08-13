@@ -2,7 +2,7 @@
 
 from core import *
 
-A = Field("A", dynkin="1 0 0 1 1", charges={"y": 1})
+A = Field("A", dynkin="10011", charges={"y": 1})
 
 
 def test_conj():

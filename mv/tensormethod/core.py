@@ -4,6 +4,7 @@
 from typing import List, Tuple
 
 import sympy.tensor.tensor as tensor
+from basisgen import irrep
 from sympy import Rational, flatten
 
 ISOSPIN = tensor.TensorIndexType("Isospin", metric=True, dummy_fmt="I", dim=2)
@@ -117,12 +118,12 @@ class Field:
 
         # For SU(2) and SU(3), indices will always be symmetric
         if symmetry is None:
-            symmetry = [[1]] * len([i for i in dynkin.split() if int(i)])
+            symmetry = [[1]] * len([i for i in dynkin if int(i)])
 
         self.symmetry = symmetry
         self.charges = charges
         self.label = label
-        self.dynkin = dynkin
+        self.dynkin = dynkin.strip()
         self.comm = comm
         self.is_conj = is_conj
 
@@ -132,7 +133,7 @@ class Field:
         Indices must match dynkin structure.
 
         """
-        dynkin_ints = [int(i) for i in self.dynkin.split()]
+        dynkin_ints = [int(i) for i in self.dynkin]
         su2_plus, su2_minus, su3_up, su3_down, su2 = dynkin_ints
         index_types = (
             [UNDOTTED] * su2_plus
@@ -163,7 +164,7 @@ class Field:
 
     @property
     def dynkin_ints(self):
-        return tuple([int(i) for i in self.dynkin.split()])
+        return tuple([int(i) for i in self.dynkin])
 
     @property
     def lorentz_irrep(self):
@@ -224,12 +225,16 @@ class Field:
             return False
         return self._dict == other._dict
 
+    def __mul__(self, other):
+        grp = "SU2 x SU2 x SU3 x SU2"
+        self_irrep = irrep(grp, self.dynkin)
+
     @property
     def conj(self):
         dynkin = self.lorentz_irrep[::-1] + self.colour_irrep[::-1] + self.isospin_irrep
         return self.__class__(
             label=self.label,
-            dynkin=" ".join(str(d) for d in dynkin),
+            dynkin="".join(str(d) for d in dynkin),
             charges={k: -v for k, v in self.charges.items()},
             is_conj=(not self.is_conj),
             symmetry=self.symmetry,
@@ -239,15 +244,12 @@ class Field:
 
 class IndexedField(tensor.Tensor, Field):
     def __new__(cls, label: str, indices: str, symmetry=None, **kwargs):
-        if isinstance(indices, str):
-            indices = indices.split()
-
         if symmetry is None:
-            symmetry = [[1]] * len(indices)
+            symmetry = [[1]] * len(indices.split())
 
         # classify index types and indices by name
         # e.g. 'i0' -> isospin, 'c0' -> colour, etc.
-        tensor_indices = [Index(i) for i in indices]
+        tensor_indices = [Index(i) for i in indices.split()]
         index_types = [i.tensor_index_type for i in tensor_indices]
         tensor_head = tensor.tensorhead(label, index_types, sym=symmetry)
 
@@ -407,4 +409,4 @@ def get_dynkin(indices):
         dynkin[idx.index_type][idx.is_up] += 1
 
     flat_dynkin = flatten(map(lambda x: list(x.values()), dynkin.values()))
-    return " ".join(str(x) for x in flat_dynkin)
+    return "".join(str(x) for x in flat_dynkin)
