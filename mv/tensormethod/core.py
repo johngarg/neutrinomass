@@ -1,11 +1,18 @@
 #!/usr/bin/env python
 
 
-from typing import List, Tuple
+from collections import namedtuple
+from typing import List, NamedTuple, Tuple
 
 import sympy.tensor.tensor as tensor
 from basisgen import irrep
 from sympy import Rational, flatten
+
+
+class History(NamedTuple):
+    left: "Field"
+    right: "Field"
+
 
 ISOSPIN = tensor.TensorIndexType("Isospin", metric=True, dummy_fmt="I", dim=2)
 COLOUR = tensor.TensorIndexType("Colour", metric=None, dummy_fmt="C", dim=3)
@@ -105,6 +112,8 @@ class Field:
         is_conj=False,
         comm=0,
         symmetry=None,
+        history=None,
+        multiplicity=1,
         **kwargs,
     ):
         """Field("A", dynkin="1 0 0 1 1", charges={"y": 1})"""
@@ -120,8 +129,13 @@ class Field:
         if symmetry is None:
             symmetry = [[1]] * len([i for i in dynkin if int(i)])
 
+        if not isinstance(dynkin, str):
+            dynkin = "".join(str(i) for i in dynkin)
+
         self.symmetry = symmetry
+        self.history = history
         self.charges = charges
+        self.multiplicity = multiplicity
         self.label = label
         self.dynkin = dynkin.strip()
         self.comm = comm
@@ -150,6 +164,7 @@ class Field:
             charges=self.charges,
             is_conj=self.is_conj,
             symmetry=self.symmetry,
+            multiplicity=self.multiplicity,
             comm=self.comm,
         )
 
@@ -218,6 +233,8 @@ class Field:
             self.is_conj,
             self.comm,
             self.symmetry,
+            # self.multiplicity,
+            # self.history,
         )
 
     def __eq__(self, other):
@@ -227,7 +244,33 @@ class Field:
 
     def __mul__(self, other):
         grp = "SU2 x SU2 x SU3 x SU2"
-        self_irrep = irrep(grp, self.dynkin)
+        self_irrep = irrep(grp, " ".join(self.dynkin))
+        other_irrep = irrep(grp, " ".join(other.dynkin))
+
+        # basisgen returns a dict-like object: irrep -> multiplicity
+        prod_dict = self_irrep * other_irrep
+
+        # make sure charges are consistent
+        assert self.charges.keys() == other.charges.keys()
+        # add charges key-wise
+        charges = {}
+        for k, v in self.charges.items():
+            charges[k] = v + other.charges[k]
+
+        # construct history
+        new_hist = History(left=self, right=other)
+
+        irreps = [
+            Field(
+                self.label + other.label,
+                k.highest_weight.components,
+                charges=charges,
+                history=new_hist,
+                multiplicity=v,
+            )
+            for k, v in prod_dict.items()
+        ]
+        return irreps
 
     @property
     def conj(self):
@@ -238,6 +281,8 @@ class Field:
             charges={k: -v for k, v in self.charges.items()},
             is_conj=(not self.is_conj),
             symmetry=self.symmetry,
+            history=self.history,
+            multiplicity=self.multiplicity,
             comm=self.comm,
         )
 
