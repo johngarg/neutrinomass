@@ -8,6 +8,7 @@ B = IndexedField("B", indices="i0 i1")
 
 def test_get_dynkin():
     assert get_dynkin("u0 c0 -c1 i0") == "10111"
+    assert get_dynkin(B.indices) == "00002"
 
 
 def test_conj():

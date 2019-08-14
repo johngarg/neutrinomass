@@ -2,7 +2,8 @@
 
 
 from collections import namedtuple
-from typing import List, NamedTuple, Tuple, Union
+from functools import lru_cache
+from typing import Iterable, List, NamedTuple, Tuple, Union
 
 import sympy.tensor.tensor as tensor
 from basisgen import irrep
@@ -29,6 +30,9 @@ DOTTED = tensor.TensorIndexType("Dotted", metric=True, dummy_fmt="D", dim=2)
 
 class Index(tensor.TensorIndex):
     def __new__(cls, label: str, *args, **kwargs):
+        if isinstance(label, Index):
+            return label
+
         # deal with negative sign for down index
         is_up = True
         if label[0] == "-":
@@ -41,6 +45,8 @@ class Index(tensor.TensorIndex):
         )
 
     def __init__(self, label, *args, **kwargs):
+        if isinstance(label, Index):
+            self.label = label.label
         self.label = label  # the label that was passed in
 
     def __neg__(self):
@@ -317,14 +323,20 @@ class Field:
 
 class IndexedField(tensor.Tensor, Field):
     def __new__(cls, label: str, indices: str, symmetry=None, **kwargs):
+        if isinstance(indices, str):
+            indices = indices.split()
+
         if symmetry is None:
-            symmetry = [[1]] * len(indices.split())
+            symmetry = [[1]] * len(indices)
 
         # classify index types and indices by name
         # e.g. 'i0' -> isospin, 'c0' -> colour, etc.
-        tensor_indices = [Index(i) for i in indices.split()]
+        tensor_indices = [Index(i) for i in indices]
         index_types = [i.tensor_index_type for i in tensor_indices]
-        tensor_head = tensor.tensorhead(label, index_types, sym=symmetry)
+        if isinstance(label, tensor.TensorHead):
+            tensor_head = label
+        else:
+            tensor_head = tensor.tensorhead(label, index_types, sym=symmetry)
 
         return super(IndexedField, cls).__new__(cls, tensor_head, tensor_indices)
 
@@ -441,8 +453,10 @@ class IndexedField(tensor.Tensor, Field):
         return self._dict == other._dict
 
 
-class Operator(tensor.TensMul):
-    pass
+# TODO Pick up here
+# class Operator(tensor.TensMul):
+#     def __new__(cls, *args, **kwargs):
+#         return super(Operator, cls).__new__(cls)
 
 
 def assert_consistent_indices(
@@ -469,7 +483,7 @@ def assert_consistent_indices(
     assert (up_count, down_count) == colour
 
 
-def get_dynkin(indices):
+def get_dynkin(indices: Union[str, Iterable[Index]]):
     """get_dynkin("u0 c0 -c1 i0") => '10111'"""
     dynkin = {
         "Undotted": {True: 0},
@@ -477,7 +491,11 @@ def get_dynkin(indices):
         "Colour": {True: 0, False: 0},
         "Isospin": {True: 0},
     }
-    for i in indices.split():
+
+    if isinstance(indices, str):
+        indices = indices.split()
+
+    for i in indices:
         idx = Index(i)
         dynkin[idx.index_type][idx.is_up] += 1
 
@@ -485,6 +503,7 @@ def get_dynkin(indices):
     return "".join(str(x) for x in flat_dynkin)
 
 
+@lru_cache(maxsize=None)
 def decompose_product(*fields) -> List[Field]:
     """Decompose product of Fields.
 
