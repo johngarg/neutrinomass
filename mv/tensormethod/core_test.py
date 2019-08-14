@@ -3,6 +3,11 @@
 from core import *
 
 A = Field("A", dynkin="10011", charges={"y": 1})
+B = IndexedField("B", indices="i0 i1")
+
+
+def test_get_dynkin():
+    assert get_dynkin("u0 c0 -c1 i0") == "10111"
 
 
 def test_conj():
@@ -20,8 +25,8 @@ def test_indices():
 
 def test_mul():
     assert A * A.conj == [
-        Field("AA", "11112", charges={"y": 0}),
-        Field("AA", "11110", charges={"y": 0}),
-        Field("AA", "11002", charges={"y": 0}),
-        Field("AA", "11000", charges={"y": 0}),
+        Field("AA†", "11112", charges={"y": 0}),
+        Field("AA†", "11110", charges={"y": 0}),
+        Field("AA†", "11002", charges={"y": 0}),
+        Field("AA†", "11000", charges={"y": 0}),
     ]

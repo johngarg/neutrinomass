@@ -2,7 +2,7 @@
 
 
 from collections import namedtuple
-from typing import List, NamedTuple, Tuple
+from typing import List, NamedTuple, Tuple, Union
 
 import sympy.tensor.tensor as tensor
 from basisgen import irrep
@@ -12,6 +12,12 @@ from sympy import Rational, flatten
 class History(NamedTuple):
     left: "Field"
     right: "Field"
+
+
+class Prod(NamedTuple):
+    irrep: "Field"
+    left: Union["Prod", "Field"]
+    right: Union["Prod", "Field"]
 
 
 ISOSPIN = tensor.TensorIndexType("Isospin", metric=True, dummy_fmt="I", dim=2)
@@ -127,7 +133,10 @@ class Field:
 
         # For SU(2) and SU(3), indices will always be symmetric
         if symmetry is None:
-            symmetry = [[1]] * len([i for i in dynkin if int(i)])
+            symmetry = []
+            for i in map(int, dynkin):
+                if i:
+                    symmetry += [[1]] * i
 
         if not isinstance(dynkin, str):
             dynkin = "".join(str(i) for i in dynkin)
@@ -168,9 +177,13 @@ class Field:
             comm=self.comm,
         )
 
-    def __repr__(self):
+    @property
+    def label_with_dagger(self):
         maybe_conj = "†" if self.is_conj else ""
-        return self.label + maybe_conj + f"({self.dynkin})({self.charges['y']})"
+        return self.label + maybe_conj
+
+    def __repr__(self):
+        return self.label_with_dagger + f"({self.dynkin})({self.charges['y']})"
 
     @property
     def y(self):
@@ -262,7 +275,7 @@ class Field:
 
         irreps = [
             Field(
-                self.label + other.label,
+                self.label_with_dagger + other.label_with_dagger,
                 k.highest_weight.components,
                 charges=charges,
                 history=new_hist,
@@ -285,6 +298,21 @@ class Field:
             multiplicity=self.multiplicity,
             comm=self.comm,
         )
+
+    @property
+    def walked(self) -> Prod:
+        if not self.history:
+            return self
+        if not self.history:
+            return self
+
+        return Prod(
+            irrep=self, left=self.history.left.walked, right=self.history.right.walked
+        )
+
+    # TODO write this
+    def fresh_indices(self, store: List[int]) -> "IndexedField":
+        pass
 
 
 class IndexedField(tensor.Tensor, Field):
@@ -442,7 +470,7 @@ def assert_consistent_indices(
 
 
 def get_dynkin(indices):
-    """get_dynkin("u0 c0 -c1 i0") => "1 0 1 1 1"""
+    """get_dynkin("u0 c0 -c1 i0") => '10111'"""
     dynkin = {
         "Undotted": {True: 0},
         "Dotted": {True: 0},
@@ -455,3 +483,24 @@ def get_dynkin(indices):
 
     flat_dynkin = flatten(map(lambda x: list(x.values()), dynkin.values()))
     return "".join(str(x) for x in flat_dynkin)
+
+
+def decompose_product(*fields) -> List[Field]:
+    """Decompose product of Fields.
+
+    Example:
+        >>> decompose_product(A, B, A.conj)
+        >>> [ABA†(23003)(1/6), ABA†(23001)(1/6), ABA†(21003)(1/6), ...]
+
+    """
+
+    if len(fields) == 1:
+        return fields[0]
+
+    if len(fields) == 2:
+        fst, snd = fields
+        return fst * snd
+
+    fst, snd, *rst = fields
+    result = map(lambda x: decompose_product(x, *rst), fst * snd)
+    return flatten(result)
