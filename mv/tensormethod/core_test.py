@@ -4,6 +4,8 @@ from core import *
 
 A = Field("A", dynkin="10011", charges={"y": 1})
 B = IndexedField("B", indices="i0 i1")
+C = IndexedField("C", indices="c0 c1")
+D = IndexedField("D", indices="-c0 c2")
 
 
 def test_get_dynkin():
@@ -31,3 +33,13 @@ def test_mul():
         Field("AA†", "11002", charges={"y": 0}),
         Field("AA†", "11000", charges={"y": 0}),
     ]
+
+
+def test_op():
+    prod = C * D
+    assert len(prod.free_indices) == 2
+    assert prod.dynkin == "00200"
+
+
+def test_fresh():
+    assert isinstance(A.fresh_indexed_field(), IndexedField)

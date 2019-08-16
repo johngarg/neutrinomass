@@ -33,6 +33,11 @@ class Index(tensor.TensorIndex):
         if isinstance(label, Index):
             return label
 
+        # This will be called in __mul__ method of IndexedTensor
+        # i.e. Will be a contracted index
+        if isinstance(label, tensor.TensorIndex):
+            label = str(label).lower()
+
         # deal with negative sign for down index
         is_up = True
         if label[0] == "-":
@@ -47,7 +52,7 @@ class Index(tensor.TensorIndex):
     def __init__(self, label, *args, **kwargs):
         if isinstance(label, Index):
             self.label = label.label
-        self.label = label  # the label that was passed in
+        self.label = str(label)  # the label that was passed in
 
     def __neg__(self):
         is_up = self.is_up
@@ -316,9 +321,37 @@ class Field:
             irrep=self, left=self.history.left.walked, right=self.history.right.walked
         )
 
-    # TODO write this
-    def fresh_indices(self, store: List[int]) -> "IndexedField":
-        pass
+    def get_fresh_indices(self, store: Iterable[int] = range(10)) -> List[str]:
+        # names of index types
+        # don't include generation
+        u, d, c, i = list(Index.get_index_types().keys())[:-1]
+        # number of each index type
+        nu, nd, nc_up, nc_down, ni = self.dynkin_ints
+
+        indices = {}
+        # lorentz
+        indices[u] = [u + str(x) for x in store[:nu]]
+        indices[d] = [d + str(x) for x in store[:nd]]
+        # colour
+        indices[c] = [c + str(x) for x in store[:nc_up]]
+        indices[c] += ["-" + c + str(x) for x in store[nc_up : nc_up + nc_down]]
+        # isospin
+        indices[i] = [i + str(x) for x in store[:ni]]
+
+        # make the choice to return flattened values
+        # full dict available if you need it (just return indices below)
+        return flatten(indices.values())
+
+    def fresh_indexed_field(self) -> "IndexedField":
+        fresh_indices = " ".join(i for i in self.get_fresh_indices())
+        return IndexedField(
+            label=self.label,
+            indices=fresh_indices,
+            charges=self.charges,
+            is_conj=self.is_conj,
+            symmetry=self.symmetry,
+            comm=self.comm,
+        )
 
 
 class IndexedField(tensor.Tensor, Field):
@@ -431,7 +464,7 @@ class IndexedField(tensor.Tensor, Field):
         )
 
     def __mul__(self, other):
-        pass
+        return Operator(self, other)
 
     def __add__(self, other):
         pass
@@ -453,10 +486,20 @@ class IndexedField(tensor.Tensor, Field):
         return self._dict == other._dict
 
 
-# TODO Pick up here
-# class Operator(tensor.TensMul):
-#     def __new__(cls, *args, **kwargs):
-#         return super(Operator, cls).__new__(cls)
+class Operator(tensor.TensMul):
+    def __new__(cls, *args, **kwargs):
+        return super(Operator, cls).__new__(cls, *args, **kwargs)
+
+    def __init__(self, *args, **kwargs):
+        self.tensors = args
+
+    @property
+    def free_indices(self):
+        return self.get_free_indices()
+
+    @property
+    def dynkin(self):
+        return get_dynkin(" ".join(str(i) for i in self.free_indices))
 
 
 def assert_consistent_indices(
