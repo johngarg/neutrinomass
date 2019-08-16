@@ -125,7 +125,7 @@ class Field:
         self,
         label: str,
         dynkin: str,
-        charges: Tuple[Tuple[str, Rational], ...] = None,
+        charges=None,
         is_conj=False,
         comm=0,
         symmetry=None,
@@ -133,18 +133,14 @@ class Field:
         multiplicity=1,
         **kwargs,
     ):
-        """Field("A", dynkin="1 0 0 1 1", charges=(("y", 1),))"""
+        """Field("A", dynkin="1 0 0 1 1", charges={"y": 1})"""
 
         # initialise charges
         if charges is None:
-            charges = (("y", 0),)
-        # allow passing in as a dict for convenience, but convert to hashable,
-        # immutable assoc list (tuple of 2-tuples)
-        elif isinstance(charges, dict):
-            charges = tuple(charges.items())
+            charges = {"y": 0}
 
         # make sure charges contains hypercharge
-        assert "y" in dict(charges).keys()
+        assert "y" in charges.keys()
 
         # for SU(2) and SU(3), indices will always be symmetric
         if symmetry is None:
@@ -158,7 +154,7 @@ class Field:
 
         self.symmetry = symmetry
         self.history = history
-        self.charges = dict(charges)
+        self.charges = charges
         self.multiplicity = multiplicity
         self.label = label
         self.dynkin = dynkin.strip()
@@ -203,7 +199,7 @@ class Field:
     @property
     def y(self):
         """Return the hypercharge as a sympy rational object"""
-        return dict(self.charges)["y"]
+        return self.charges["y"]
 
     @property
     def dynkin_ints(self):
@@ -254,16 +250,26 @@ class Field:
 
     @property
     def _dict(self):
-        return (
-            self.label,
-            self.dynkin,
-            self.charges,
-            self.is_conj,
-            self.comm,
-            self.symmetry,
+        return {
+            "label": self.label,
+            "dynkin": self.dynkin,
+            "charges": self.charges,
+            "is_conj": self.is_conj,
+            "comm": self.comm,
+            "symmetry": self.symmetry,
             # self.multiplicity,
             # self.history,
-        )
+        }
+
+    def __hash__(self):
+        unhashable = "charges", "symmetry"
+        values = [v for k, v in self._dict.items() if not k in unhashable]
+
+        # constructe hashable structures for each unhashable
+        symmetry_tuple = tuple(map(tuple, self._dict["symmetry"]))
+        charges_tuple = tuple(self.charges.items())
+
+        return hash(tuple(values) + (symmetry_tuple,) + (charges_tuple,))
 
     def __eq__(self, other):
         if not isinstance(other, self.__class__):
@@ -279,7 +285,7 @@ class Field:
         prod_dict = self_irrep * other_irrep
 
         # make sure charges are consistent
-        assert dict(self.charges).keys() == dict(other.charges).keys()
+        assert self.charges.keys() == other.charges.keys()
         # add charges key-wise
         charges = {}
         for k, v in dict(self.charges).items():
@@ -292,7 +298,7 @@ class Field:
             Field(
                 self.label_with_dagger + other.label_with_dagger,
                 k.highest_weight.components,
-                charges=tuple(charges.items()),
+                charges=charges,
                 history=new_hist,
                 multiplicity=v,
             )
@@ -306,7 +312,7 @@ class Field:
         return self.__class__(
             label=self.label,
             dynkin="".join(str(d) for d in dynkin),
-            charges=tuple([(k, -v) for k, v in self.charges]),
+            charges={k: -v for k, v in self.charges.items()},
             is_conj=(not self.is_conj),
             symmetry=self.symmetry,
             history=self.history,
@@ -391,7 +397,7 @@ class IndexedField(tensor.Tensor, Field):
 
         label: str
         indices: space separated str or list of str
-        charges: assoc list (i.e. tuple of 2-tuples, must contain "y" as key)
+        charges: dict (must contain "y" as key)
         is_conj: bool
 
         Dynkin information from Field used to create correct indices for
@@ -400,14 +406,10 @@ class IndexedField(tensor.Tensor, Field):
         """
         # initialise charges again (in case initialised independently)
         if charges is None:
-            charges = (("y", 0),)
-        # allow passing in as a dict for convenience, but convert to hashable,
-        # immutable assoc list (tuple of 2-tuples)
-        elif isinstance(charges, dict):
-            charges = tuple(charges.items())
+            charges = {"y": 0}
 
         # make sure charges contains hypercharge
-        assert "y" in dict(charges).keys()
+        assert "y" in charges
 
         Field.__init__(
             self,
@@ -438,7 +440,7 @@ class IndexedField(tensor.Tensor, Field):
         return self.__class__(
             label=self.label,
             indices=" ".join(i.conj.label for i in self.indices),
-            charges=tuple([(k, -v) for k, v in self.charges]),
+            charges={k: -v for k, v in self.charges.items()},
             is_conj=(not self.is_conj),
             symmetry=self.symmetry,
             comm=self.comm,
