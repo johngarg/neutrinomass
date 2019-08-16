@@ -43,3 +43,48 @@ def test_op():
 
 def test_fresh():
     assert isinstance(A.fresh_indexed_field(), IndexedField)
+
+
+def test_decompose_product():
+    prods = decompose_product(A, B.field, A.conj)
+
+    first_two = [
+        {
+            "label": "ABA†",
+            "dynkin": "11114",
+            "charges": {"y": 0},
+            "is_conj": False,
+            "comm": 0,
+            "symmetry": [[1], [1], [1], [1], [1], [1], [1], [1]],
+        },
+        {
+            "label": "ABA†",
+            "dynkin": "11112",
+            "charges": {"y": 0},
+            "is_conj": False,
+            "comm": 0,
+            "symmetry": [[1], [1], [1], [1], [1], [1]],
+        },
+    ]
+
+    last_two = [
+        {
+            "label": "ABA†",
+            "dynkin": "11002",
+            "charges": {"y": 0},
+            "is_conj": False,
+            "comm": 0,
+            "symmetry": [[1], [1], [1], [1]],
+        },
+        {
+            "label": "ABA†",
+            "dynkin": "11000",
+            "charges": {"y": 0},
+            "is_conj": False,
+            "comm": 0,
+            "symmetry": [[1], [1]],
+        },
+    ]
+
+    assert prods[:2] == [Field(**x) for x in first_two]
+    assert prods[-2:] == [Field(**x) for x in last_two]

@@ -426,12 +426,12 @@ class IndexedField(tensor.Tensor, Field):
     @property
     def field(self):
         return Field(
-            self.label,
-            self.dynkin,
-            self.charges,
-            self.is_conj,
-            self.symmetry,
-            self.comm,
+            label=self.label,
+            dynkin=self.dynkin,
+            charges=self.charges,
+            is_conj=self.is_conj,
+            symmetry=self.symmetry,
+            comm=self.comm,
         )
 
     @property
@@ -466,14 +466,17 @@ class IndexedField(tensor.Tensor, Field):
 
     @property
     def _dict(self):
-        return (
-            self.label,
-            self.index_labels,
-            self.charges,
-            self.is_conj,
-            self.symmetry,
-            self.comm,
-        )
+        return {
+            "label": self.label,
+            "index_labels": self.index_labels,
+            "charges": self.charges,
+            "is_conj": self.is_conj,
+            "symmetry": self.symmetry,
+            "comm": self.comm,
+        }
+
+    def __hash__(self):
+        return super(self.__class__, self).__hash__()
 
     def __mul__(self, other):
         return Operator(self, other)
