@@ -133,7 +133,17 @@ class Field:
         multiplicity=1,
         **kwargs,
     ):
-        """Field("A", dynkin="1 0 0 1 1", charges={"y": 1})"""
+        """Field("A", dynkin="1 0 0 1 1", charges={"y": 1})
+
+        Tensor symmetry options:
+            ``[[1]]``         vector
+            ``[[1]*n]``       symmetric tensor of rank ``n``
+            ``[[n]]``         antisymmetric tensor of rank ``n``
+            ``[[2, 2]]``      monoterm slot symmetry of the Riemann tensor
+            ``[[1],[1]]``     vector*vector
+            ``[[2],[1],[1]]`` (antisymmetric tensor)*vector*vector
+
+        """
 
         # initialise charges
         if charges is None:
@@ -147,7 +157,7 @@ class Field:
             symmetry = []
             for i in map(int, dynkin):
                 if i:
-                    symmetry += [[1]] * i
+                    symmetry += [[1] * i]
 
         if not isinstance(dynkin, str):
             dynkin = "".join(str(i) for i in dynkin)
@@ -370,7 +380,7 @@ class IndexedField(tensor.Tensor, Field):
             indices = indices.split()
 
         if symmetry is None:
-            symmetry = [[1]] * len(indices)
+            symmetry = [[1] * len(indices)]
 
         # classify index types and indices by name
         # e.g. 'i0' -> isospin, 'c0' -> colour, etc.
