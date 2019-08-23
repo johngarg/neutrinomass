@@ -581,3 +581,41 @@ def decompose_product(*fields) -> List[Field]:
     fst, snd, *rst = fields
     result = map(lambda x: decompose_product(x, *rst), fst * snd)
     return flatten(result)
+
+
+def eps(indices: str):
+    indices = [Index(i) for i in indices.split()]
+    # make sure same index type
+    t = indices[0].index_type
+    tensor_index_type = indices[0].tensor_index_type
+
+    # ensure valid index type
+    assert t in Index.get_index_types().values()
+
+    if not t == Index.get_index_types()["c"]:
+        # check consistent SU(2) indices
+        assert len(indices) == 2
+        for i in indices:
+            assert not i.is_up
+    else:
+        # check consistent SU(3) indices
+        assert len(indices) == 3
+        position = indices[0].is_up
+        for i in indices:
+            assert position == i.is_up
+
+    return tensor_index_type.epsilon(*indices)
+
+
+def delta(indices: str):
+    indices = [Index(i) for i in indices.split()]
+
+    # check consistent SU(3) delta
+    assert len(indices) == 2
+    i, j = indices
+    assert i.index_type == Index.get_index_types()["c"]
+    assert j.index_type == Index.get_index_types()["c"]
+    assert i.is_up
+    assert not j.is_up
+
+    return Index.get_tensor_index_types()["c"].delta(*indices)
