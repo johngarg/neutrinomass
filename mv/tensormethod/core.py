@@ -9,6 +9,8 @@ import sympy.tensor.tensor as tensor
 from basisgen import irrep
 from sympy import Rational, flatten
 
+from utils import repr_tree
+
 
 class History(NamedTuple):
     left: "Field"
@@ -334,14 +336,16 @@ class Field:
     def walked(self) -> Prod:
         if not self.history:
             return self
-        if not self.history:
-            return self
 
         return Prod(
             irrep=self, left=self.history.left.walked, right=self.history.right.walked
         )
 
-    def get_fresh_indices(self, store: Iterable[int] = range(10)) -> List[str]:
+    @property
+    def pprint(self) -> None:
+        print(repr_tree(self.walked))
+
+    def get_fresh_indices(self) -> List[str]:
         # names of index types
         # don't include generation
         u, d, c, i = list(Index.get_index_types().keys())[:-1]
@@ -362,8 +366,8 @@ class Field:
         # full dict available if you need it (just return indices below)
         return flatten(indices.values())
 
-    def fresh_indexed_field(self) -> "IndexedField":
-        fresh_indices = " ".join(i for i in self.get_fresh_indices())
+    def fresh_indexed_field(self, store: Iterable[int] = range(10)) -> "IndexedField":
+        fresh_indices = " ".join(i for i in self.get_fresh_indices(store))
         return IndexedField(
             label=self.label,
             indices=fresh_indices,
@@ -524,7 +528,7 @@ class Operator(tensor.TensMul):
 
     @property
     def dynkin(self):
-        return get_dynkin(" ".join(str(i) for i in self.free_indices))
+        return get_dynkin("".join(str(i) for i in self.free_indices))
 
 
 def assert_consistent_indices(
