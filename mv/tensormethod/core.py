@@ -215,7 +215,7 @@ class Field:
         # make sure names of indices are correct (to avoid user confusion)
         assert_consistent_indices(indices.split(), index_types, (su3_up, su3_down))
         return IndexedField(
-            label=self.label,
+            label=self.label_with_dagger,
             indices=indices,
             charges=self.charges,
             is_conj=self.is_conj,
@@ -371,7 +371,6 @@ class Field:
             right=self.history.right.walked(),
         )
 
-    @property
     def pprint(self) -> None:
         print(repr_tree(self.walked()))
 
@@ -379,41 +378,7 @@ class Field:
         # fresh_indices = " ".join(i for i in self.get_fresh_indices(store))
         fresh_indices = Index.fresh_indices(self.dynkin)
         return IndexedField(
-            label=self.label,
-            indices=fresh_indices,
-            charges=self.charges,
-            is_conj=self.is_conj,
-            symmetry=self.symmetry,
-            comm=self.comm,
-        )
-
-    def _get_fresh_indices(self, store) -> List[str]:
-        """Depricated"""
-        # names of index types
-        # don't include generation
-        u, d, c, i = list(Index.get_index_types().keys())[:-1]
-        # number of each index type
-        nu, nd, nc_up, nc_down, ni = self.dynkin_ints
-
-        indices = {}
-        # lorentz
-        indices[u] = [u + str(x) for x in store[:nu]]
-        indices[d] = [d + str(x) for x in store[:nd]]
-        # colour
-        indices[c] = [c + str(x) for x in store[:nc_up]]
-        indices[c] += ["-" + c + str(x) for x in store[nc_up : nc_up + nc_down]]
-        # isospin
-        indices[i] = [i + str(x) for x in store[:ni]]
-
-        # make the choice to return flattened values
-        # full dict available if you need it (just return indices below)
-        return flatten(indices.values())
-
-    def _fresh_indexed_field(self, store: Iterable[int] = range(10)) -> "IndexedField":
-        """Depricated"""
-        fresh_indices = " ".join(i for i in self.get_fresh_indices(store))
-        return IndexedField(
-            label=self.label,
+            label=self.label_with_dagger,
             indices=fresh_indices,
             charges=self.charges,
             is_conj=self.is_conj,
@@ -468,7 +433,7 @@ class IndexedField(tensor.Tensor, Field):
     ):
         """Initialises IndexedField object.
 
-        label: str
+        label: str (choice made to include the dagger)
         indices: space separated str or list of str
         charges: dict (must contain "y" as key)
         is_conj: bool
@@ -510,11 +475,18 @@ class IndexedField(tensor.Tensor, Field):
     @property
     def conj(self):
         """Returns a copy of self but conjugated"""
+
+        is_conj = self.is_conj
+        if is_conj:
+            label = self.label[:-1]
+        else:
+            label = self.label + "†"
+
         return self.__class__(
-            label=self.label,
+            label=label,
             indices=" ".join(i.conj.label for i in self.indices),
             charges={k: -v for k, v in self.charges.items()},
-            is_conj=(not self.is_conj),
+            is_conj=(not is_conj),
             symmetry=self.symmetry,
             comm=self.comm,
         )
@@ -559,10 +531,10 @@ class IndexedField(tensor.Tensor, Field):
 
     def __repr__(self):
         sympy_repr = super(self.__class__, self).__repr__()
-        if self.is_conj:
-            split_sympy_repr = sympy_repr.split("(")
-            new_repr = [split_sympy_repr[0] + "†("] + split_sympy_repr[1:]
-            return "".join(new_repr)
+        # if self.is_conj:
+        #     split_sympy_repr = sympy_repr.split("(")
+        #     new_repr = [split_sympy_repr[0] + "†("] + split_sympy_repr[1:]
+        #     return "".join(new_repr)
         return sympy_repr
 
     def __str__(self):
