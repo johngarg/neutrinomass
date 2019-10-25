@@ -46,6 +46,10 @@ class Index(tensor.TensorIndex):
             is_up = False
             label = label[1:]
 
+        dummy = True if label[0] == "_" else False
+        if dummy:
+            label = label[1:] + "_"
+
         tensor_type = cls.classify_index(label)
         return super(Index, cls).__new__(
             cls, name=label, tensortype=tensor_type, is_up=is_up
@@ -96,6 +100,11 @@ class Index(tensor.TensorIndex):
         return up, down
 
     @classmethod
+    def get_dynkin_labels(cls):
+        """[(is_raised, type), ...]"""
+        return [(True, "u"), (True, "d"), (True, "c"), (False, "c"), (True, "i")]
+
+    @classmethod
     def get_tensor_index_types(cls):
         return {"u": UNDOTTED, "d": DOTTED, "c": COLOUR, "i": ISOSPIN, "g": GENERATION}
 
@@ -108,6 +117,21 @@ class Index(tensor.TensorIndex):
             "i": "Isospin",
             "g": "Generation",
         }
+
+    @classmethod
+    def fresh(cls, type_):
+        idx = cls(tensor.TensorIndex(True, cls.get_tensor_index_types()[type_]))
+        label = idx.label.replace("i", type_)
+        return cls(label)
+
+    @classmethod
+    def fresh_indices(cls, dynkin_str):
+        out = []
+        for (raised, type_), number in zip(cls.get_dynkin_labels(), dynkin_str):
+            for _ in range(int(number)):
+                idx = Index.fresh(type_) if raised else -Index.fresh(type_)
+                out.append(idx)
+        return " ".join(i.__repr__() for i in out)
 
     @classmethod
     def get_sm_index_types(cls):
@@ -257,6 +281,10 @@ class Field:
     def is_vector(self):
         return self.lorentz_irrep == (1, 1)
 
+    @property
+    def is_singlet(self):
+        return self.dynkin == "00000" and self.y == 0
+
     def __str__(self):
         return self.__repr__()
 
@@ -288,6 +316,7 @@ class Field:
             return False
         return self._dict == other._dict
 
+    # TODO probably shouldn't call this multiply, maybe prod?
     def __mul__(self, other):
         grp = "SU2 x SU2 x SU3 x SU2"
         self_irrep = irrep(grp, " ".join(self.dynkin))
@@ -332,20 +361,34 @@ class Field:
             comm=self.comm,
         )
 
-    @property
     def walked(self) -> Prod:
         if not self.history:
             return self
 
         return Prod(
-            irrep=self, left=self.history.left.walked, right=self.history.right.walked
+            irrep=self,
+            left=self.history.left.walked(),
+            right=self.history.right.walked(),
         )
 
     @property
     def pprint(self) -> None:
-        print(repr_tree(self.walked))
+        print(repr_tree(self.walked()))
 
-    def get_fresh_indices(self) -> List[str]:
+    def fresh_indices(self) -> "IndexedField":
+        # fresh_indices = " ".join(i for i in self.get_fresh_indices(store))
+        fresh_indices = Index.fresh_indices(self.dynkin)
+        return IndexedField(
+            label=self.label,
+            indices=fresh_indices,
+            charges=self.charges,
+            is_conj=self.is_conj,
+            symmetry=self.symmetry,
+            comm=self.comm,
+        )
+
+    def _get_fresh_indices(self, store) -> List[str]:
+        """Depricated"""
         # names of index types
         # don't include generation
         u, d, c, i = list(Index.get_index_types().keys())[:-1]
@@ -366,7 +409,8 @@ class Field:
         # full dict available if you need it (just return indices below)
         return flatten(indices.values())
 
-    def fresh_indexed_field(self, store: Iterable[int] = range(10)) -> "IndexedField":
+    def _fresh_indexed_field(self, store: Iterable[int] = range(10)) -> "IndexedField":
+        """Depricated"""
         fresh_indices = " ".join(i for i in self.get_fresh_indices(store))
         return IndexedField(
             label=self.label,
@@ -376,6 +420,21 @@ class Field:
             symmetry=self.symmetry,
             comm=self.comm,
         )
+
+    # TODO pick up here...
+    # function needs to construct stores on the fly and pass off indices to child fields
+    # substitute specified indices in back at the end
+    # check at the beginning that the indices match the field rep
+    def unfold(self, indices) -> "Operator":
+        """Walks the history of a field and constructs the tensors as it goes.
+
+        Example:
+        >>> unfold(AA†A(21123)(1), indices="u0 u1 d0 c1 -c2 -c3 i0 i1 i2")
+        A(10011)(1)(indices...) * A†(01101)(-1)(indices...) * A(10011)(1)(indices...)
+
+        If indices is None, make all indices fresh.
+
+        """
 
 
 class IndexedField(tensor.Tensor, Field):
@@ -527,8 +586,13 @@ class Operator(tensor.TensMul):
         return self.get_free_indices()
 
     @property
+    # Will only return something meaninful if no extra epsilons or deltas around.
     def dynkin(self):
-        return get_dynkin("".join(str(i) for i in self.free_indices))
+        return get_dynkin(" ".join(str(i) for i in self.free_indices))
+
+    # Always multiply invariant symbols on the right
+    def __mul__(self, other):
+        return Operator(*self.tensors, other)
 
 
 def assert_consistent_indices(
@@ -575,7 +639,7 @@ def get_dynkin(indices: Union[str, Iterable[Index]]):
     return "".join(str(x) for x in flat_dynkin)
 
 
-@lru_cache(maxsize=None)
+# @lru_cache(maxsize=None)
 def decompose_product(*fields) -> List[Field]:
     """Decompose product of Fields.
 
@@ -606,18 +670,20 @@ def eps(indices: str):
     # ensure valid index type
     assert t in Index.get_index_types().values()
 
+    # return metric for the su2s but epsilon for su3
     if not t == Index.get_index_types()["c"]:
         # check consistent SU(2) indices
         assert len(indices) == 2
         for i in indices:
             assert not i.is_up
-    else:
-        # check consistent SU(3) indices
-        assert len(indices) == 3
-        position = indices[0].is_up
-        for i in indices:
-            assert position == i.is_up
 
+        return tensor_index_type.metric(*indices)
+
+    # check consistent SU(3) indices
+    assert len(indices) == 3
+    position = indices[0].is_up
+    for i in indices:
+        assert position == i.is_up
     return tensor_index_type.epsilon(*indices)
 
 

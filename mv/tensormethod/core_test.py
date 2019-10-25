@@ -55,7 +55,7 @@ def test_decompose_product():
             "charges": {"y": 0},
             "is_conj": False,
             "comm": 0,
-            "symmetry": [[1], [1], [1], [1], [1], [1], [1], [1]],
+            "symmetry": [[1], [1], [1], [1], [1, 1, 1, 1]],
         },
         {
             "label": "ABA†",
@@ -63,7 +63,7 @@ def test_decompose_product():
             "charges": {"y": 0},
             "is_conj": False,
             "comm": 0,
-            "symmetry": [[1], [1], [1], [1], [1], [1]],
+            "symmetry": [[1], [1], [1], [1], [1, 1]],
         },
     ]
 
@@ -74,7 +74,7 @@ def test_decompose_product():
             "charges": {"y": 0},
             "is_conj": False,
             "comm": 0,
-            "symmetry": [[1], [1], [1], [1]],
+            "symmetry": [[1], [1], [1, 1]],
         },
         {
             "label": "ABA†",
@@ -85,6 +85,15 @@ def test_decompose_product():
             "symmetry": [[1], [1]],
         },
     ]
-
     assert prods[:2] == [Field(**x) for x in first_two]
     assert prods[-2:] == [Field(**x) for x in last_two]
+
+
+# calls
+test_get_dynkin()
+test_conj()
+test_indices()
+test_mul()
+test_op()
+test_fresh()
+test_decompose_product()
