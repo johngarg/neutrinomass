@@ -1,15 +1,22 @@
 #!/usr/bin/env python
 
 
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 from functools import lru_cache
 from typing import Iterable, List, NamedTuple, Tuple, Union
 
 import sympy.tensor.tensor as tensor
+from sympy.core.numbers import Zero
 from basisgen import irrep
 from sympy import Rational, flatten
+from itertools import groupby
 
 from utils import repr_tree
+
+FERMI, BOSE = "fermi", "bose"
+tensor.TensorManager.set_comms(
+    (FERMI, FERMI, 1), (BOSE, BOSE, 0), (FERMI, BOSE, 0), (BOSE, FERMI, 0)
+)
 
 
 class History(NamedTuple):
@@ -119,6 +126,10 @@ class Index(tensor.TensorIndex):
         }
 
     @classmethod
+    def get_index_labels(cls):
+        return {v: k for k, v in cls.get_index_types().items()}
+
+    @classmethod
     def fresh(cls, type_):
         idx = cls(tensor.TensorIndex(True, cls.get_tensor_index_types()[type_]))
         label = idx.label.replace("i", type_)
@@ -144,6 +155,22 @@ class Index(tensor.TensorIndex):
     @classmethod
     def classify_index(cls, idx: str) -> tensor.TensorIndexType:
         return Index.get_tensor_index_types()[idx[0]]
+
+    @classmethod
+    def indices_by_type(cls, indices):
+        """Returns a dictionary mapping index type to tuple of indices.
+
+        """
+        result = {k: [] for k in Index.get_index_types().values()}
+        for i in indices:
+            result[i.index_type].append(i)
+        return {k: tuple(v) for k, v in result.items()}
+
+    @classmethod
+    def cons_index(cls, index_type: str, label: int, is_up: bool):
+        prefix = Index.get_index_labels()[index_type]
+        prefix = ("-" if not is_up else "") + prefix
+        return Index(prefix + str(label))
 
 
 class Field:
@@ -403,7 +430,7 @@ class Field:
 
 
 class IndexedField(tensor.Tensor, Field):
-    def __new__(cls, label: str, indices: str, symmetry=None, **kwargs):
+    def __new__(cls, label: str, indices: str, symmetry=None, comm=0, **kwargs):
         if isinstance(indices, str):
             indices = indices.split()
 
@@ -417,7 +444,7 @@ class IndexedField(tensor.Tensor, Field):
         if isinstance(label, tensor.TensorHead):
             tensor_head = label
         else:
-            tensor_head = tensor.tensorhead(label, index_types, sym=symmetry)
+            tensor_head = tensor.tensorhead(label, index_types, sym=symmetry, comm=comm)
 
         return super(IndexedField, cls).__new__(cls, tensor_head, tensor_indices)
 
@@ -496,10 +523,11 @@ class IndexedField(tensor.Tensor, Field):
         """Returns a dictionary mapping index type to tuple of indices.
 
         """
-        result = {k: [] for k in Index.get_index_types().values()}
-        for i in self.indices:
-            result[i.index_type].append(i)
-        return {k: tuple(v) for k, v in result.items()}
+        # result = {k: [] for k in Index.get_index_types().values()}
+        # for i in self.indices:
+        #     result[i.index_type].append(i)
+        # return {k: tuple(v) for k, v in result.items()}
+        return Index.indices_by_type(indices=self.indices)
 
     @property
     def _dynkins(self):
@@ -551,16 +579,89 @@ class Operator(tensor.TensMul):
         return super(Operator, cls).__new__(cls, *args, **kwargs)
 
     def __init__(self, *args, **kwargs):
-        self.tensors = args
+        self.tensors = [arg for arg in args if arg != 1]
 
     @property
     def free_indices(self):
         return self.get_free_indices()
 
     @property
+    def fields(self):
+        return [f for f in self.tensors if isinstance(f, IndexedField)]
+
+    @property
+    def structures(self):
+        return [f for f in self.tensors if not isinstance(f, IndexedField)]
+
+    @property
+    def duplicate_fields(self):
+        """Returns a dictionary mapping the field label to the duplicates."""
+        key_func = lambda f: str(f.args[0].args[0])
+        fields = [t for t in self.args if not str(t).startswith("Eps")]
+        sorted_fields = sorted(fields, key=key_func)
+        out = {}
+        for k, g in groupby(sorted_fields, key=key_func):
+            g = list(g)
+            if len(g) > 1:
+                out[k] = flatten([f.indices for f in g])
+
+        return out
+
+    @property
+    def duplicate_field_permutations(self):
+        """Return a list of the same operators with the free indices on duplicate fields
+        permuted.
+
+        """
+        pass
+
+    def simplify(self):
+        simple = self.fill_free_indices().sorted_components().canon_bp()
+        for label, tensor_index_type in Index.get_tensor_index_types().items():
+            if label in {"u", "d", "i"}:
+                if isinstance(simple, Zero):
+                    return 0
+                else:
+                    simple = simple.contract_metric(tensor_index_type.metric)
+
+        return simple.canon_bp()
+
+    def is_equivalent_to(self, other: "Operator"):
+        """Returns true if operators equal up to numerical constant or free index
+        relabelling.
+
+        """
+        # Try naive thing
+        return self.nocoeff == other.nocoeff
+
+    def fill_free_indices(self):
+        store = defaultdict(int)
+        replacements = []
+        for index_type, idxs in self.indices_by_type.items():
+            for i in idxs:
+                n = store[Index.get_index_labels()[index_type]]
+                new_index = Index.cons_index(index_type, n, i.is_up)
+
+                store[Index.get_index_labels()[index_type]] += 1
+                replacements.append((i, new_index))
+
+        tensors = [t.fun_eval(*replacements) for t in self.tensors]
+        return Operator(*tensors)
+
+    @property
+    def indices_by_type(self):
+        """Returns free indices in operator by type."""
+        return Index.indices_by_type(indices=self.free_indices)
+
+    @property
     # Will only return something meaninful if no extra epsilons or deltas around.
+    # TODO Extend to ignore uncontracted epsilons and deltas
     def dynkin(self):
         return get_dynkin(" ".join(str(i) for i in self.free_indices))
+
+    @property
+    def dynkin_ints(self):
+        return [int(i) for i in self.dynkin]
 
     # Always multiply invariant symbols on the right
     def __mul__(self, other):
@@ -649,7 +750,7 @@ def eps(indices: str):
         for i in indices:
             assert not i.is_up
 
-        return tensor_index_type.metric(*indices)
+        return tensor_index_type.epsilon(*indices)
 
     # check consistent SU(3) indices
     assert len(indices) == 3
