@@ -13,10 +13,10 @@ from core import (
     Operator,
     decompose_product,
 )
-from sm import Q, H, L, eb, db, ub
+from sm import *
 import itertools
-from itertools import permutations
-from kanren import run, eq, membero, var, conde
+from itertools import combinations, permutations, product
+from functools import reduce
 
 Contractable = Union[Field, IndexedField, Operator]
 Indexed = Union[IndexedField, Operator]
@@ -142,80 +142,6 @@ def contract_su2(left: Contractable, right: Contractable, out: str, ignore=[]):
     return [left * right * u * d * i for u, d, i in itertools.product(*epsilons)]
 
 
-# def contract(left: Contractable, right: Contractable, out: str):
-#     """
-#     Example:
-#         >>> contract(left=Field("L", "10001"), right=Field("L", "10001"), out="00000")
-#         L(u0, i0) * L(u1, i1) * eps(-i0, -i1) * eps(-u0, -u1)
-
-#     For now, contracts SU(2) structures only.
-
-#     """
-#     # Create an index dict mapping index type to position in dynkin str
-#     index_dict = {}
-#     for pos, (_, label) in enumerate(Index.get_dynkin_labels()):
-#         index_dict[label] = pos
-
-#     if not isinstance(left, (IndexedField, Operator)):
-#         left_indexed = left.fresh_indices()
-#     else:
-#         left_indexed = left
-
-#     if not isinstance(right, (IndexedField, Operator)):
-#         right_indexed = right.fresh_indices()
-#     else:
-#         right_indexed = right
-
-#     results = [1]
-#     for index_type in ["u", "d", "i"]:
-#         n_target_indices = int(out[index_dict[index_type]])
-#         n_input_indices = (
-#             left.dynkin_ints[index_dict[index_type]]
-#             + right.dynkin_ints[index_dict[index_type]]
-#         )
-
-#         if n_target_indices == n_input_indices:
-#             index_results = [1]
-#         elif (
-#             n_target_indices < n_input_indices
-#             and (n_target_indices - n_input_indices) % 2 == 0
-#         ):
-#             # get indices of index_type from tensors
-#             left_indices = left_indexed.indices_by_type[
-#                 Index.get_index_types()[index_type]
-#             ]
-#             right_indices = right_indexed.indices_by_type[
-#                 Index.get_index_types()[index_type]
-#             ]
-
-#             # There is in general more than one way to contract the indices.
-#             # Construct every possible way and return a list of results.
-
-#             # get different epsilon combinations
-#             shortest, longest = sorted([left_indices, right_indices], key=len)
-#             eps_index_combos = [
-#                 tuple(zip(perm, shortest)) for perm in permutations(longest)
-#             ]
-
-#             index_results = []
-#             for combo in eps_index_combos:
-#                 prod = 1
-#                 counter = n_input_indices
-#                 for i, j in combo:
-#                     prod *= eps(" ".join([(-i).label, (-j).label]))
-#                     counter -= 2
-#                     if counter == n_target_indices:
-#                         index_results.append(prod)
-
-#         else:
-#             raise Exception("Can't perform the contraction with epsilons.")
-
-#         results = product(index_results, results)
-
-#     breakpoint()
-#     return [left_indexed * right_indexed * res for res in results]
-
-
 def construct_operators(expr_tree: Prod, _stack=[], ignore=[]):
     """Constructs Operator objects from product tree. There will be more than one
     since there will be many ways to contract the indices at each step.
@@ -246,7 +172,12 @@ def construct_operators(expr_tree: Prod, _stack=[], ignore=[]):
     return results
 
 
-def invariants(*fields, ignore=[]):
+def unsimplified_invariants(*fields, ignore=[]):
+    """Generates invariant operators containing ``fields`` and ignoring the
+    structures in ``ignore``. The structures are not filtered, simplified or
+    processed at all.
+
+    """
     prod = decompose_product(*fields)
     singlets = [i for i in prod if i.is_singlet]
 
@@ -265,66 +196,74 @@ def invariants(*fields, ignore=[]):
     return result
 
 
-# def old_delete_duplicate_operators(operators):
-#     to_remove = set()
-#     counter = 0
-#     for i in range(len(operators)):
-#         for j in range(i + 1, len(operators)):
-#             # TODO Shouldn't need to interact with sympy objects, fix the below
-#             if isinstance(operators[i], Operator):
-#                 a = operators[i].simplify()
-#                 operators[i] = a
-#             else:
-#                 a = operators[i]
+def extract_relabellings(x, y):
+    """Takes two structures of the same index type and returns a list of lists of
+    tuples representing index substitutions on x that would make it equal to y.
 
-#             if isinstance(operators[j], Operator):
-#                 b = operators[j].simplify()
-#                 operators[j] = b
-#             else:
-#                 b = operators[j]
+    Example:
+        >>> extract_relabellings([Eps(-I_0, -I_2), Eps(-I_3, -I_1)], [Eps(-I_3, -I_2), Eps(-I_2, -I_1)])
+        [[(I_0, I_3), (I_3, I_2)],
+         [(I_1, I_2), (I_0, I_1)],
+         [(I_2, I_3), (I_0, I_2), (I_3, I_1), (I_1, I_2)],
+         ...
+        ]
 
-#             if (a == 0 and b != 0) or (b == 0 and a != 0):
-#                 continue
-#             elif a == 0 and b == 0:
-#                 to_remove.add(j)
-#                 continue
-#             elif a.nocoeff == b.nocoeff:
-#                 to_remove.add(j)
+    """
+    perms = permutations(sorted(pair.indices) for pair in x)
+    y_indices = [sorted(pair.indices) for pair in y]
+    mappings = []
+    for perm in perms:
+        mapping = []
+        for (i, j), (k, l) in zip(perm, y_indices):
+            if i != k:
+                mapping.append((i, k))
 
-#     return [op for i, op in enumerate(operators) if i not in to_remove]
+            if j != l:
+                mapping.append((j, l))
+
+        mappings.append(mapping)
+
+    return mappings
 
 
 def compare_operators(left, right):
     if left.nocoeff == right.nocoeff:
         return True, []
 
-    mapping = []
+    # Epsilons should be sufficient to look at.
+    #
+    # Separate into lists of lists of invariant symbols:
+    # e.g.
+    # left_structures = [[Eps(-I_0, -I_2), Eps(-I_3, -I_1)],
+    #                    [Eps(-U_0, -U_3), Eps(-U_1, -U_4), Eps(-U_5, -U_2)],
+    #                    ...]
+    #
+    # Walk through these for left and right, but take a cartesian product when
+    # comparing
+    left_structures = left.by_structures()
+    right_structures = right.by_structures()
+    assert len(left_structures) == len(right_structures)
 
-    # epsilons are sufficient to look at
-    left_eps = [t for t in left.args if str(t).startswith("Eps")]
-    right_eps = [t for t in right.args if str(t).startswith("Eps")]
+    relabellings_by_structures = [None] * len(left_structures)
 
-    for l, r in zip(left_eps, right_eps):
-        left_label, left_indices = l.args
-        right_label, right_indices = r.args
+    for i, (ls, rs) in enumerate(zip(left_structures, right_structures)):
+        relabellings = extract_relabellings(ls, rs)
+        relabellings_by_structures[i] = relabellings
 
-        if left_label != right_label:
-            return False, []
-
-        # remove minus sign differences and other potential ambiguities by
-        # sorting epsilon indices
-        left_indices, right_indices = sorted(left_indices), sorted(right_indices)
-
-        # walk down indices saving mappings that make them equal
-        if left_indices != right_indices:
-            for i, j in zip(left_indices, right_indices):
-                if i != j:
-                    mapping.append((i, j))
-
-    return True, mapping
+    # Is the right thing to do to return the structures separately but only say
+    # there is an identity mapping if both substitutions simultaneously give you
+    # the same operator?
+    return [
+        reduce(lambda x, y: x + y, structures)
+        for structures in product(*relabellings_by_structures)
+    ]
 
 
 def is_identity_mapping(mapping, op):
+    """This and function below are currently broken for more than one structure. See
+    comments on invariants function.
+
+    """
     for i, j in mapping:
 
         # disregard free indices
@@ -339,6 +278,13 @@ def is_identity_mapping(mapping, op):
         else:
             return False
     return True
+
+
+def exists_identity_mapping(mappings, op):
+    for mapping in mappings:
+        if is_identity_mapping(mapping, op):
+            return True
+    return False
 
 
 def clean_operators(operators):
@@ -361,11 +307,36 @@ def remove_relabellings(operators):
     counter = 0
     for i in range(len(operators)):
         for j in range(i + 1, len(operators)):
-            possible_match, mapping = compare_operators(operators[i], operators[j])
-            if not possible_match:
-                continue
+            mappings = compare_operators(operators[i], operators[j])
 
-            if is_identity_mapping(mapping, operators[i]):
+            if exists_identity_mapping(mappings, operators[i]):
                 to_remove.add(j)
 
     return [op for i, op in enumerate(operators) if i not in to_remove]
+
+
+def invariants(*fields, ignore=["u", "d", "c"]):
+    """Return invariants of ``fields`` ignoring the structures in ``ignore``. The
+    invariants are simplified and filtered. Doubled up operators are removed,
+    including those equivalent up to index relabellings.
+
+    Example:
+        >>> invariants(L, L, Q, db, H, ignore=["u", "c", "d"])
+        [L(u0, I_0)*L(u1, I_1)*Q(u2, c0, I_2)*Eps(-I_0, -I_2)*db(u3, -c1)*H(I_3)*Eps(-I_3, -I_1),
+         L(u0, I_0)*L(u1, I_1)*Eps(-I_1, -I_0)*Q(u2, c0, I_2)*db(u3, -c1)*H(I_3)*Eps(-I_3, -I_2)]
+
+    Note:
+        Currently only works for SU(2) isospin structure, since
+        ``remove_relabellings`` mistakenly thinks
+
+            (L^i L^k) (L^j eb) H^l eps(ij) eps(kl)
+                            and
+            (L^i L^j) (L^k eb) H^l eps(ij) eps(kl)
+
+        are the same since they can be related by interchanging j and k.
+
+    """
+    singlets = unsimplified_invariants(*fields, ignore=ignore)
+    clean_singlets = remove_relabellings(clean_operators(singlets))
+    with_nice_labels = [op.fill_free_indices() for op in clean_singlets]
+    return with_nice_labels

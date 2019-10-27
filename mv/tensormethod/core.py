@@ -587,11 +587,22 @@ class Operator(tensor.TensMul):
 
     @property
     def fields(self):
-        return [f for f in self.tensors if isinstance(f, IndexedField)]
+        return [f for f in self.args if not is_invariant_symbol(f)]
 
     @property
     def structures(self):
-        return [f for f in self.tensors if not isinstance(f, IndexedField)]
+        return [f for f in self.args if is_invariant_symbol(f)]
+
+    def by_structures(self):
+        order = Index.get_tensor_index_types().values()
+        out = []
+        for index_type in order:
+            out.append([])
+            for symbol in self.structures:
+                if symbol.indices[0].tensor_index_type == index_type:
+                    out[-1].append(symbol)
+
+        return [l for l in out if l]
 
     @property
     def duplicate_fields(self):
@@ -772,3 +783,12 @@ def delta(indices: str):
     assert not j.is_up
 
     return Index.get_tensor_index_types()["c"].delta(*indices)
+
+
+def is_invariant_symbol(tensor):
+    str_tensor = str(tensor)
+    return (
+        str_tensor.startswith("Eps")
+        or str_tensor.startswith("KD")
+        or str_tensor.startswith("metric")
+    )
