@@ -338,5 +338,4 @@ def invariants(*fields, ignore=["u", "d", "c"]):
     """
     singlets = unsimplified_invariants(*fields, ignore=ignore)
     clean_singlets = remove_relabellings(clean_operators(singlets))
-    with_nice_labels = [op.fill_free_indices() for op in clean_singlets]
-    return with_nice_labels
+    return clean_singlets
