@@ -2,18 +2,48 @@
 
 from sympy import Rational
 from core import Field, FERMI, BOSE
+from lnv import BL_LIST
 import sympy.tensor.tensor as tensor
 
+# fermions
 L = Field("L", dynkin="10001", charges={"y": Rational("-1/2")}, comm=FERMI)
 Q = Field("Q", dynkin="10101", charges={"y": Rational("1/6")}, comm=FERMI)
-H = Field("H", dynkin="00001", charges={"y": Rational("1/2")}, comm=BOSE)
 eb = Field("eb", dynkin="10000", charges={"y": Rational("1")}, comm=FERMI)
 ub = Field("ub", dynkin="10010", charges={"y": Rational("-2/3")}, comm=FERMI)
 db = Field("db", dynkin="10010", charges={"y": Rational("1/3")}, comm=FERMI)
 
-DL = Field("DL", dynkin="01001", charges={"y": Rational("-1/2")}, comm=FERMI)
-DQ = Field("DQ", dynkin="01101", charges={"y": Rational("1/6")}, comm=FERMI)
-DH = Field("DH", dynkin="11001", charges={"y": Rational("1/2")}, comm=BOSE)
-Deb = Field("Deb", dynkin="01000", charges={"y": Rational("1")}, comm=FERMI)
-Dub = Field("Dub", dynkin="01010", charges={"y": Rational("-2/3")}, comm=FERMI)
-Ddb = Field("Ddb", dynkin="01010", charges={"y": Rational("1/3")}, comm=FERMI)
+# bosons
+H = Field("H", dynkin="00001", charges={"y": Rational("1/2")}, comm=BOSE)
+G = Field("G", dynkin="20110", comm=BOSE)
+Gb = Field("Gb", dynkin="02110", comm=BOSE)
+W = Field("W", dynkin="20002", comm=BOSE)
+Wb = Field("Wb", dynkin="02002", comm=BOSE)
+B = Field("B", dynkin="20000", comm=BOSE)
+Bb = Field("Bb", dynkin="02000", comm=BOSE)
+
+
+def D(field, dynkin):
+    """Returns a new field with additional dotted and undotted indices.
+
+    Example:
+       >>> D(L, "01")
+       DL(01001)(-1/2)
+
+       >>> D(L, "21")
+       DL(21001)(-1/2)
+
+    """
+    # derivative can only change one dotted and one undotted index
+    assert abs(int(dynkin[0]) - field.dynkin_ints[0]) == 1
+    assert abs(int(dynkin[1]) - field.dynkin_ints[1]) == 1
+
+    # other info to construct field instance
+    symbol = "D" + field.label
+    new_field_dynkin = dynkin + field.dynkin[2:]
+    rest = {"charges": field.charges, "comm": field.comm}
+
+    new_field = Field(symbol, dynkin=new_field_dynkin, **rest)
+    return new_field
+
+
+LNV_OPERATORS = {tuple([eval(field) for field in k]): v for k, v in BL_LIST.items()}

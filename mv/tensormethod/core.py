@@ -10,8 +10,10 @@ from sympy.core.numbers import Zero
 from basisgen import irrep
 from sympy import Rational, flatten
 from itertools import groupby
+from copy import copy
 
 from utils import repr_tree
+from lnv import BL_LIST
 
 FERMI, BOSE = "fermi", "bose"
 tensor.TensorManager.set_comms(
@@ -223,6 +225,10 @@ class Field:
         self.dynkin = dynkin.strip()
         self.comm = comm
         self.is_conj = is_conj
+
+    # def __lt__(self, other):
+    #     comp_func = lambda x: x.dynkin_ints + tuple(x.charges.values()) + (x.label,)
+    #     return comp_func(self) < comp_func(other)
 
     def __call__(self, indices: str) -> "IndexedField":
         """Returns an IndexedField object.
@@ -491,11 +497,37 @@ class IndexedField(tensor.Tensor, Field):
     @property
     def field(self):
         return Field(
-            label=self.label,
+            label=self.label if not self.is_conj else self.label[:-1],
             dynkin=self.dynkin,
             charges=self.charges,
             is_conj=self.is_conj,
             symmetry=self.symmetry,
+            comm=self.comm,
+        )
+
+    def substitute_indices(self, *indices):
+        """Substitute indices according to ``indices`` with side effect."""
+        new_indices = copy(self.indices)
+        for i, j in indices:
+            for pos, idx in enumerate(self.indices):
+                if i == idx:
+                    self.indices[pos] = j
+
+    def substituted_indices(self, *indices):
+        """Return a copy of the IndexedField with indices substituted according to ``indices``."""
+        new_indices = copy(self.indices)
+        for i, j in indices:
+            for pos, idx in enumerate(self.indices):
+                if i == idx:
+                    new_indices[pos] = j
+
+        return IndexedField(
+            label=self.label,
+            indices=new_indices,
+            charges=self.charges,
+            is_conj=self.is_conj,
+            symmetry=self.symmetry,
+            multiplicity=self.multiplicity,
             comm=self.comm,
         )
 
@@ -582,12 +614,47 @@ class Operator(tensor.TensMul):
         self.tensors = [arg for arg in args if arg != 1]
 
     @property
+    def contains_derivative(self):
+        for t in self.tensors:
+            if str(t).startswith("D"):
+                return True
+            if str(t).startswith("G") or str(t).startswith("Gb"):
+                return True
+            if str(t).startswith("W") or str(t).startswith("Wb"):
+                return True
+            if str(t).startswith("B") or str(t).startswith("Bb"):
+                return True
+
+        return False
+
+    @property
+    def BL_classification(self):
+        if self.contains_derivative:
+            return -1
+
+        sorted_fields = tuple(
+            sorted(f.label_with_dagger.replace("†", ".conj") for f in self.fields)
+        )
+        if sorted_fields not in BL_LIST:
+            return -1
+
+        return BL_LIST[sorted_fields]
+
+    @property
     def free_indices(self):
         return self.get_free_indices()
 
+    # @property
+    # def fields(self):
+    #     return [f for f in self.args if not is_invariant_symbol(f)]
+
+    @property
+    def indexed_fields(self):
+        return [f for f in self.tensors if isinstance(f, IndexedField)]
+
     @property
     def fields(self):
-        return [f for f in self.args if not is_invariant_symbol(f)]
+        return [f.field for f in self.indexed_fields]
 
     @property
     def structures(self):

@@ -6,15 +6,44 @@ from hs import X
 import hs
 import sm
 import sympy
+from functools import reduce
+from itertools import product
+from contract import invariants
 
 from copy import copy
 
 # plug in nf = 3
 H7_LNV_NF3 = hs.H7_LNV.xreplace({hs.Nf: 3})
 H9_LNV_NF3 = hs.H9_LNV.xreplace({hs.Nf: 3})
+H11_LNV_NF3 = hs.H11_LNV.xreplace({hs.Nf: 3})
+
+FIELD_LOOKUP = {
+    hs.L(X): sm.L,
+    hs.Ld(X): sm.L.conj,
+    hs.H(X): sm.H,
+    hs.Hd(X): sm.H.conj,
+    hs.Q(X): sm.Q,
+    hs.Qd(X): sm.Q.conj,
+    hs.eb(X): sm.eb,
+    hs.ebd(X): sm.eb.conj,
+    hs.ub(X): sm.ub,
+    hs.ubd(X): sm.ub.conj,
+    hs.db(X): sm.db,
+    hs.dbd(X): sm.db.conj,
+    hs.G(X): sm.G,
+    hs.Gb(X): sm.Gb,
+    hs.W(X): sm.W,
+    hs.Wb(X): sm.Wb,
+    hs.B(X): sm.B,
+    hs.Bb(X): sm.Bb,
+}
 
 
 def distribute_derivatives(expr):
+    """Returns a new Hilbert Series with the derivatives distributed across each
+    term.
+
+    """
     new_terms = []
     for i, term in enumerate(expr.args):
         # derivatives will never be outside of Mul
@@ -44,18 +73,146 @@ def distribute_derivatives(expr):
     return sum(new_terms)
 
 
-def parse_hs(expr):
-    pass
+def is_number(expr):
+    return isinstance(expr, sympy.Integer) or isinstance(expr, sympy.Rational)
 
 
-def generate_field_collections(hs):
-    seen = set()
-    out = []
-    for field_coll in parse_hs(hs):
-        # iterate over two outputs of apply_eom
-        hashable = sorted(tuple(field_coll))
-        if hashable not in seen:
-            seen.add(hashable)
-            out.append(field_coll)
+def is_field(expr, term):
+    if term:
+        if isinstance(expr, sympy.Pow):
+            expr = expr.args[0]
 
-    return out
+    return isinstance(expr, sympy.Function)
+
+
+def is_deriv(expr):
+    if isinstance(expr, sympy.Pow):
+        expr = expr.args[0]
+
+    return isinstance(expr, sympy.Derivative)
+
+
+def is_term(expr):
+    return isinstance(expr, sympy.Pow) or isinstance(expr, sympy.Mul)
+
+
+def proc_number(expr):
+    return [1]
+
+
+def proc_field(expr):
+    if isinstance(expr, sympy.Function):
+        return [FIELD_LOOKUP[expr]]
+
+    if isinstance(expr, sympy.Pow):
+        base, power = expr.args
+        return [FIELD_LOOKUP[base]] * power
+
+
+def proc_deriv(expr):
+    if isinstance(expr, sympy.Derivative):
+        field, (_, n) = expr.args
+        return [("D", n, FIELD_LOOKUP[field])]
+
+    if isinstance(expr, sympy.Pow):
+        base, power = expr.args
+        return proc_deriv(base) * power
+
+
+def is_sum(expr):
+    return isinstance(expr, sympy.Add)
+
+
+def is_symbolic_deriv(expr):
+    # derivatives represented by tuples:
+    # ("D", order, field)
+    return isinstance(expr, tuple)
+
+
+def no_numbers(expr):
+    return [i for i in expr if not isinstance(i, int)]
+
+
+def deriv_possibilities(field, order):
+    if order <= 0:
+        return [field]
+
+    if not field.is_fermion:
+        # Gauge boson or Higgs. Only allowed derivatives acting on gauge
+        # bosons must have no indices contracted, right? Also true of Higgs
+        u, d = field.lorentz_irrep
+        u += 1
+        d += 1
+        new_dynkin = str(u) + str(d)
+        return deriv_possibilities(sm.D(field, new_dynkin), order - 1)
+
+    dynkin_options = []
+    deltas = [(1, 1), (-1, 1), (1, -1)]
+    for delta_u, delta_d in deltas:
+        u, d = field.lorentz_irrep
+        sum_u = delta_u + u
+        sum_d = delta_d + d
+        if sum_u >= 0 and sum_d >= 0:
+            u, d = delta_u + u, delta_d + d
+            new_dynkin = str(u) + str(d)
+            dynkin_options.append(new_dynkin)
+
+    result = [deriv_possibilities(sm.D(field, d), order - 1) for d in dynkin_options]
+    return sympy.flatten(result)
+
+
+def proc_term(expr):
+    flat_term = reduce(lambda x, y: x + y, expr)
+
+    # expand derivative possibilities and find invariants, return as a list
+    contains_deriv = False
+    for item in flat_term:
+        if is_symbolic_deriv(item):
+            contains_deriv = True
+
+    if not contains_deriv:
+        return [invariants(*no_numbers(flat_term))]
+
+    # build new lists with derivative possibilities
+    new_terms = [[]]
+    for i, item in enumerate(flat_term):
+        if not is_symbolic_deriv(item):
+            for new_term in new_terms:
+                new_term.append(item)
+        if is_symbolic_deriv(item):
+            _, order, field = item
+            possible_fields = deriv_possibilities(field, order)
+            new_terms = list(product(new_terms, possible_fields))
+            # product leaves the list a bit dirty, need to clean:
+            # ([ old list ], new_field) -> [*old_list, new_field]
+            new_terms = [[*old_list, new_field] for old_list, new_field in new_terms]
+
+    return [invariants(*no_numbers(term)) for term in new_terms]
+
+
+def proc_sum(expr):
+    return reduce(lambda x, y: x + y, expr)
+
+
+def parse_hs(expr, term=False):
+    if is_number(expr):
+        return proc_number(expr)
+
+    if is_field(expr, term):
+        return proc_field(expr)
+
+    if is_deriv(expr):
+        return proc_deriv(expr)
+
+    # recursive call
+    if is_term(expr):
+        return proc_term([parse_hs(item, term=True) for item in expr.args])
+
+    if is_sum(expr):
+        return proc_sum([parse_hs(item) for item in expr.args])
+
+    raise Exception(f"Missed a case for {expr} when parsing Hilbert Series.")
+
+
+def parse(hs):
+    return parse_hs(distribute_derivatives(hs))
