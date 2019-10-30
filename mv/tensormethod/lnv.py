@@ -61,6 +61,22 @@ bl_list = {
     ("L", "ub", "Q.conj", "ub.conj", "eb.conj", "ub.conj", "H", "H"): 58,
     ("L", "Q", "db", "db", "eb.conj", "ub.conj", "H", "H.conj"): 59,
     ("L", "db", "Q.conj", "ub.conj", "eb.conj", "ub.conj", "H", "H.conj"): 60,
+    ("L", "L", "H", "H", "L", "eb", "H.conj"): 61,
+    ("L", "L", "L", "eb", "H", "L", "eb", "H.conj"): 62,
+    ("L", "L", "Q", "db", "H", "L", "eb", "H.conj"): 63,
+    ("L", "L", "Q.conj", "ub.conj", "H", "L", "eb", "H.conj"): 64,
+    ("L", "eb.conj", "ub.conj", "db", "H", "L", "eb", "H.conj"): 65,
+    # ("L", "L", "H", "H", "Q", "db", "H.conj"): 66,                    # like 5
+    # ("L", "L", "L", "eb", "H", "Q", "db", "H.conj"): 67,              # like 63
+    # ("L", "L", "Q", "db", "H", "Q", "db", "H.conj"): 68,              # like 24
+    # ("L", "L", "Q.conj", "ub.conj", "H", "Q", "db", "H.conj"): 69,    # like 28
+    # ("L", "eb.conj", "ub.conj", "db", "H", "Q", "db", "H.conj"): 70,  # like 59
+    ("L", "L", "H", "H", "Q", "ub", "H"): 71,
+    # ("L", "L", "L", "eb", "H", "Q", "ub", "H"): 72,                   # like 21
+    # ("L", "L", "Q", "db", "H", "Q", "ub", "H"): 73,                   # like 25
+    # ("L", "L", "Q.conj", "ub.conj", "H", "Q", "ub", "H"): 74,         # like 29
+    ("L", "eb.conj", "ub.conj", "db", "H", "Q", "ub", "H"): 75,
+    ("ub", "ub", "db.conj", "db.conj", "eb", "eb"): 76,
 }
 
 BL_LIST = {}

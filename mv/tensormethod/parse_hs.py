@@ -171,7 +171,8 @@ def proc_term(expr):
             contains_deriv = True
 
     if not contains_deriv:
-        return [invariants(*no_numbers(flat_term))]
+        # return [invariants(*no_numbers(flat_term))]
+        return [no_numbers(flat_term)]
 
     # build new lists with derivative possibilities
     new_terms = [[]]
@@ -187,7 +188,7 @@ def proc_term(expr):
             # ([ old list ], new_field) -> [*old_list, new_field]
             new_terms = [[*old_list, new_field] for old_list, new_field in new_terms]
 
-    return [invariants(*no_numbers(term)) for term in new_terms]
+    return [no_numbers(term) for term in new_terms]
 
 
 def proc_sum(expr):
