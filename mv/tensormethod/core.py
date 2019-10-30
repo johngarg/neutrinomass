@@ -4,6 +4,7 @@
 from collections import namedtuple, defaultdict
 from functools import lru_cache
 from typing import Iterable, List, NamedTuple, Tuple, Union
+from string import ascii_lowercase
 
 import sympy.tensor.tensor as tensor
 from sympy.core.numbers import Zero
@@ -12,6 +13,7 @@ from sympy import Rational, flatten
 from itertools import groupby
 from copy import copy
 
+import utils
 from utils import repr_tree
 from lnv import BL_LIST
 
@@ -186,6 +188,7 @@ class Field:
         symmetry=None,
         history=None,
         multiplicity=1,
+        latex=None,
         **kwargs,
     ):
         """Field("A", dynkin="1 0 0 1 1", charges={"y": 1})
@@ -225,6 +228,7 @@ class Field:
         self.dynkin = dynkin.strip()
         self.comm = comm
         self.is_conj = is_conj
+        self.latex = latex
 
     # def __lt__(self, other):
     #     comp_func = lambda x: x.dynkin_ints + tuple(x.charges.values()) + (x.label,)
@@ -255,6 +259,7 @@ class Field:
             symmetry=self.symmetry,
             multiplicity=self.multiplicity,
             comm=self.comm,
+            latex=self.latex,
         )
 
     @property
@@ -392,6 +397,7 @@ class Field:
             history=self.history,
             multiplicity=self.multiplicity,
             comm=self.comm,
+            latex=self.latex,
         )
 
     def walked(self) -> Prod:
@@ -417,22 +423,19 @@ class Field:
             is_conj=self.is_conj,
             symmetry=self.symmetry,
             comm=self.comm,
+            latex=self.latex,
         )
 
-    # TODO pick up here...
-    # function needs to construct stores on the fly and pass off indices to child fields
-    # substitute specified indices in back at the end
-    # check at the beginning that the indices match the field rep
-    def unfold(self, indices) -> "Operator":
-        """Walks the history of a field and constructs the tensors as it goes.
+    def get_latex(self):
+        if self.is_conj:
+            # add twidle for doublets so that their SU2 indices are always raised
+            if self.isospin_irrep != (0,):
+                return rf"\tilde{{{self.latex}}}"
 
-        Example:
-        >>> unfold(AA†A(21123)(1), indices="u0 u1 d0 c1 -c2 -c3 i0 i1 i2")
-        A(10011)(1)(indices...) * A†(01101)(-1)(indices...) * A(10011)(1)(indices...)
+            # add dagger for singlets
+            return self.latex + r"^{\dagger}"
 
-        If indices is None, make all indices fresh.
-
-        """
+        return self.latex
 
 
 class IndexedField(tensor.Tensor, Field):
@@ -462,6 +465,7 @@ class IndexedField(tensor.Tensor, Field):
         is_conj=False,
         symmetry=None,
         comm=0,
+        latex=None,
         **kwargs,
     ):
         """Initialises IndexedField object.
@@ -490,6 +494,7 @@ class IndexedField(tensor.Tensor, Field):
             is_conj=is_conj,
             symmetry=symmetry,
             comm=comm,
+            latex=latex,
         )
 
         self.index_labels = indices
@@ -503,6 +508,7 @@ class IndexedField(tensor.Tensor, Field):
             is_conj=self.is_conj,
             symmetry=self.symmetry,
             comm=self.comm,
+            latex=self.latex,
         )
 
     def substitute_indices(self, *indices):
@@ -529,6 +535,7 @@ class IndexedField(tensor.Tensor, Field):
             symmetry=self.symmetry,
             multiplicity=self.multiplicity,
             comm=self.comm,
+            latex=self.latex,
         )
 
     @property
@@ -605,6 +612,35 @@ class IndexedField(tensor.Tensor, Field):
             return False
         return self._dict == other._dict
 
+    def latex_and_pop(self, index_dict: dict, style: dict) -> str:
+        """Returns the latex form of the indexed field while making state changes.
+
+        Assigns unused indices of a certain type according to style. Pops new
+        indices off style and saves the relation between Index objects and their
+        representation in the index_dict (by side effect again).
+
+        Keys in style dictate which indices are processed.
+
+        """
+        # Make sure latex attribute set
+        if self.latex is None:
+            raise ValueError(f"No latex string assigned to {self.__class__}")
+
+        # deal with indices
+        indices = []
+        for index in self.indices:
+            type_ = Index.get_index_labels()[index.index_type]
+            # condition that style wants to be printed
+            if type_ in style:
+                index_string = style[type_].pop(0)
+                index_dict[index] = index_string
+                indices.append(index_string)
+
+        if not indices:
+            return self.get_latex()
+
+        return rf"{self.get_latex()}^{{{' '.join(indices)}}}"
+
 
 class Operator(tensor.TensMul):
     def __new__(cls, *args, **kwargs):
@@ -618,11 +654,11 @@ class Operator(tensor.TensMul):
         for t in self.tensors:
             if str(t).startswith("D"):
                 return True
-            if str(t).startswith("G") or str(t).startswith("Gb"):
+            if str(t).startswith("G"):
                 return True
-            if str(t).startswith("W") or str(t).startswith("Wb"):
+            if str(t).startswith("W"):
                 return True
-            if str(t).startswith("B") or str(t).startswith("Bb"):
+            if str(t).startswith("B"):
                 return True
 
         return False
@@ -653,11 +689,16 @@ class Operator(tensor.TensMul):
         return [f for f in self.tensors if isinstance(f, IndexedField)]
 
     @property
+    def epsilons(self):
+        return [f for f in self.tensors if not isinstance(f, IndexedField)]
+
+    @property
     def fields(self):
         return [f.field for f in self.indexed_fields]
 
     @property
     def structures(self):
+        """Like epsilons but returns sympy tensor objects."""
         return [f for f in self.args if is_invariant_symbol(f)]
 
     def by_structures(self):
@@ -744,6 +785,42 @@ class Operator(tensor.TensMul):
     # Always multiply invariant symbols on the right
     def __mul__(self, other):
         return Operator(*self.tensors, other)
+
+    def latex(self):
+        # ordering of fields within the oeprator and style of indices
+        field_ordering = ["L", "e", "Q", "u", "d", "H"]
+        # indices i, j, ... q used for isospin
+        isospin_indices = list(ascii_lowercase[8:])
+        isospin_indices.remove("o")  # remove o because it's unsightly
+
+        style = {
+            "i": isospin_indices,
+            # "c": list(ascii_lowercase[:4]),
+            # "u": copy(utils.TEX_GREEK_LOWERCASE),
+            # "d": copy(utils.DOTTED_TEX_GREEK_LOWERCASE),
+            # "g": list(ascii_lowercase[19:]),
+        }
+        order_func = lambda f: field_ordering.index(str(f)[0])
+        sorted_fields = sorted(self.indexed_fields, key=order_func)
+
+        # maps Index objects to string of latex index
+        index_dict = {}
+
+        latex_strings = []
+        for indexed_field in sorted_fields:
+            field_latex = indexed_field.latex_and_pop(index_dict, style)
+            latex_strings.append(field_latex)
+
+        latex_epsilons = []
+        for epsilon in self.epsilons:
+            eps_indices = sorted([index_dict[-idx] for idx in epsilon.indices])
+            eps_latex = rf"\epsilon_{{{' '.join(eps_indices)}}}"
+            latex_epsilons.append(eps_latex)
+
+        # add on epsilons
+        latex_strings += [r" \cdot "] + sorted(latex_epsilons)
+
+        return " ".join(latex_strings)
 
 
 def assert_consistent_indices(

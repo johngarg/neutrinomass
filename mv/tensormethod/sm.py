@@ -21,6 +21,20 @@ Wb = Field("Wb", dynkin="02002", comm=BOSE)
 B = Field("B", dynkin="20000", comm=BOSE)
 Bb = Field("Bb", dynkin="02000", comm=BOSE)
 
+# set latex forms of base
+L.latex = "L"
+Q.latex = "Q"
+H.latex = "H"
+G.latex = "G"
+W.latex = "W"
+B.latex = "B"
+eb.latex = r"\bar{e}"
+ub.latex = r"\bar{u}"
+db.latex = r"\bar{d}"
+Gb.latex = r"\bar{G}"
+Wb.latex = r"\bar{W}"
+Bb.latex = r"\bar{B}"
+
 
 def D(field, dynkin):
     """Returns a new field with additional dotted and undotted indices.
