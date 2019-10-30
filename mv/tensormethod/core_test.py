@@ -23,7 +23,8 @@ def test_conj():
 def test_indices():
     assert type(A("u0 -c1 i0")) == IndexedField
     cnj_A = IndexedField("A", "d0 c1 i0", charges={"y": -1}, is_conj=True)
-    assert A("u0 -c1 i0").conj == cnj_A
+    assert A("u0 -c1 i0").conj.quantum_numbers == cnj_A.quantum_numbers
+    assert A("u0 -c1 i0").conj.indices == cnj_A.indices
 
 
 def test_mul():
@@ -42,7 +43,7 @@ def test_op():
 
 
 def test_fresh():
-    assert isinstance(A.fresh_indexed_field(), IndexedField)
+    assert isinstance(A.fresh_indices(), IndexedField)
 
 
 def test_decompose_product():

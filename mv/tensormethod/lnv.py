@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+"""Babu + Leung / de Goubea + Jenkins operator field content and numerical label."""
+
 bl_list = {
     ("L", "L", "H", "H"): 1,
     ("L", "L", "L", "eb", "H"): 2,

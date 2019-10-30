@@ -37,7 +37,9 @@ Bb.latex = r"\bar{B}"
 
 
 def D(field, dynkin):
-    """Returns a new field with additional dotted and undotted indices.
+    """A derivative.
+
+    Returns a new field with additional dotted and undotted indices.
 
     Example:
        >>> D(L, "01")

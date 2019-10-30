@@ -1,21 +1,23 @@
 #!/usr/bin/env python
 
 
-from collections import namedtuple, defaultdict
-from functools import lru_cache
-from typing import Iterable, List, NamedTuple, Tuple, Union
+from collections import defaultdict
+from copy import copy
+from itertools import groupby
 from string import ascii_lowercase
+from typing import Iterable
+from typing import List
+from typing import NamedTuple
+from typing import Tuple
+from typing import Union
 
 import sympy.tensor.tensor as tensor
-from sympy.core.numbers import Zero
 from basisgen import irrep
-from sympy import Rational, flatten
-from itertools import groupby
-from copy import copy
+from sympy import flatten
+from sympy.core.numbers import Zero
 
-import utils
-from utils import repr_tree
 from lnv import BL_LIST
+from utils import repr_tree
 
 FERMI, BOSE = "fermi", "bose"
 tensor.TensorManager.set_comms(
@@ -24,16 +26,31 @@ tensor.TensorManager.set_comms(
 
 
 class History(NamedTuple):
+    """A structure representing the left and right parents of the result of a binary
+    operation.
+
+    """
+
     left: "Field"
     right: "Field"
 
 
 class Prod(NamedTuple):
+    """A structure representing the symbolic product of two fields.
+
+    Used when multiplying fields to keep track of multiplications.
+
+    Example:
+        >>> Prod(irrep=LL(00000), left=L(10001), right=L(10001))
+
+    """
+
     irrep: "Field"
     left: Union["Prod", "Field"]
     right: Union["Prod", "Field"]
 
 
+# Use sympy tensor indices as base for custom index types
 ISOSPIN = tensor.TensorIndexType("Isospin", metric=True, dummy_fmt="I", dim=2)
 COLOUR = tensor.TensorIndexType("Colour", metric=None, dummy_fmt="C", dim=3)
 GENERATION = tensor.TensorIndexType("Generation", metric=None, dummy_fmt="G", dim=3)
@@ -42,6 +59,8 @@ DOTTED = tensor.TensorIndexType("Dotted", metric=True, dummy_fmt="D", dim=2)
 
 
 class Index(tensor.TensorIndex):
+    """A tensor index."""
+
     def __new__(cls, label: str, *args, **kwargs):
         if isinstance(label, Index):
             return label
@@ -117,10 +136,12 @@ class Index(tensor.TensorIndex):
 
     @classmethod
     def get_tensor_index_types(cls):
+        """Map between shorthand index-type labels and the sympy tensor index types."""
         return {"u": UNDOTTED, "d": DOTTED, "c": COLOUR, "i": ISOSPIN, "g": GENERATION}
 
     @classmethod
     def get_index_types(cls):
+        """Map between shorthand index-type labels and names of index types."""
         return {
             "u": "Undotted",
             "d": "Dotted",
@@ -131,16 +152,22 @@ class Index(tensor.TensorIndex):
 
     @classmethod
     def get_index_labels(cls):
+        """Map between names of index types and shorthand index-type labels."""
         return {v: k for k, v in cls.get_index_types().items()}
 
     @classmethod
-    def fresh(cls, type_):
+    def fresh(cls, type_) -> "Index":
+        """Return a fresh, unused index by mutating a global counter internal to sympy's
+        tensor module.
+
+        """
         idx = cls(tensor.TensorIndex(True, cls.get_tensor_index_types()[type_]))
         label = idx.label.replace("i", type_)
         return cls(label)
 
     @classmethod
-    def fresh_indices(cls, dynkin_str):
+    def fresh_indices(cls, dynkin_str) -> str:
+        """Returns a string of fresh index names matching ``dynkin_str``"""
         out = []
         for (raised, type_), number in zip(cls.get_dynkin_labels(), dynkin_str):
             for _ in range(int(number)):
@@ -162,16 +189,15 @@ class Index(tensor.TensorIndex):
 
     @classmethod
     def indices_by_type(cls, indices):
-        """Returns a dictionary mapping index type to tuple of indices.
-
-        """
+        """Returns a dictionary mapping index type to tuple of indices of that type."""
         result = {k: [] for k in Index.get_index_types().values()}
         for i in indices:
             result[i.index_type].append(i)
         return {k: tuple(v) for k, v in result.items()}
 
     @classmethod
-    def cons_index(cls, index_type: str, label: int, is_up: bool):
+    def cons_index(cls, index_type: str, label: int, is_up: bool) -> "Index":
+        """Construct an index with provided properties."""
         prefix = Index.get_index_labels()[index_type]
         prefix = ("-" if not is_up else "") + prefix
         return Index(prefix + str(label))
@@ -180,26 +206,31 @@ class Index(tensor.TensorIndex):
 class Field:
     def __init__(
         self,
-        label: str,
-        dynkin: str,
-        charges=None,
-        is_conj=False,
-        comm=0,
-        symmetry=None,
-        history=None,
-        multiplicity=1,
-        latex=None,
+        label: str,  # the str representation of the field
+        dynkin: str,  # a str with the dynkin digits
+        charges=None,  # a dictionary mapping charges to real values
+        is_conj=False,  # conjugated flag
+        comm=0,  # commutation symmetry
+        symmetry=None,  # tensor index symmetry
+        history=None,  # parents
+        multiplicity=1,  # number of possibilities
+        latex=None,  # base latex representation
         **kwargs,
     ):
-        """Field("A", dynkin="1 0 0 1 1", charges={"y": 1})
+        """A representation of a tensor transforming under Lorentz x SM with charges and
+        a label.
 
-        Tensor symmetry options:
+        Tensor symmetry inherited from sympy, possible options:
             ``[[1]]``         vector
             ``[[1]*n]``       symmetric tensor of rank ``n``
             ``[[n]]``         antisymmetric tensor of rank ``n``
             ``[[2, 2]]``      monoterm slot symmetry of the Riemann tensor
             ``[[1],[1]]``     vector*vector
             ``[[2],[1],[1]]`` (antisymmetric tensor)*vector*vector
+
+        Example:
+            >>> Field("A", dynkin="10011", charges={"y": 1})
+            A(10011)(1)
 
         """
 
@@ -229,10 +260,6 @@ class Field:
         self.comm = comm
         self.is_conj = is_conj
         self.latex = latex
-
-    # def __lt__(self, other):
-    #     comp_func = lambda x: x.dynkin_ints + tuple(x.charges.values()) + (x.label,)
-    #     return comp_func(self) < comp_func(other)
 
     def __call__(self, indices: str) -> "IndexedField":
         """Returns an IndexedField object.
@@ -354,7 +381,6 @@ class Field:
             return False
         return self._dict == other._dict
 
-    # TODO probably shouldn't call this multiply, maybe prod?
     def __mul__(self, other):
         grp = "SU2 x SU2 x SU3 x SU2"
         self_irrep = irrep(grp, " ".join(self.dynkin))

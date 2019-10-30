@@ -2,21 +2,21 @@
 
 """Functions to multiply tensors by epsilons and deltas."""
 
-from typing import List, Union
-from core import (
-    Field,
-    IndexedField,
-    Index,
-    eps,
-    delta,
-    Prod,
-    Operator,
-    decompose_product,
-)
-from sm import *
 import itertools
-from itertools import combinations, permutations, product
 from functools import reduce
+from itertools import permutations
+from itertools import product
+from typing import List
+from typing import Union
+
+from core import Field
+from core import Index
+from core import IndexedField
+from core import Operator
+from core import Prod
+from core import decompose_product
+from core import delta
+from core import eps
 
 Contractable = Union[Field, IndexedField, Operator]
 Indexed = Union[IndexedField, Operator]
@@ -26,7 +26,6 @@ def colour_singlets(operators: List[Operator]):
     """Contracts colour indices into singlets."""
     result = []
     for op in operators:
-
         # collect colour indices
         colour_indices = []
         for i in op.free_indices:
@@ -136,6 +135,7 @@ def contract_su2(left: Contractable, right: Contractable, out: str, ignore=[]):
             epsilons.append([1])
             continue
 
+        # junk = epsilons and deltas
         junk = contract_su2_helper(left, right, out, i)
         epsilons.append(junk)
 
@@ -291,7 +291,6 @@ def clean_operators(operators):
     """Delete duplicates (ignoring relabellings) and remove vanishing operators."""
     seen, out = set(), []
     for op in operators:
-        # TODO Rewrite simplify so that it still returns a regular operator
         op_tens_mul = op.simplify()
         if not op_tens_mul:
             continue
@@ -303,6 +302,19 @@ def clean_operators(operators):
 
 
 def remove_relabellings(operators):
+    """Remove operators related by index relabellings.
+
+        Note:
+            Currently only works for SU(2) isospin structure, since mistakenly
+            thinks
+
+            (L^i L^k) (L^j eb) H^l eps(ij) eps(kl)
+                            and
+            (L^i L^j) (L^k eb) H^l eps(ij) eps(kl)
+
+        are the same since they can be related by interchanging j and k.
+
+    """
     to_remove = set()
     counter = 0
     for i in range(len(operators)):
@@ -315,7 +327,7 @@ def remove_relabellings(operators):
     return [op for i, op in enumerate(operators) if i not in to_remove]
 
 
-def invariants(*fields, ignore=["u", "d", "c"]):
+def invariants(*fields, ignore=["u", "d", "c"], remove_relabellings_=True):
     """Return invariants of ``fields`` ignoring the structures in ``ignore``. The
     invariants are simplified and filtered. Doubled up operators are removed,
     including those equivalent up to index relabellings.
@@ -337,5 +349,9 @@ def invariants(*fields, ignore=["u", "d", "c"]):
 
     """
     singlets = unsimplified_invariants(*fields, ignore=ignore)
-    clean_singlets = remove_relabellings(clean_operators(singlets))
+    clean_singlets = clean_operators(singlets)
+
+    if remove_relabellings_:
+        return remove_relabellings(clean_singlets)
+
     return clean_singlets

@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 
-"""Tools for parsing the Hilbert Series into calls to ``tensormethod.invariants``."""
-
-from hs import X
-import hs
-import sm
-import sympy
-from functools import reduce
-from itertools import product
-from contract import invariants
+"""Tools for parsing the Hilbert Series into calls to ``invariants``."""
 
 from copy import copy
+from functools import reduce
+from itertools import product
 
-# plug in nf = 3
+import sympy
+
+import hs
+import sm
+from contract import invariants
+from hs import X
+
+# plug in 3 fermion generations
 H7_LNV_NF3 = hs.H7_LNV.xreplace({hs.Nf: 3})
 H9_LNV_NF3 = hs.H9_LNV.xreplace({hs.Nf: 3})
 H11_LNV_NF3 = hs.H11_LNV.xreplace({hs.Nf: 3})
@@ -216,4 +217,5 @@ def parse_hs(expr, term=False):
 
 
 def parse(hs):
+    """Parses Hilbert Series into a list of lists of fields."""
     return parse_hs(distribute_derivatives(hs))

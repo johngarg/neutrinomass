@@ -3,13 +3,19 @@
 """Results from the Hilbert Series for the SMEFT up to dimension 7 and for the
 ΔL = 2 SMEFT up to dimension 11. Derivatives kept up until dimension 9."""
 
+from sympy import Function
+from sympy import symbols
 from sympy.abc import X
-from sympy import symbols, Function
 
+# Nf = number of fermion generations
+# D = symbolic representation for the derivative
 Nf, D = symbols("Nf D")
+
+# Treat fields as sympy functions to easily deal with derivatives
 H, Hd, L, Ld, Q, Qd = symbols("H Hd L Ld Q Qd", cls=Function)
 eb, ebd, ub, ubd, db, dbd = symbols("eb ebd ub ubd db dbd", cls=Function)
 G, Gb, W, Wb, B, Bb = symbols("G Gb W Wb B Bb", cls=Function)
+
 
 H7_LNV = (
     Nf ** 2 * D * ebd(X) * H(X) ** 3 * L(X)
