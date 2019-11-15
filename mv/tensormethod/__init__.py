@@ -1,1 +1,1 @@
-from . import tensormethod
+from .core import IndexedField

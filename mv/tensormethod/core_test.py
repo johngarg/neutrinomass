@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from core import *
+from mv.tensormethod.core import *
 
 A = Field("A", dynkin="10011", charges={"y": 1})
 B = IndexedField("B", indices="i0 i1")
@@ -88,13 +88,3 @@ def test_decompose_product():
     ]
     assert prods[:2] == [Field(**x) for x in first_two]
     assert prods[-2:] == [Field(**x) for x in last_two]
-
-
-# calls
-test_get_dynkin()
-test_conj()
-test_indices()
-test_mul()
-test_op()
-test_fresh()
-test_decompose_product()

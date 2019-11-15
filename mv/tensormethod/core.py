@@ -16,8 +16,8 @@ from basisgen import irrep
 from sympy import flatten
 from sympy.core.numbers import Zero
 
-from lnv import BL_LIST
-from utils import repr_tree
+from mv.tensormethod.lnv import BL_LIST
+from mv.tensormethod.utils import repr_tree
 
 FERMI, BOSE = "fermi", "bose"
 tensor.TensorManager.set_comms(
@@ -67,8 +67,8 @@ class Index(tensor.TensorIndex):
 
         # This will be called in __mul__ method of IndexedTensor
         # i.e. Will be a contracted index
-        if isinstance(label, tensor.TensorIndex):
-            label = str(label).lower()
+        # if isinstance(label, tensor.TensorIndex):
+        label = str(label).lower()
 
         # deal with negative sign for down index
         is_up = True
@@ -202,6 +202,10 @@ class Index(tensor.TensorIndex):
         prefix = ("-" if not is_up else "") + prefix
         return Index(prefix + str(label))
 
+    @property
+    def _dict(self):
+        return {"label": self.label}
+
 
 class Field:
     def __init__(
@@ -284,7 +288,7 @@ class Field:
             charges=self.charges,
             is_conj=self.is_conj,
             symmetry=self.symmetry,
-            multiplicity=self.multiplicity,
+            # multiplicity=self.multiplicity,
             comm=self.comm,
             latex=self.latex,
         )
@@ -362,8 +366,8 @@ class Field:
             "is_conj": self.is_conj,
             "comm": self.comm,
             "symmetry": self.symmetry,
-            # self.multiplicity,
-            # self.history,
+            "history": self.history,
+            "latex": self.latex,
         }
 
     def __hash__(self):
@@ -463,6 +467,17 @@ class Field:
 
         return self.latex
 
+    @property
+    def mass_dim(self):
+        if self.is_fermion:
+            return 1.5
+        if self.is_scalar or self.is_vector:
+            return 1
+
+        raise Exception(
+            f"Unknown mass dimension for lorentz irrep {self.lorentz_irrep}"
+        )
+
 
 class IndexedField(tensor.Tensor, Field):
     def __new__(cls, label: str, indices: str, symmetry=None, comm=0, **kwargs):
@@ -523,6 +538,7 @@ class IndexedField(tensor.Tensor, Field):
             latex=latex,
         )
 
+        # self.comm = FERMI if self.is_fermion else BOSE
         self.index_labels = indices
 
     @property
@@ -606,11 +622,12 @@ class IndexedField(tensor.Tensor, Field):
     def _dict(self):
         return {
             "label": self.label,
-            "index_labels": self.index_labels,
+            "indices": self.index_labels,
             "charges": self.charges,
             "is_conj": self.is_conj,
             "symmetry": self.symmetry,
             "comm": self.comm,
+            "latex": self.latex,
         }
 
     def __hash__(self):
@@ -623,7 +640,7 @@ class IndexedField(tensor.Tensor, Field):
         pass
 
     def __repr__(self):
-        sympy_repr = super(self.__class__, self).__repr__()
+        sympy_repr = super(IndexedField, self).__repr__()
         # if self.is_conj:
         #     split_sympy_repr = sympy_repr.split("(")
         #     new_repr = [split_sympy_repr[0] + "†("] + split_sympy_repr[1:]
@@ -676,6 +693,10 @@ class Operator(tensor.TensMul):
         self.tensors = [arg for arg in args if arg != 1]
 
     @property
+    def _dict(self):
+        return {"tensors": self.tensors}
+
+    @property
     def contains_derivative(self):
         for t in self.tensors:
             if str(t).startswith("D"):
@@ -721,6 +742,27 @@ class Operator(tensor.TensMul):
     @property
     def fields(self):
         return [f.field for f in self.indexed_fields]
+
+    def pickle_form(self):
+        """Avoid trouble pickling objects caused by sympy inheritance and just pickle a
+        state dictionary.
+
+        """
+        return {
+            "fields": [f._dict for f in self.indexed_fields],
+            "epsilons": [[i.label for i in e.indices] for e in self.epsilons],
+        }
+
+    @classmethod
+    def from_pickle_form(cls, pickle_form: dict):
+        """Avoid trouble unpickling objects caused by sympy inheritance and just read
+        from a state dictionary.
+
+        """
+        fields = pickle_form["fields"]
+        epsilons = [eps(" ".join(indices)) for indices in pickle_form["epsilons"]]
+        indexed_fields = [IndexedField(**d) for d in fields]
+        return cls(*indexed_fields, *epsilons)
 
     @property
     def structures(self):
@@ -776,7 +818,7 @@ class Operator(tensor.TensMul):
         relabelling.
 
         """
-        # Try naive thing
+        # Try naive thing for now
         return self.nocoeff == other.nocoeff
 
     def fill_free_indices(self):
@@ -931,7 +973,7 @@ def eps(indices: str):
         for i in indices:
             assert not i.is_up
 
-        return tensor_index_type.epsilon(*indices)
+        return tensor_index_type.metric(*indices)
 
     # check consistent SU(3) indices
     assert len(indices) == 3

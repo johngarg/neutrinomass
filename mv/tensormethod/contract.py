@@ -7,16 +7,17 @@ from functools import reduce
 from itertools import permutations
 from itertools import product
 from typing import List
+from typing import Tuple
 from typing import Union
 
-from core import Field
-from core import Index
-from core import IndexedField
-from core import Operator
-from core import Prod
-from core import decompose_product
-from core import delta
-from core import eps
+from mv.tensormethod.core import Field
+from mv.tensormethod.core import Index
+from mv.tensormethod.core import IndexedField
+from mv.tensormethod.core import Operator
+from mv.tensormethod.core import Prod
+from mv.tensormethod.core import decompose_product
+from mv.tensormethod.core import delta
+from mv.tensormethod.core import eps
 
 Contractable = Union[Field, IndexedField, Operator]
 Indexed = Union[IndexedField, Operator]
@@ -226,7 +227,12 @@ def extract_relabellings(x, y):
     return mappings
 
 
-def compare_operators(left, right):
+def compare_singlets(left: Operator, right: Operator):
+    """Get index relabellings required to map operator left to operator right (if
+    they exist).
+
+    """
+
     if left.nocoeff == right.nocoeff:
         return True, []
 
@@ -319,7 +325,7 @@ def remove_relabellings(operators):
     counter = 0
     for i in range(len(operators)):
         for j in range(i + 1, len(operators)):
-            mappings = compare_operators(operators[i], operators[j])
+            mappings = compare_singlets(operators[i], operators[j])
 
             if exists_identity_mapping(mappings, operators[i]):
                 to_remove.add(j)

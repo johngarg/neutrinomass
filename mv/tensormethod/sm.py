@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
 from sympy import Rational
-from core import Field, FERMI, BOSE
-from lnv import BL_LIST
 import sympy.tensor.tensor as tensor
+
+from mv.tensormethod.core import Field, FERMI, BOSE
+from mv.tensormethod.lnv import BL_LIST
 
 # fermions
 L = Field("L", dynkin="10001", charges={"y": Rational("-1/2")}, comm=FERMI)
