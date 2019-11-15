@@ -78,7 +78,7 @@ bl_list = {
     # ("L", "L", "Q", "db", "H", "Q", "ub", "H"): 73,                   # like 25
     # ("L", "L", "Q.conj", "ub.conj", "H", "Q", "ub", "H"): 74,         # like 29
     ("L", "eb.conj", "ub.conj", "db", "H", "Q", "ub", "H"): 75,
-    ("ub", "ub", "db.conj", "db.conj", "eb", "eb"): 76,
+    ("ub.conj", "ub.conj", "db", "db", "eb.conj", "eb.conj"): 76,
 }
 
 BL_LIST = {}
