@@ -1,0 +1,13 @@
+\documentclass{standalone}
+\usepackage{tikz}
+\usepackage{tikz-feynman}
+
+\begin{document}
+\feynmandiagram [spring layout, horizontal=a to b] {
+  e [particle=$H$] -- [charged scalar] c [blob],
+  f [particle=$H$] -- [charged scalar] c,
+  a [particle=$L$] -- [fermion] c,
+  b [particle=$L$] -- [fermion] c,
+};
+
+\end{document}

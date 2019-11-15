@@ -1,0 +1,14 @@
+\documentclass{standalone}
+\usepackage{tikz}
+\usepackage{tikz-feynman}
+
+\begin{document}
+\feynmandiagram [spring layout, vertical=a to b] {
+  a [particle=$H$] -- [charged scalar] b -- [fermion, edge label'=$\bar{e}$, out=180, looseness=1.4] c
+  [blob] -- [anti fermion, edge label'=$L$, in=0, looseness=1.4] b,
+  d [particle=$H$] -- [charged scalar] c,
+  e [particle=$L$] -- [fermion] c,
+  f [particle=$L$] -- [fermion] c,
+};
+
+\end{document}

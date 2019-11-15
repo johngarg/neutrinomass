@@ -34,7 +34,7 @@ setup(
     author="John Gargalionis",
     author_email="garj@student.unimelb.edu.au",
     license="BSD-2",
-    packages=["mv, mv.tensormethod, mv.completions, mv.analysis"],
+    packages=["mv", "mv.tensormethod", "mv.completions", "mv.database", "mv.analysis"],
     install_requires=["numpy", "sympy"],
     tests_require=["pytest"],
     package_data={},

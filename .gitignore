@@ -118,4 +118,12 @@ data/
 *.cprof
 *.txt
 *.org
+*.p
 
+# latex specific
+.auctex-auto/
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.pdf
