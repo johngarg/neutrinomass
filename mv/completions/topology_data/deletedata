@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+rm diagrams/*
+rm graphs/*
+rm partitions/*
