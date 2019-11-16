@@ -5,6 +5,7 @@ import sympy.tensor.tensor as tensor
 
 from mv.tensormethod.core import Field, FERMI, BOSE
 from mv.tensormethod.lnv import BL_LIST
+from mv.tensormethod.utils import strip_parens
 
 # fermions
 L = Field("L", dynkin="10001", charges={"y": Rational("-1/2")}, comm=FERMI)
@@ -50,9 +51,12 @@ def D(field, dynkin):
        DL(21001)(-1/2)
 
     """
+    undotted_delta = int(dynkin[0]) - field.dynkin_ints[0]
+    dotted_delta = int(dynkin[1]) - field.dynkin_ints[1]
+
     # derivative can only change one dotted and one undotted index
-    assert abs(int(dynkin[0]) - field.dynkin_ints[0]) == 1
-    assert abs(int(dynkin[1]) - field.dynkin_ints[1]) == 1
+    assert abs(undotted_delta) == 1
+    assert abs(dotted_delta) == 1
 
     # other info to construct field instance
     symbol = "D" + field.label
@@ -60,6 +64,7 @@ def D(field, dynkin):
     rest = {"charges": field.charges, "comm": field.comm}
 
     new_field = Field(symbol, dynkin=new_field_dynkin, **rest)
+    new_field.latex = f"(D{strip_parens(field.latex)})"
     return new_field
 
 

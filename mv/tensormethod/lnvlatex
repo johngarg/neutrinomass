@@ -9,7 +9,7 @@ import pickle
 
 from mv.tensormethod.contract import invariants
 from mv.tensormethod.lnv import BL_LIST
-from mv.tensormethod.sm import *
+from mv.tensormethod.sm import *  # needed for eval step
 
 # write out data as pickled dictionary of string label to Operator
 save_data = True

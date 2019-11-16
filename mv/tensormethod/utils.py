@@ -1,6 +1,43 @@
 #!/usr/bin/env python
 
 
+def is_deriv_in(coll: list):
+    """Check to see if there are any derivatives acting on fields in `coll`."""
+    for f in coll:
+        if str(f)[0] == "D":
+            return True
+
+    return False
+
+
+def is_fieldstrength_in(coll: list):
+    """Check to see if there are any field strengths in `coll`."""
+    first = lambda f: str(f).split("D")[-1][0]  # first non deriv
+    for f in coll:
+        if first(f) == "B" or first(f) == "G" or first(f) == "W":
+            return True
+
+    return False
+
+
+def is_linear_in_deriv(coll: list):
+    """Check to see if `coll` is linear in D."""
+
+    if is_fieldstrength_in(coll):
+        return False
+
+    fields_string = " ".join(str(f) for f in coll)
+    return fields_string.count("D") == 1
+
+
+def strip_parens(s: str):
+    """If a string is surrounded in parens, remove them."""
+    if s[0] == "(" and s[-1] == ")":
+        return s[1:-1]
+
+    return s
+
+
 def repr_tree(expr, string="", spaces=2):
     """Returns a string representation of a nested tree structure of tuples.
 

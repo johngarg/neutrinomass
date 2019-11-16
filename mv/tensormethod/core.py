@@ -667,7 +667,7 @@ class IndexedField(tensor.Tensor, Field):
         """
         # Make sure latex attribute set
         if self.latex is None:
-            raise ValueError(f"No latex string assigned to {self.__class__}")
+            raise ValueError(f"No latex string assigned to {self}")
 
         # deal with indices
         indices = []
@@ -868,7 +868,9 @@ class Operator(tensor.TensMul):
             # "d": copy(utils.DOTTED_TEX_GREEK_LOWERCASE),
             # "g": list(ascii_lowercase[19:]),
         }
-        order_func = lambda f: field_ordering.index(str(f)[0])
+        # extract first non D in field name e.g. H for DDH
+        first_non_deriv = lambda f: str(f).split("D")[-1][0]
+        order_func = lambda f: field_ordering.index(first_non_deriv(f))
         sorted_fields = sorted(self.indexed_fields, key=order_func)
 
         # maps Index objects to string of latex index
