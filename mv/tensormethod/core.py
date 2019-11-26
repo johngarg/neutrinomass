@@ -366,8 +366,8 @@ class Field:
             "is_conj": self.is_conj,
             "comm": self.comm,
             "symmetry": self.symmetry,
-            "history": self.history,
-            "latex": self.latex,
+            # "history": self.history,
+            # "latex": self.latex,
         }
 
     def __hash__(self):
