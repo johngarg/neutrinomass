@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
-"""Core classes and functions for completions code. There is much naming overlap
-with those in tensormethod, so all classes should be appropriately
-namespace-qualified."""
+"""Core classes and functions for completions code."""
 
 from functools import reduce
 
@@ -106,3 +104,30 @@ class EffectiveOperator:
         d_int = int(d)
         assert d == d_int
         return d_int
+
+    @property
+    def topology_type(self):
+        """Returns a dictionary {"n_scalars": n_scalars, "n_fermions": n_fermions}."""
+
+        n_scalars, n_fermions = 0, 0
+        for f in self.fields:
+            if f.is_scalar:
+                n_scalars += 1
+            elif f.is_fermion:
+                n_fermions += 1
+
+        return {"n_scalars": n_scalars, "n_fermions": n_fermions}
+
+
+class Completion:
+    def __init__(self, partition, graph):
+        self.partition = partition
+        self.graph = graph
+
+    @property
+    def lagrangian(self):
+        pass
+
+    @property
+    def diagram(self):
+        pass

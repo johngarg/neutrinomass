@@ -44,7 +44,7 @@ def eval_graph(graph: str):
     return G
 
 
-def get_topology_files(n_scalars, n_fermions, topology_path=TOPOLOGY_PATH):
+def get_topology_data(n_scalars, n_fermions):
     """Returns a list of dictionaries with data from topology data files.
 
     [{"partition": parition_string, "graph": graph_string, "img": image}]
@@ -57,15 +57,15 @@ def get_topology_files(n_scalars, n_fermions, topology_path=TOPOLOGY_PATH):
     if not partition_files:
         raise Exception("Topologies not found, please generate them again.")
 
-    datum, out = {}, []
+    topology, out = {}, []
     for p, d, g in zip(partition_files, diagram_files, graph_files):
-        partition_string = read_topology_file(p)
+        partition_string = eval_partition(read_topology_file(p))
         # img = plt.imread(d)
-        graph_string = read_topology_file(g)
+        graph_string = eval_graph(read_topology_file(g))
 
-        datum["partition"] = partition_string
-        datum["graph"] = graph_string
+        topology["partition"] = partition_string
+        topology["graph"] = graph_string
         # datum["diagram"] = img
-        out.append(datum)
+        out.append(topology)
 
     return out
