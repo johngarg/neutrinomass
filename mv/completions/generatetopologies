@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 
-# arguments: prefix (for naming of outputs), number of scalars, number of fermions
+# arguments: number of scalars, number of fermions
 
 wolframscript -file wolfram/generatetopologies.wl "topology_data" $1 $2

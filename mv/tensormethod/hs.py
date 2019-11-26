@@ -160,6 +160,7 @@ H9_LNV = (
     + Nf ** 2 * H(X) ** 2 * L(X) ** 2 * Wb(X) ** 2
 )
 
+# No derivatives here
 H11_LNV = (
     (Nf ** 3 * db(X) ** 2 * dbd(X) ** 2 * H(X) ** 2 * L(X) ** 2) / 2
     + (Nf ** 6 * db(X) ** 2 * dbd(X) ** 2 * H(X) ** 2 * L(X) ** 2) / 2

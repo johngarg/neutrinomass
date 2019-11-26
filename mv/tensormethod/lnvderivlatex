@@ -3,22 +3,26 @@
 import pickle
 
 from mv.tensormethod.contract import invariants
-from mv.tensormethod.parse_hs import parse, H9_LNV_NF3
+from mv.tensormethod.parse_hs import parse, H9_LNV_NF3, H11_LNV_NF3
 from mv.tensormethod.utils import is_linear_in_deriv
 
 # write out data as pickled dictionary of string label to Operator
 save_data = True
 
-parsed_hs = parse(H9_LNV_NF3)
+# parsed_hs = parse(H9_LNV_NF3)
+parsed_hs = parse(H11_LNV_NF3)
 
 out_dict = {}
 counter = 1
 for fields in parsed_hs:
+    breakpoint()
     if not is_linear_in_deriv(fields):
+        print("Not linear")
         continue
 
     invs = invariants(*fields)
     if not invs:
+        print("No invariants")
         continue
 
     print(f"Invariants for operator {counter}:")
