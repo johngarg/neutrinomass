@@ -120,7 +120,7 @@ class EffectiveOperator:
 
 
 class Completion:
-    def __init__(self, partition, graph):
+    def __init__(self, partition, graph, exotics):
         self.partition = partition
         self.graph = graph
 

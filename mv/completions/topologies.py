@@ -50,15 +50,16 @@ def get_topology_data(n_scalars, n_fermions):
     [{"partition": parition_string, "graph": graph_string, "img": image}]
 
     """
-    partition_files = glob(PARTITIONS + f"/{n_scalars}s{n_fermions}f_*")
-    diagram_files = glob(DIAGRAMS + f"/{n_scalars}s{n_fermions}f_*")
-    graph_files = glob(GRAPHS + f"/{n_scalars}s{n_fermions}f_*")
+    partition_files = sorted(glob(PARTITIONS + f"/{n_scalars}s{n_fermions}f_*"))
+    diagram_files = sorted(glob(DIAGRAMS + f"/{n_scalars}s{n_fermions}f_*"))
+    graph_files = sorted(glob(GRAPHS + f"/{n_scalars}s{n_fermions}f_*"))
 
     if not partition_files:
         raise Exception("Topologies not found, please generate them again.")
 
-    topology, out = {}, []
+    out = []
     for p, d, g in zip(partition_files, diagram_files, graph_files):
+        topology = {}
         partition_string = eval_partition(read_topology_file(p))
         # img = plt.imread(d)
         graph_string = eval_graph(read_topology_file(g))

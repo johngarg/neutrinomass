@@ -655,6 +655,11 @@ class IndexedField(tensor.Tensor, Field):
             return False
         return self._dict == other._dict
 
+    def __lt__(self, other):
+        """An arbitrary way to order indexed fields."""
+        comp_func = lambda x: f"{x.label}{x.dynkin}{x.indices}{x.charges}{x.is_conj}"
+        return comp_func(self) < comp_func(other)
+
     def latex_and_pop(self, index_dict: dict, style: dict) -> str:
         """Returns the latex form of the indexed field while making state changes.
 
