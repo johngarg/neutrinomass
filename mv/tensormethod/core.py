@@ -183,6 +183,11 @@ class Index(tensor.TensorIndex):
     def get_lorentz_index_types(cls):
         return {"u": "Undotted", "d": "Dotted"}
 
+    @property
+    def is_su2(self):
+        type_ = self.index_type
+        return type_ == "Isospin" or type_ == "Undotted" or type_ == "Dotted"
+
     @classmethod
     def classify_index(cls, idx: str) -> tensor.TensorIndexType:
         return Index.get_tensor_index_types()[idx[0]]
@@ -354,6 +359,17 @@ class Field:
     def is_singlet(self):
         return self.dynkin == "00000" and self.y == 0
 
+    @property
+    def is_sm_singet(self):
+        return self.sm_irrep == (0, 0, 0) and self.y == 0
+
+    @property
+    def is_real_sm_irrep(self):
+        is_real_colour = self.colour_irrep == tuple(reversed(self.colour_irrep))
+        is_real_isospin = self.isospin_irrep[0] % 2 == 0
+        is_real_y = self.y == 0
+        return is_real_colour and is_real_isospin and is_real_y
+
     def __str__(self):
         return self.__repr__()
 
@@ -485,7 +501,7 @@ class IndexedField(tensor.Tensor, Field):
             indices = indices.split()
 
         if symmetry is None:
-            symmetry = [[1] * len(indices)]
+            symmetry = [[1] * len(indices)] if indices else []
 
         # classify index types and indices by name
         # e.g. 'i0' -> isospin, 'c0' -> colour, etc.
@@ -586,7 +602,7 @@ class IndexedField(tensor.Tensor, Field):
 
         is_conj = self.is_conj
         if is_conj:
-            label = self.label[:-1]
+            label = self.label.replace("†", "")
         else:
             label = self.label + "†"
 
@@ -596,6 +612,7 @@ class IndexedField(tensor.Tensor, Field):
             charges={k: -v for k, v in self.charges.items()},
             is_conj=(not is_conj),
             symmetry=self.symmetry,
+            latex=self.latex,
             comm=self.comm,
         )
 
@@ -799,16 +816,12 @@ class Operator(tensor.TensMul):
 
         return out
 
-    @property
-    def duplicate_field_permutations(self):
-        """Return a list of the same operators with the free indices on duplicate fields
-        permuted.
+    def simplify(self, fill=False):
+        if fill:
+            simple = self.fill_free_indices().sorted_components().canon_bp()
+        else:
+            simple = self.sorted_components().canon_bp()
 
-        """
-        pass
-
-    def simplify(self):
-        simple = self.fill_free_indices().sorted_components().canon_bp()
         for label, tensor_index_type in Index.get_tensor_index_types().items():
             if label in {"u", "d", "i"}:
                 if isinstance(simple, Zero):

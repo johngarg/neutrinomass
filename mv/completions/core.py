@@ -5,7 +5,7 @@
 from functools import reduce
 
 from mv.tensormethod import IndexedField
-from mv.tensormethod.core import BOSE, FERMI
+from mv.tensormethod.core import BOSE, FERMI, Index
 
 
 class FieldType(IndexedField):
@@ -23,6 +23,9 @@ class FieldType(IndexedField):
 
 class ComplexScalar(FieldType):
     def __init__(self, label, indices, charges, latex=None):
+        if isinstance(indices, list):
+            indices = " ".join(str(i) for i in indices)
+
         IndexedField.__init__(
             self,
             label=label,
@@ -39,6 +42,9 @@ class ComplexScalar(FieldType):
 
 class RealScalar(FieldType):
     def __init__(self, label, indices, latex=None):
+        if isinstance(indices, list):
+            indices = " ".join(str(i) for i in indices)
+
         IndexedField.__init__(
             self,
             label=label,
@@ -55,6 +61,9 @@ class RealScalar(FieldType):
 
 class MajoranaFermion(FieldType):
     def __init__(self, label, indices, latex=None):
+        if isinstance(indices, list):
+            indices = " ".join(str(i) for i in indices)
+
         IndexedField.__init__(
             self,
             label=label,
@@ -70,19 +79,93 @@ class MajoranaFermion(FieldType):
 
 
 class VectorLikeDiracFermion(FieldType):
-    def __init__(self, label, indices, charges=None, latex=None):
+    """Stands in for two fermion fields distinguished here only by dotted and
+    undotted indices.
+
+    Example:
+        >>> psi = VectorLikeDiracFermion("ψ", "u0 i1")
+        >>> psi
+        ψ(u0, i1)
+        >>> psi.dirac_partner()
+        ψ(d0, i1)
+
+    Here ψ(u0, i1) and ψ(d0, i1) are different fields.
+
+    """
+
+    def __init__(
+        self,
+        label,
+        indices,
+        charges=None,
+        latex=None,
+        is_unbarred=True,
+        is_conj=False,
+        symmetry=None,
+        comm=FERMI,
+    ):
+        if isinstance(indices, list):
+            indices = " ".join(str(i) for i in indices)
+
         IndexedField.__init__(
             self,
             label=label,
             indices=indices,
             charges=charges,
-            is_conj=False,
+            is_conj=is_conj,
             symmetry=None,
             comm=FERMI,
             latex=latex,
         )
 
         assert self.is_fermion
+        self.is_unbarred = is_unbarred
+
+    @property
+    def conj(self):
+        """Returns a copy of self but conjugated"""
+
+        is_conj = self.is_conj
+        if is_conj:
+            label = self.label.replace("†", "")
+        else:
+            label = self.label + "†"
+
+        return self.__class__(
+            label=label,
+            indices=" ".join(i.conj.label for i in self.indices),
+            charges={k: -v for k, v in self.charges.items()},
+            is_conj=(not is_conj),
+            symmetry=self.symmetry,
+            comm=self.comm,
+            is_unbarred=self.is_unbarred,
+        )
+
+    def dirac_partner(self):
+        undotted, dotted, colour, isospin, _ = Index.indices_by_type(
+            self.indices
+        ).values()
+        colour = tuple(i.conj for i in colour)
+        indices = undotted + dotted + colour + isospin
+        charges = {k: -v for k, v in self.charges.items()}
+
+        is_unbarred = self.is_unbarred
+        symb = "^"  # indicate bar with circumflex
+        if is_unbarred:
+            label = self.label + symb
+        else:
+            label = self.label.replace(symb, "")
+
+        return VectorLikeDiracFermion(
+            label,
+            indices,
+            charges=charges,
+            latex=self.latex,
+            is_unbarred=(not self.is_unbarred),
+            is_conj=self.is_conj,
+            symmetry=self.symmetry,
+            comm=FERMI,
+        )
 
 
 class EffectiveOperator:
@@ -131,3 +214,24 @@ class Completion:
     @property
     def diagram(self):
         pass
+
+
+def cons_completion_field(indexed_field: IndexedField) -> FieldType:
+    label = indexed_field.label
+    indices = indexed_field.indices
+    charges = indexed_field.charges
+    latex = indexed_field.latex
+
+    if indexed_field.is_fermion:
+        if indexed_field.is_real_sm_irrep:
+            return MajoranaFermion(label, indices, latex=latex)
+
+        return VectorLikeDiracFermion(label, indices, charges=charges, latex=latex)
+
+    if indexed_field.is_scalar:
+        if indexed_field.is_real_sm_irrep:
+            return RealScalar(label, indices, latex=latex)
+
+        return ComplexScalar(label, indices, charges=charges, latex=latex)
+
+    raise Exception("Unrecognised Lorentz structure in field.")

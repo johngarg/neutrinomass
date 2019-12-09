@@ -2,9 +2,21 @@
 
 """Functions to generate completions of operators with explicit SU(2) structure."""
 
-from mv.tensormethod.core import IndexedField
-from utils import flatten, chunks
-from core import Completion, EffectiveOperator
+from mv.tensormethod.core import Index, IndexedField, eps, is_invariant_symbol, Operator
+from mv.tensormethod.contract import (
+    lorentz_singlets,
+    colour_singlets,
+    invariants,
+    contract_su2,
+)
+from utils import flatten, chunks, foldr
+from core import (
+    Completion,
+    EffectiveOperator,
+    cons_completion_field,
+    FieldType,
+    VectorLikeDiracFermion,
+)
 from operators import EFF_OPERATORS
 from topologies import get_topology_data
 from typing import Tuple, List
@@ -13,8 +25,9 @@ from copy import deepcopy
 
 from itertools import permutations
 from sympy.utilities.iterables import multiset_partitions
+from sympy.tensor.tensor import Tensor
 
-from functools import lru_cache
+from functools import lru_cache, reduce
 
 
 @lru_cache(maxsize=None)
@@ -140,11 +153,12 @@ def are_equivalent_partitions(a, b):
     ga = a["graph"]
     gb = b["graph"]
     node_matcher = nx.algorithms.isomorphism.categorical_node_match(
-        ["external"], ["external", -1]
+        ["external"], ["external", -1]  # set default value to -1 for internal nodes
     )
     graph_matcher = nx.algorithms.isomorphism.GraphMatcher(
         ga, gb, node_match=node_matcher
     )
+
     return graph_matcher.is_isomorphic()
 
 
@@ -168,5 +182,213 @@ def remove_isomorphic(partitions: List[dict]) -> List[dict]:
     return parts_copy
 
 
-def cons_completion(partition, epsilons, graph):
-    pass
+def _fix_su2_indices(free_indices: List[Index]) -> Tuple[list, list]:
+    """UNUSED NOW
+
+    Raises lowered SU2 indices in free_indces and returns new epsilons.
+
+    """
+    new_epsilons, new_free_indices = [], []
+    for idx in free_indices:
+        if idx.is_su2 and not idx.is_up:
+            type_ = Index.get_index_labels()[idx.index_type]
+            new_index = Index.fresh(type_)
+            new_free_indices.append(new_index)
+            new_epsilons.append(eps(str(-new_index) + f" {idx}"))
+        else:
+            new_free_indices.append(idx)
+
+    return new_free_indices, new_epsilons
+
+
+def is_contracted_epsilon(eps, indices):
+    i, j = eps.indices
+    if -i in indices and -j in indices:
+        indices.remove(-i)
+        indices.remove(-j)
+        return True
+    return False
+
+
+def contract(
+    fields: Tuple[IndexedField], symbol: str, epsilons: list
+) -> Tuple[FieldType, List[Tensor], List[Operator]]:
+    """Takes two or three indexed fields and the epsilons and returns a new indexed field
+    transforming in the same way as x \otimes y.
+
+    Example:
+        >>> s = contract((H('i0'), H('i1')), 'S', epsilons=[])
+        >>> s
+        S(i0, i1)
+        >>> s.y
+        1
+
+    """
+    if len(fields) != 2 and len(fields) != 3:
+        raise Exception("Too many fields passed to contract.")
+
+    # product of fields
+    prod = reduce(lambda a, b: a * b, fields)
+    free_indices = prod.get_free_indices()
+    undotted, dotted, colour, isospin, _ = Index.indices_by_type(free_indices).values()
+
+    # sort out lorentz epsilons from contraction
+    two_undotted = len(undotted) == 2 and len(dotted) == 0
+    two_dotted = len(dotted) == 2 and len(undotted) == 0
+    one_undotted = len(undotted) == 1 and len(dotted) == 0
+    one_dotted = len(dotted) == 1 and len(undotted) == 0
+    assert two_undotted or two_dotted or one_undotted or one_dotted
+
+    new_epsilons = []
+    if two_undotted:
+        lorentz_eps = eps(" ".join(str(-i) for i in undotted))
+        new_epsilons.append(lorentz_eps)
+        # remove newly contracted indices
+        for i in undotted:
+            free_indices.remove(i)
+
+    elif two_dotted:
+        lorentz_eps = eps(" ".join(str(-i) for i in dotted))
+        new_epsilons.append(lorentz_eps)
+        # remove newly contracted indices
+        for i in dotted:
+            free_indices.remove(i)
+
+    # remove contracted isospin epsilons and remove indices from free_indices by
+    # side effect
+    contracted_epsilons, spectator_epsilons = [], []
+    for eps in epsilons:
+        if is_contracted_epsilon(eps, free_indices):
+            contracted_epsilons.append(eps)
+        else:
+            spectator_epsilons.append(eps)
+
+    # TODO need to also sort out colour 6 or 3 and their epsilons here
+    # ...
+
+    # construct exotic field
+    # deal with charges
+    exotic_charges = {}
+    pairs = map(lambda x: x.charges.items(), fields)
+    for n_pairs in zip(*pairs):
+        # fish out key
+        (k, _), *rst = n_pairs
+        # sum over values
+        exotic_charges[k] = sum(map(lambda x: x[1], n_pairs))
+
+    indices_by_type = Index.indices_by_type(free_indices).values()
+    new_undotted, new_dotted, new_colour, new_isospin, _ = map(sorted, indices_by_type)
+    exotic_indices = " ".join(
+        str(i) for i in [*new_undotted, *new_dotted, *new_colour, *new_isospin]
+    )
+    exotic_field = IndexedField(symbol, exotic_indices, charges=exotic_charges)
+
+    # construct MajoranaFermion, VectorLikeDiracFermion, ...
+    exotic_field = cons_completion_field(exotic_field)
+    partner = exotic_field
+    if isinstance(exotic_field, VectorLikeDiracFermion):
+        partner = exotic_field.dirac_partner()
+
+    # construct term
+    prod = reduce(lambda a, b: a * b, contracted_epsilons, prod)
+    terms = colour_singlets(contract_su2(partner.fresh_indices(), prod, 0))
+
+    # do you want to return old epsilons too?
+    return exotic_field, (new_epsilons + spectator_epsilons), terms
+
+
+def get_connecting_edge(graph: nx.Graph, nodes: List[int]) -> Tuple[int, int]:
+    """Returns an edge that connects to nodes in ``nodes``.
+
+    Taking ``graph`` to be:
+
+            4
+            |
+            |
+            3
+           / \
+          /   \
+         1     2
+
+    Example:
+        >>> get_connecting_edge(graph, (1, 2))
+        (3, 4)
+
+    """
+    neighbours = {}
+    for node in nodes:
+        neighbours[node] = set(graph.neighbors(node))
+
+    fst, *rst = list(neighbours.values())
+    intersection = fst.intersection(*rst)
+    assert len(intersection) == 1
+    connecting_node = list(intersection)[0]
+
+    other_nodes = list(graph.neighbors(connecting_node))
+    for node in nodes:
+        other_nodes.remove(node)
+
+    assert len(other_nodes) == 1
+    return (connecting_node, other_nodes[0])
+
+
+def build_term(
+    leaves: Tuple[Tuple[IndexedField, int]],
+    symbol: str,
+    epsilons: list,
+    terms: list,
+    edge_dict: dict,
+    graph: nx.Graph,
+) -> Tuple[IndexedField, Tuple[int, int]]:
+    """Takes two leaf-tuples of indexed fields and vertex labels, constructs
+    lagrangian term and appends it to ``terms`` and returns new leaf-tuple like
+    (exotic indexed field, corresponding edge).
+
+    Updates terms, edge_dict and epsilons by side effect.
+
+    Example:
+        >>> terms, edges, epsilons = [], {}, [metric(-i366_, -i368_), metric(-i369_, -i367_)]
+        >>> build_term(((L(u362_, i367_), 6), (L(u361_, i366_), 18)),
+                       epsilons=epsilons,
+                       terms=terms,
+                       edge_dict=edges,
+                       graph=G)
+
+    """
+    # update epsilons by side effect
+    fields, nodes = [], []
+    for leaf in leaves:
+        field, node = leaf
+        fields.append(field)
+        nodes.append(node)
+
+    # update epsilons
+    exotic_field, epsilons, new_terms = contract(fields, symbol, epsilons)
+    exotic_edge = get_connecting_edge(graph, nodes)
+
+    # update edge_dict
+    # keep track of which fields go where in the diagram
+    edge_dict[exotic_field] = exotic_edge
+
+    # update terms
+    terms += new_terms
+
+    return exotic_field, exotic_edge[0]
+
+
+def cons_completion(partition, epsilons, graph, filter_function=None):
+    """Work in progress...
+
+    ``filter_function`` is a diadic function that takes an IndexedField and an
+    interaction operator and returns a bool. Implement no vectors in completions
+    like
+
+        >>> filter_func = lambda f, int: not f.is_vector
+
+    """
+    terms = []
+    edges = list(map(sorted, graph.edges))
+
+    for row in partition:
+        # TODO This may need to be a nested map-apply?
+        foldr(lambda x, y: build_term(x, y, terms, edges), row)

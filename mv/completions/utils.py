@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from functools import reduce
+
 
 def flatten(container):
     for i in container:
@@ -14,3 +16,18 @@ def chunks(lst, n):
     """Yield successive n-sized chunks from lst."""
     for i in range(0, len(lst), n):
         yield lst[i : i + n]
+
+
+def foldr(func, xs, acc=None):
+    if acc is None:
+        return reduce(lambda x, y: func(y, x), xs[::-1])
+
+    return reduce(lambda x, y: func(y, x), xs[::-1], acc)
+
+
+def fixedpoint(f, x):
+    """Applies f o f o f ... f(x) until output is unchanged."""
+    app = f(x)
+    while application != x:
+        return fixedpoint(f, app)
+    return x

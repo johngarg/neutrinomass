@@ -10,6 +10,7 @@ from typing import List
 from typing import Tuple
 from typing import Union
 
+from mv.utils import chunks
 from mv.tensormethod.core import Field
 from mv.tensormethod.core import Index
 from mv.tensormethod.core import IndexedField
@@ -59,6 +60,42 @@ def colour_singlets(operators: List[Operator]):
     return result
 
 
+def epsilon_combos(indices):
+    mapper = lambda x: frozenset(map(frozenset, chunks(x, 2)))
+    sets = set(map(mapper, permutations(indices)))
+    return sets
+
+
+def su2_singlets_type(op: Operator, index_type: str) -> List[Operator]:
+    """Contracts su2 indices into singlets by type."""
+    result = []
+    # collect undotted indices
+    indices = []
+    for i in op.free_indices:
+        if i.index_type == Index.get_index_types()[index_type]:
+            indices.append(i)
+
+    # can only contract into singlet if even number of indices
+    if len(indices) % 2:
+        raise ValueError("Cannot contract odd number of indices into a singlet.")
+
+    for combo in epsilon_combos(indices):
+        epsilons = [eps(" ".join([(-i).label, (-j).label])) for i, j in combo]
+
+        # multiply epsilons into operator
+        prod = op
+        for e in epsilons:
+            prod *= e
+        result.append(prod)
+
+    return result
+
+
+def lorentz_singlets(op: Operator):
+    u_singlets = su2_singlets_type(op, index_type="u")
+    return [ds for us in u_singlets for ds in su2_singlets_type(us, index_type="d")]
+
+
 def contract_su2_helper(
     left: Indexed, right: Indexed, out: Union[int, str], index_type: str
 ):
@@ -66,7 +103,7 @@ def contract_su2_helper(
     structure transforms as `out`.
 
     Example:
-        >>> contract(left=L("u0 i0"), right=L("u1 i1"), out=0, index_type="i")
+        >>> contract_su2_helper(left=L("u0 i0"), right=L("u1 i1"), out=0, index_type="i")
         [eps(-i0, -i1)]
 
     """
@@ -297,7 +334,7 @@ def clean_operators(operators):
     """Delete duplicates (ignoring relabellings) and remove vanishing operators."""
     seen, out = set(), []
     for op in operators:
-        op_tens_mul = op.simplify()
+        op_tens_mul = op.simplify(fill=True)
         if not op_tens_mul:
             continue
         if not op_tens_mul in seen:
