@@ -805,6 +805,17 @@ class Operator(tensor.TensMul):
 
         return [l for l in out if l]
 
+    def by_epsilon_structures(self):
+        order = Index.get_tensor_index_types().values()
+        out = []
+        for index_type in order:
+            out.append([])
+            for symbol in self.epsilons:
+                if symbol.indices[0].tensor_index_type == index_type:
+                    out[-1].append(symbol)
+
+        return [l for l in out if l]
+
     @property
     def duplicate_fields(self):
         """Returns a dictionary mapping the field label to the duplicates."""

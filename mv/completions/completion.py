@@ -210,12 +210,36 @@ def _fix_su2_indices(free_indices: List[Index]) -> Tuple[list, list]:
 
 
 def is_contracted_epsilon(eps, indices):
-    i, j = eps.indices
-    if -i in indices and -j in indices:
-        indices.remove(-i)
-        indices.remove(-j)
-        return True
-    return False
+    i, j, *k = eps.indices
+
+    # deal with su2 epsilon first
+    if not k:
+        if -i in indices and -j in indices:
+            indices.remove(-i)
+            indices.remove(-j)
+            return True
+        return False
+
+    # su3 epsilon has three indices
+    else:
+        counter = 0
+        to_remove, free = [], []
+        for idx in eps.indices:
+            if -idx in indices:
+                to_remove.append(-idx)
+            else:
+                free.append(idx)
+
+        # is contracted epsilon
+        if len(to_remove) == 2:
+            for idx in to_remove:
+                indices.remove(idx)
+
+            assert len(free) == 1
+            indices.append(free[0])
+            return True
+
+        return False
 
 
 def contract(
@@ -290,56 +314,47 @@ def contract(
     )
 
     # sort out colour indices
-    two_raised_colour = (
-        len(exotic_colour) == 2 and exotic_colour[0].is_up and exotic_colour[1].is_up
+    # two_raised_colour = (
+    #     len(exotic_colour) == 2 and exotic_colour[0].is_up and exotic_colour[1].is_up
+    # )
+    # two_lowered_colour = (
+    #     len(exotic_colour) == 2
+    #     and not exotic_colour[0].is_up
+    #     and not exotic_colour[1].is_up
+    # )
+    # if two_raised_colour:
+    #     idx = str(-Index.fresh("c"))
+    #     colour_epsilon = eps(idx + " " + " ".join(str(-i) for i in exotic_colour))
+    #     exotic_colour_options = [((idx,), colour_epsilon), (exotic_colour, None)]
+    # elif two_lowered_colour:
+    #     idx = str(Index.fresh("c"))
+    #     colour_epsilon = eps(idx + " " + " ".join(str(-i) for i in exotic_colour))
+    #     exotic_colour_options = [((idx,), colour_epsilon), (exotic_colour, None)]
+    # else:
+    #     exotic_colour_options = [(exotic_colour, None)]
+
+    exotic_indices = " ".join(
+        str(i)
+        for i in [*exotic_undotted, *exotic_dotted, *exotic_colour, *exotic_isospin]
     )
-    two_lowered_colour = (
-        len(exotic_colour) == 2
-        and not exotic_colour[0].is_up
-        and not exotic_colour[1].is_up
-    )
-    if two_raised_colour:
-        idx = str(-Index.fresh("c"))
-        colour_epsilon = eps(idx + " " + " ".join(str(-i) for i in exotic_colour))
-        exotic_colour_options = [((idx,), colour_epsilon), (exotic_colour, None)]
-    elif two_lowered_colour:
-        idx = str(Index.fresh("c"))
-        colour_epsilon = eps(idx + " " + " ".join(str(-i) for i in exotic_colour))
-        exotic_colour_options = [((idx,), colour_epsilon), (exotic_colour, None)]
-    else:
-        exotic_colour_options = [(exotic_colour, None)]
+    exotic_field = IndexedField(symbol, exotic_indices, charges=exotic_charges)
 
-    out = []
-    for exotic_colour, colour_eps in exotic_colour_options:
-        exotic_indices = " ".join(
-            str(i)
-            for i in [*exotic_undotted, *exotic_dotted, *exotic_colour, *exotic_isospin]
-        )
-        exotic_field = IndexedField(symbol, exotic_indices, charges=exotic_charges)
+    # construct MajoranaFermion, VectorLikeDiracFermion, ...
+    exotic_field = cons_completion_field(exotic_field)
+    partner = exotic_field
+    if isinstance(exotic_field, VectorLikeDiracFermion):
+        partner = exotic_field.dirac_partner()
+    elif isinstance(exotic_field, ComplexScalar):
+        partner = exotic_field.conj
 
-        # construct MajoranaFermion, VectorLikeDiracFermion, ...
-        exotic_field = cons_completion_field(exotic_field)
-        partner = exotic_field
-        if isinstance(exotic_field, VectorLikeDiracFermion):
-            partner = exotic_field.dirac_partner()
-        elif isinstance(exotic_field, ComplexScalar):
-            partner = exotic_field.conj
+    prod_epsilons = new_epsilons + contracted_epsilons
+    prod = reduce(lambda a, b: a * b, prod_epsilons, prod_fields)
+    terms = colour_singlets(contract_su2(partner.fresh_indices(), prod, 0))
 
-        # construct term
-        if colour_eps is not None:
-            prod_epsilons = new_epsilons + contracted_epsilons + [colour_eps]
-        else:
-            prod_epsilons = new_epsilons + contracted_epsilons
+    if not terms:
+        raise Exception("No terms constructed from interaciton.")
 
-        prod = reduce(lambda a, b: a * b, prod_epsilons, prod_fields)
-        terms = colour_singlets(contract_su2(partner.fresh_indices(), prod, 0))
-
-        if not terms:
-            raise Exception("No terms constructed from interaciton.")
-
-        out.append((exotic_field, spectator_epsilons, terms))
-
-    return out
+    return exotic_field, spectator_epsilons, terms
 
 
 def get_connecting_edge(graph: nx.Graph, nodes: List[int]) -> Tuple[int, int]:

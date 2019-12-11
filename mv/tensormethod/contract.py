@@ -24,7 +24,7 @@ Contractable = Union[Field, IndexedField, Operator]
 Indexed = Union[IndexedField, Operator]
 
 
-def colour_singlets(operators: List[Operator]):
+def colour_singlets(operators: List[Operator], overcomplete=False):
     """Contracts colour indices into singlets."""
     result = []
     for op in operators:
@@ -56,6 +56,18 @@ def colour_singlets(operators: List[Operator]):
             for d in deltas:
                 prod *= d
             result.append(prod)
+
+        if len(deltas) == 2 and overcomplete:
+            a, b = deltas
+            upa, downa = a.indices
+            upb, downb = b.indices
+            dummy = Index.fresh("c")
+            up_index_str = " ".join(str(i) for i in (upa, upb, dummy))
+            down_index_str = " ".join(str(i) for i in (downa, downb, -dummy))
+            up_epsilon = eps(up_index_str)
+            down_epsilon = eps(down_index_str)
+            # append additional structure to results
+            result.append(op * up_epsilon * down_epsilon)
 
     return result
 
