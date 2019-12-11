@@ -462,8 +462,11 @@ class Field:
     def fresh_indices(self) -> "IndexedField":
         # fresh_indices = " ".join(i for i in self.get_fresh_indices(store))
         fresh_indices = Index.fresh_indices(self.dynkin)
+        label = (
+            self.label_with_dagger if not isinstance(self, IndexedField) else self.label
+        )
         return IndexedField(
-            label=self.label_with_dagger,
+            label=label,
             indices=fresh_indices,
             charges=self.charges,
             is_conj=self.is_conj,

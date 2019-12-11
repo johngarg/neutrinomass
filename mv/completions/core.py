@@ -22,7 +22,16 @@ class FieldType(IndexedField):
 
 
 class ComplexScalar(FieldType):
-    def __init__(self, label, indices, charges, latex=None):
+    def __init__(
+        self,
+        label,
+        indices,
+        charges=None,
+        latex=None,
+        is_conj=False,
+        symmetry=None,
+        **kwargs,
+    ):
         if isinstance(indices, list):
             indices = " ".join(str(i) for i in indices)
 
@@ -31,7 +40,7 @@ class ComplexScalar(FieldType):
             label=label,
             indices=indices,
             charges=charges,
-            is_conj=False,
+            is_conj=is_conj,
             symmetry=None,
             comm=BOSE,
             latex=latex,
@@ -114,8 +123,8 @@ class VectorLikeDiracFermion(FieldType):
             charges=charges,
             is_conj=is_conj,
             symmetry=None,
-            comm=FERMI,
             latex=latex,
+            **kwargs,
         )
 
         assert self.is_fermion
