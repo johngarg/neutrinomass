@@ -2,7 +2,14 @@
 
 """Functions to generate completions of operators with explicit SU(2) structure."""
 
-from mv.tensormethod.core import Index, IndexedField, eps, is_invariant_symbol, Operator
+from mv.tensormethod.core import (
+    Index,
+    IndexedField,
+    eps,
+    delta,
+    is_invariant_symbol,
+    Operator,
+)
 from mv.tensormethod.contract import (
     lorentz_singlets,
     colour_singlets,
@@ -16,6 +23,7 @@ from core import (
     cons_completion_field,
     FieldType,
     VectorLikeDiracFermion,
+    ComplexScalar,
 )
 from operators import EFF_OPERATORS
 from topologies import get_topology_data
@@ -212,7 +220,7 @@ def is_contracted_epsilon(eps, indices):
 
 def contract(
     fields: Tuple[IndexedField], symbol: str, epsilons: list
-) -> Tuple[FieldType, List[Tensor], List[Operator]]:
+) -> List[Tuple[FieldType, List[Tensor], List[Operator]]]:
     """Takes two or three indexed fields and the epsilons and returns a new indexed field
     transforming in the same way as x \otimes y.
 
@@ -228,43 +236,43 @@ def contract(
         raise Exception("Too many fields passed to contract.")
 
     # product of fields
-    prod = reduce(lambda a, b: a * b, fields)
-    free_indices = prod.get_free_indices()
-    undotted, dotted, colour, isospin, _ = Index.indices_by_type(free_indices).values()
-
-    # sort out lorentz epsilons from contraction
-    two_undotted = len(undotted) == 2 and len(dotted) == 0
-    two_dotted = len(dotted) == 2 and len(undotted) == 0
-    one_undotted = len(undotted) == 1 and len(dotted) == 0
-    one_dotted = len(dotted) == 1 and len(undotted) == 0
-    assert two_undotted or two_dotted or one_undotted or one_dotted
-
-    new_epsilons = []
-    if two_undotted:
-        lorentz_eps = eps(" ".join(str(-i) for i in undotted))
-        new_epsilons.append(lorentz_eps)
-        # remove newly contracted indices
-        for i in undotted:
-            free_indices.remove(i)
-
-    elif two_dotted:
-        lorentz_eps = eps(" ".join(str(-i) for i in dotted))
-        new_epsilons.append(lorentz_eps)
-        # remove newly contracted indices
-        for i in dotted:
-            free_indices.remove(i)
+    prod_fields = reduce(lambda a, b: a * b, fields)
+    free_indices = prod_fields.get_free_indices()
 
     # remove contracted isospin epsilons and remove indices from free_indices by
     # side effect
     contracted_epsilons, spectator_epsilons = [], []
-    for eps in epsilons:
-        if is_contracted_epsilon(eps, free_indices):
-            contracted_epsilons.append(eps)
+    for e in epsilons:
+        if is_contracted_epsilon(e, free_indices):
+            contracted_epsilons.append(e)
         else:
-            spectator_epsilons.append(eps)
+            spectator_epsilons.append(e)
 
-    # TODO need to also sort out colour 6 or 3 and their epsilons here
-    # ...
+    undotted, dotted, colour, isospin, _ = Index.indices_by_type(free_indices).values()
+
+    # sort out lorentz epsilons from contraction
+    scalar = len(undotted) == 0 and len(dotted) == 0
+    two_undotted = len(undotted) == 2 and len(dotted) == 0
+    two_dotted = len(dotted) == 2 and len(undotted) == 0
+    one_undotted = len(undotted) == 1 and len(dotted) == 0
+    one_dotted = len(dotted) == 1 and len(undotted) == 0
+    assert scalar or two_undotted or two_dotted or one_undotted or one_dotted
+
+    new_epsilons = []
+    if two_undotted:
+        eps_indices = " ".join(str(-i) for i in undotted)
+        lorentz_eps = eps(eps_indices)
+        new_epsilons.append(lorentz_eps)
+        # remove newly contracted indices
+        for i in undotted:
+            free_indices.remove(i)
+    elif two_dotted:
+        eps_indices = " ".join(str(-i) for i in dotted)
+        lorentz_eps = eps(eps_indices)
+        new_epsilons.append(lorentz_eps)
+        # remove newly contracted indices
+        for i in dotted:
+            free_indices.remove(i)
 
     # construct exotic field
     # deal with charges
@@ -277,24 +285,61 @@ def contract(
         exotic_charges[k] = sum(map(lambda x: x[1], n_pairs))
 
     indices_by_type = Index.indices_by_type(free_indices).values()
-    new_undotted, new_dotted, new_colour, new_isospin, _ = map(sorted, indices_by_type)
-    exotic_indices = " ".join(
-        str(i) for i in [*new_undotted, *new_dotted, *new_colour, *new_isospin]
+    exotic_undotted, exotic_dotted, exotic_colour, exotic_isospin, _ = map(
+        sorted, indices_by_type
     )
-    exotic_field = IndexedField(symbol, exotic_indices, charges=exotic_charges)
 
-    # construct MajoranaFermion, VectorLikeDiracFermion, ...
-    exotic_field = cons_completion_field(exotic_field)
-    partner = exotic_field
-    if isinstance(exotic_field, VectorLikeDiracFermion):
-        partner = exotic_field.dirac_partner()
+    # sort out colour indices
+    two_raised_colour = (
+        len(exotic_colour) == 2 and exotic_colour[0].is_up and exotic_colour[1].is_up
+    )
+    two_lowered_colour = (
+        len(exotic_colour) == 2
+        and not exotic_colour[0].is_up
+        and not exotic_colour[1].is_up
+    )
+    if two_raised_colour:
+        idx = str(-Index.fresh("c"))
+        colour_epsilon = eps(idx + " " + " ".join(str(-i) for i in exotic_colour))
+        exotic_colour_options = [((idx,), colour_epsilon), (exotic_colour, None)]
+    elif two_lowered_colour:
+        idx = str(Index.fresh("c"))
+        colour_epsilon = eps(idx + " " + " ".join(str(-i) for i in exotic_colour))
+        exotic_colour_options = [((idx,), colour_epsilon), (exotic_colour, None)]
+    else:
+        exotic_colour_options = [(exotic_colour, None)]
 
-    # construct term
-    prod = reduce(lambda a, b: a * b, contracted_epsilons, prod)
-    terms = colour_singlets(contract_su2(partner.fresh_indices(), prod, 0))
+    out = []
+    for exotic_colour, colour_eps in exotic_colour_options:
+        exotic_indices = " ".join(
+            str(i)
+            for i in [*exotic_undotted, *exotic_dotted, *exotic_colour, *exotic_isospin]
+        )
+        exotic_field = IndexedField(symbol, exotic_indices, charges=exotic_charges)
 
-    # do you want to return old epsilons too?
-    return exotic_field, (new_epsilons + spectator_epsilons), terms
+        # construct MajoranaFermion, VectorLikeDiracFermion, ...
+        exotic_field = cons_completion_field(exotic_field)
+        partner = exotic_field
+        if isinstance(exotic_field, VectorLikeDiracFermion):
+            partner = exotic_field.dirac_partner()
+        elif isinstance(exotic_field, ComplexScalar):
+            partner = exotic_field.conj
+
+        # construct term
+        if colour_eps is not None:
+            prod_epsilons = new_epsilons + contracted_epsilons + [colour_eps]
+        else:
+            prod_epsilons = new_epsilons + contracted_epsilons
+
+        prod = reduce(lambda a, b: a * b, prod_epsilons, prod_fields)
+        terms = colour_singlets(contract_su2(partner.fresh_indices(), prod, 0))
+
+        if not terms:
+            raise Exception("No terms constructed from interaciton.")
+
+        out.append((exotic_field, spectator_epsilons, terms))
+
+    return out
 
 
 def get_connecting_edge(graph: nx.Graph, nodes: List[int]) -> Tuple[int, int]:
@@ -379,7 +424,7 @@ def build_term(
 def cons_completion(partition, epsilons, graph, filter_function=None):
     """Work in progress...
 
-    ``filter_function`` is a diadic function that takes an IndexedField and an
+    ``filter_function`` is a dyadic function that takes an IndexedField and an
     interaction operator and returns a bool. Implement no vectors in completions
     like
 
