@@ -14,11 +14,20 @@ class FieldType(IndexedField):
     def __new__(cls, *args, **kwargs):
         return super(FieldType, cls).__new__(cls, *args, **kwargs)
 
-    def __mul__(self, other):
-        if isinstance(other, self.__class__):
-            return TensorProduct(self, other)
-        elif isinstance(other, TensorProduct):
-            return TensorProduct(self, *other.tensors)
+    # def __mul__(self, other):
+    #     if isinstance(other, self.__class__):
+    #         return TensorProduct(self, other)
+    #     elif isinstance(other, TensorProduct):
+    #         return TensorProduct(self, *other.tensors)
+
+    def __hash__(self):
+        dict_ = {
+            "indices": tuple(sorted(self.indices)),
+            "label": self.label,
+            "dynkin": self.dynkin,
+            "charges": tuple(sorted(self.charges.items())),
+        }
+        return hash(tuple(dict_.items()))
 
 
 class ComplexScalar(FieldType):
@@ -211,14 +220,22 @@ class EffectiveOperator:
         return {"n_scalars": n_scalars, "n_fermions": n_fermions}
 
 
+class FailedCompletion:
+    def __init__(self, reason: str):
+        self.reason = reason
+
+
 class Completion:
-    def __init__(self, partition, graph, exotics):
+    def __init__(self, operator, partition, graph, exotics, terms):
+        self.operator = operator
         self.partition = partition
         self.graph = graph
+        self.exotics = exotics
+        self.terms = terms
 
     @property
     def lagrangian(self):
-        pass
+        return Lagrangian(terms=self.terms)
 
     @property
     def diagram(self):
