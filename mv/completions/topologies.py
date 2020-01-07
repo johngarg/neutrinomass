@@ -6,11 +6,18 @@ import os
 from glob import glob
 import matplotlib.pyplot as plt
 import networkx as nx
+from typing import NamedTuple
+from mv.tensormethod.core import IndexedField
 
 TOPOLOGY_PATH = "/Users/johngargalionis/Dropbox/PhD/mv/mv/mv/completions/topology_data/"
 PARTITIONS = os.path.join(TOPOLOGY_PATH, "partitions")
 DIAGRAMS = os.path.join(TOPOLOGY_PATH, "diagrams")
 GRAPHS = os.path.join(TOPOLOGY_PATH, "graphs")
+
+
+class Leaf(NamedTuple):
+    field: IndexedField
+    node: int
 
 
 def read_topology_file(data_path) -> str:
@@ -22,8 +29,8 @@ def read_topology_file(data_path) -> str:
 
 
 def eval_partition(partition: str):
-    S = lambda x: ("S", x)
-    F = lambda x: ("F", x)
+    S = lambda x: Leaf("S", x)
+    F = lambda x: Leaf("F", x)
 
     def List(*args):
         return args
