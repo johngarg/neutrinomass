@@ -9,6 +9,7 @@ from mv.tensormethod.core import (
     delta,
     is_invariant_symbol,
     Operator,
+    get_dynkin,
 )
 from mv.tensormethod.contract import (
     lorentz_singlets,
@@ -16,9 +17,10 @@ from mv.tensormethod.contract import (
     invariants,
     contract_su2,
 )
-from utils import flatten, chunks, foldr
+from utils import flatten, chunks
 from core import (
     Completion,
+    FailedCompletion,
     EffectiveOperator,
     cons_completion_field,
     FieldType,
@@ -26,8 +28,8 @@ from core import (
     ComplexScalar,
 )
 from operators import EFF_OPERATORS
-from topologies import get_topology_data
-from typing import Tuple, List
+from topologies import get_topology_data, Leaf
+from typing import Tuple, List, Dict, Union
 import networkx as nx
 from copy import deepcopy
 
@@ -56,7 +58,9 @@ def replace(data, to_replace, replace_with, found=False) -> Tuple[tuple, bool]:
         for datai in data:
             new_datai, found = replace(datai, to_replace, replace_with, found)
             new_data.append(new_datai)
-        return tuple(new_data), found
+
+        f = lambda x: Leaf(*x) if isinstance(data, Leaf) else tuple(x)
+        return f(new_data), found
 
     if data == to_replace:
         return replace_with, True
@@ -123,7 +127,7 @@ def set_external_fields(partition, graph):
     return g
 
 
-def partitions(op: EffectiveOperator) -> List[dict]:
+def partitions(operator: EffectiveOperator) -> List[dict]:
     """Returns a list of operator partitions, epsilons and graphs of the form:
 
     {"fields": ((L(u0, I_0), 18), ...)
@@ -134,23 +138,31 @@ def partitions(op: EffectiveOperator) -> List[dict]:
     information required to find the completion.
 
     """
-    topology_data_list = get_topology_data(**op.topology_type)
+    topology_data_list = get_topology_data(**operator.topology_type)
+
+    colour_ops = colour_singlets([operator.operator], overcomplete=True)
+    colour_ops = [EffectiveOperator(operator.name, op) for op in colour_ops]
 
     out = []
     counter = 1
     for topology_data in topology_data_list:
         print(f"Furnishing topology {counter}...")
+        for op in colour_ops:
+            fields = op.indexed_fields
+            epsilons = op.operator.epsilons
+            perms = distribute_fields(fields, topology_data["partition"])
 
-        fields = op.indexed_fields
-        epsilons = op.operator.epsilons
-        perms = distribute_fields(fields, topology_data["partition"])
+            for perm in perms:
+                g = topology_data["graph"]
+                g = set_external_fields(perm, g)
 
-        for perm in perms:
-            g = topology_data["graph"]
-            g = set_external_fields(perm, g)
-
-            data = {"partition": perm, "epsilons": epsilons, "graph": g}
-            out.append(data)
+                data = {
+                    "operator": op,
+                    "partition": perm,
+                    "epsilons": epsilons,
+                    "graph": g,
+                }
+                out.append(data)
 
         counter += 1
 
@@ -243,8 +255,11 @@ def is_contracted_epsilon(eps, indices):
 
 
 def contract(
-    fields: Tuple[IndexedField], symbol: str, epsilons: list
-) -> List[Tuple[FieldType, List[Tensor], List[Operator]]]:
+    fields: Tuple[IndexedField],
+    symbols: Dict[str, List[str]],
+    epsilons: list,
+    field_dict: Dict[tuple, str],
+) -> Tuple[FieldType, List[Tensor], List[Operator]]:
     """Takes two or three indexed fields and the epsilons and returns a new indexed field
     transforming in the same way as x \otimes y.
 
@@ -274,13 +289,18 @@ def contract(
 
     undotted, dotted, colour, isospin, _ = Index.indices_by_type(free_indices).values()
 
+    # TODO make this more general
+    # Should at least work for vectors!
+
     # sort out lorentz epsilons from contraction
     scalar = len(undotted) == 0 and len(dotted) == 0
     two_undotted = len(undotted) == 2 and len(dotted) == 0
     two_dotted = len(dotted) == 2 and len(undotted) == 0
     one_undotted = len(undotted) == 1 and len(dotted) == 0
     one_dotted = len(dotted) == 1 and len(undotted) == 0
-    assert scalar or two_undotted or two_dotted or one_undotted or one_dotted
+
+    good_lorentz = scalar or two_undotted or two_dotted or one_undotted or one_dotted
+    assert good_lorentz
 
     new_epsilons = []
     if two_undotted:
@@ -337,6 +357,24 @@ def contract(
         str(i)
         for i in [*exotic_undotted, *exotic_dotted, *exotic_colour, *exotic_isospin]
     )
+
+    # establish fermion or boson for symbols
+    lorentz_dynkin = get_dynkin(exotic_indices)[:2]
+    if lorentz_dynkin == "10" or lorentz_dynkin == "01":
+        symbols_to_use = symbols["fermion"]
+    else:
+        symbols_to_use = symbols["boson"]
+
+    # TODO have field_dict map tuple of fields to string and do it that way?
+    fs = sorted([f.field for f in fields], key=lambda x: x.label_with_dagger)
+    fs = tuple(fs)
+    if fs in field_dict.keys():
+        symbol = field_dict[fs]
+    else:
+        symbol = symbols_to_use.pop(0)
+        field_dict[fs] = symbol
+
+    # mutate available symbols
     exotic_field = IndexedField(symbol, exotic_indices, charges=exotic_charges)
 
     # construct MajoranaFermion, VectorLikeDiracFermion, ...
@@ -354,7 +392,7 @@ def contract(
     if not terms:
         raise Exception("No terms constructed from interaciton.")
 
-    return exotic_field, spectator_epsilons, terms
+    return exotic_field, spectator_epsilons, terms, new_epsilons
 
 
 def get_connecting_edge(graph: nx.Graph, nodes: List[int]) -> Tuple[int, int]:
@@ -394,10 +432,12 @@ def get_connecting_edge(graph: nx.Graph, nodes: List[int]) -> Tuple[int, int]:
 
 def build_term(
     leaves: Tuple[Tuple[IndexedField, int]],
-    symbol: str,
+    symbols: List[str],
     epsilons: list,
+    lorentz_epsilons: list,
     terms: list,
-    edge_dict: dict,
+    edge_dict: Dict[FieldType, Tuple[int, int]],
+    field_dict: Dict[tuple, str],
     graph: nx.Graph,
 ) -> Tuple[IndexedField, Tuple[int, int]]:
     """Takes two leaf-tuples of indexed fields and vertex labels, constructs
@@ -423,7 +463,11 @@ def build_term(
         nodes.append(node)
 
     # update epsilons
-    exotic_field, epsilons, new_terms = contract(fields, symbol, epsilons)
+    exotic_field, epsilons, new_terms, new_epsilons = contract(
+        fields, symbols, epsilons, field_dict
+    )
+    lorentz_epsilons += new_epsilons
+
     exotic_edge = get_connecting_edge(graph, nodes)
 
     # update edge_dict
@@ -433,10 +477,34 @@ def build_term(
     # update terms
     terms += new_terms
 
-    return exotic_field, exotic_edge[0]
+    return Leaf(exotic_field, exotic_edge[0])
 
 
-def cons_completion(partition, epsilons, graph, filter_function=None):
+def contains_only_leaves(xs):
+    if not isinstance(xs, tuple):
+        return False
+
+    for x in xs:
+        if not isinstance(x, Leaf):
+            return False
+
+    return True
+
+
+def reduced_row(row, func):
+    if isinstance(row, Leaf):
+        return row
+
+    # row is a tuple
+    if contains_only_leaves(row):
+        return func(row)
+
+    return func(tuple(map(lambda a: reduced_row(a, func), row)))
+
+
+def cons_completion(
+    partition, epsilons, graph, filter_function=None
+) -> Tuple[str, tuple]:
     """Work in progress...
 
     ``filter_function`` is a dyadic function that takes an IndexedField and an
@@ -446,9 +514,59 @@ def cons_completion(partition, epsilons, graph, filter_function=None):
         >>> filter_func = lambda f, int: not f.is_vector
 
     """
-    terms = []
-    edges = list(map(sorted, graph.edges))
+    lorentz_epsilons, terms, edge_dict, field_dict = [], [], {}, {}
+    symbols = {"fermion": ["ψ", "ξ", "χ", "ζ", "f"], "boson": ["φ", "η", "ω", "ρ", "S"]}
 
-    for row in partition:
-        # TODO This may need to be a nested map-apply?
-        foldr(lambda x, y: build_term(x, y, terms, edges), row)
+    func = lambda leaves: build_term(
+        leaves=leaves,
+        symbols=symbols,
+        epsilons=epsilons,
+        lorentz_epsilons=lorentz_epsilons,
+        terms=terms,
+        edge_dict=edge_dict,
+        field_dict=field_dict,
+        graph=graph,
+    )
+
+    reduced_partition = [reduced_row(row, func) for row in partition]
+
+    # Add last interaction to terms
+    prod = reduce(lambda a, b: a * b, [i.field for i in reduced_partition])
+    prod = reduce(lambda a, b: a * b, epsilons, prod)
+    terms.append(prod)
+
+    return terms, edge_dict, field_dict, lorentz_epsilons
+
+
+def partition_completion(partition) -> Union[Completion, FailedCompletion]:
+    part = partition["partition"]
+    epsilons = partition["epsilons"]
+    graph = partition["graph"]
+    op = partition["operator"]
+
+    # failed is a string with the reason the completion failed
+    failed, *args = cons_completion(partition=part, epsilons=epsilons, graph=graph)
+    if not failed:
+        terms, edge_dict, field_dict, lorentz_epsilons = args
+    else:
+        return FailedCompletion(failed)
+
+    prod = reduce(lambda a, b: a * b, lorentz_epsilons)
+    explicit_op = op.operator * prod
+    exotics = set(f.field for f in edge_dict.keys())
+    eff_operator = EffectiveOperator(op.name, Operator(explicit_op))
+
+    return Completion(
+        operator=eff_operator, partition=part, graph=graph, exotics=exotics, terms=terms
+    )
+
+
+def operator_completions(operator) -> List[Completion]:
+    parts = partitions(operator)
+    completions = [partition_completion(p) for p in parts]
+    return completions
+
+
+def lnv_completions(operator_name) -> List[Completion]:
+    op = EFF_OPERATORS[operator_name]
+    return operator_completions(op)
