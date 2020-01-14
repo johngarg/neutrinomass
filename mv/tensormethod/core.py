@@ -190,7 +190,8 @@ class Index(tensor.TensorIndex):
 
     @classmethod
     def classify_index(cls, idx: str) -> tensor.TensorIndexType:
-        return Index.get_tensor_index_types()[idx[0]]
+        char = idx[0] if idx[0] != "-" else idx[1]
+        return Index.get_tensor_index_types()[char]
 
     @classmethod
     def indices_by_type(cls, indices):
