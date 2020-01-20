@@ -5,7 +5,7 @@
 from functools import reduce
 
 from mv.tensormethod import IndexedField
-from mv.tensormethod.core import BOSE, FERMI, Index
+from mv.tensormethod.core import BOSE, FERMI, Index, eps
 
 
 class FieldType(IndexedField):
@@ -19,6 +19,30 @@ class FieldType(IndexedField):
     #         return TensorProduct(self, other)
     #     elif isinstance(other, TensorProduct):
     #         return TensorProduct(self, *other.tensors)
+    #
+
+    def lower_su2(self):
+        undotted, dotted, _, isospin, _ = self.indices_by_type.values()
+        epsilons = []
+        partner = self
+        for idx in [*undotted, *dotted, *isospin]:
+            lower = str(idx) + "^"
+            partner = partner.substituted_indices((idx, lower))
+            epsilon = eps("-" + lower + " -" + str(idx))
+            epsilons.append(epsilon)
+
+        return cons_completion_field(partner), epsilons
+
+    # @property
+    # def info(self):
+    #     return {
+    #         "label": self.label,
+    #         "indices": self.indices,
+    #         "charges": self.charges,
+    #         "is_conj": self.is_conj,
+    #         "symmetry": self.symmetry,
+    #         "latex": self.latex,
+    #     }
 
     def __hash__(self):
         dict_ = {
@@ -53,13 +77,14 @@ class ComplexScalar(FieldType):
             symmetry=None,
             comm=BOSE,
             latex=latex,
+            # **kwargs,
         )
 
         assert self.is_scalar
 
 
 class RealScalar(FieldType):
-    def __init__(self, label, indices, latex=None):
+    def __init__(self, label, indices, latex=None, **kwargs):
         if isinstance(indices, list):
             indices = " ".join(str(i) for i in indices)
 
@@ -72,13 +97,14 @@ class RealScalar(FieldType):
             symmetry=None,
             comm=BOSE,
             latex=latex,
+            # **kwargs,
         )
 
         assert self.is_scalar
 
 
 class MajoranaFermion(FieldType):
-    def __init__(self, label, indices, latex=None):
+    def __init__(self, label, indices, latex=None, **kwargs):
         if isinstance(indices, list):
             indices = " ".join(str(i) for i in indices)
 
@@ -91,9 +117,27 @@ class MajoranaFermion(FieldType):
             symmetry=None,
             comm=FERMI,
             latex=latex,
+            # **kwargs,
         )
 
         assert self.is_fermion
+
+    def majorana_partner(self):
+        undotted, dotted, colour, isospin, _ = Index.indices_by_type(
+            self.indices
+        ).values()
+        colour = tuple(i.conj for i in colour)
+        indices = undotted + dotted + colour + isospin
+
+        return MajoranaFermion(
+            self.label,
+            indices,
+            latex=self.latex,
+            is_conj=self.is_conj,
+            symmetry=self.symmetry,
+            comm=FERMI,
+            charges=None,
+        )
 
 
 class VectorLikeDiracFermion(FieldType):
@@ -105,9 +149,9 @@ class VectorLikeDiracFermion(FieldType):
         >>> psi
         ψ(u0, i1)
         >>> psi.dirac_partner()
-        ψ(d0, i1)
+        ψ~(u0, i1)
 
-    Here ψ(u0, i1) and ψ(d0, i1) are different fields.
+    Here ψ(u0, i1) and ψ~(u0, i1) are different fields.
 
     """
 
@@ -121,6 +165,7 @@ class VectorLikeDiracFermion(FieldType):
         is_conj=False,
         symmetry=None,
         comm=FERMI,
+        **kwargs,
     ):
         if isinstance(indices, list):
             indices = " ".join(str(i) for i in indices)
@@ -133,7 +178,7 @@ class VectorLikeDiracFermion(FieldType):
             is_conj=is_conj,
             symmetry=None,
             latex=latex,
-            **kwargs,
+            # **kwargs,
         )
 
         assert self.is_fermion
@@ -168,7 +213,7 @@ class VectorLikeDiracFermion(FieldType):
         charges = {k: -v for k, v in self.charges.items()}
 
         is_unbarred = self.is_unbarred
-        symb = "^"  # indicate bar with circumflex
+        symb = "~"  # indicate bar with circumflex
         if is_unbarred:
             label = self.label + symb
         else:
@@ -219,9 +264,12 @@ class EffectiveOperator:
 
         return {"n_scalars": n_scalars, "n_fermions": n_fermions}
 
+    def __hash__(self):
+        return hash((self.name, self.operator.simplify()))
+
 
 class FailedCompletion:
-    def __init__(self, reason: str):
+    def __init__(self, reason: str = ""):
         self.reason = reason
 
 
@@ -240,6 +288,17 @@ class Completion:
     @property
     def diagram(self):
         pass
+
+    def exotic_info(self):
+        exotics = sorted(
+            (f.field.dynkin, tuple(sorted(f.field.charges.items())))
+            for f in self.exotics
+        )
+
+        return tuple(exotics)
+
+    def exotic_fields(self):
+        return set([e.field for e in self.exotics])
 
 
 def cons_completion_field(indexed_field: IndexedField) -> FieldType:

@@ -25,6 +25,7 @@ from core import (
     cons_completion_field,
     FieldType,
     VectorLikeDiracFermion,
+    MajoranaFermion,
     ComplexScalar,
 )
 from operators import EFF_OPERATORS
@@ -33,7 +34,7 @@ from typing import Tuple, List, Dict, Union
 import networkx as nx
 from copy import deepcopy
 
-from itertools import permutations
+from itertools import permutations, groupby
 from sympy.utilities.iterables import multiset_partitions
 from sympy.tensor.tensor import Tensor
 
@@ -146,7 +147,7 @@ def partitions(operator: EffectiveOperator) -> List[dict]:
     out = []
     counter = 1
     for topology_data in topology_data_list:
-        print(f"Furnishing topology {counter}...")
+        # print(f"Furnishing topology {counter}...")
         for op in colour_ops:
             fields = op.indexed_fields
             epsilons = op.operator.epsilons
@@ -251,6 +252,12 @@ def is_contracted_epsilon(eps, indices):
             indices.append(free[0])
             return True
 
+        if len(to_remove) == 3:
+            for idx in to_remove:
+                indices.remove(idx)
+
+            return True
+
         return False
 
 
@@ -262,6 +269,8 @@ def contract(
 ) -> Tuple[FieldType, List[Tensor], List[Operator]]:
     """Takes two or three indexed fields and the epsilons and returns a new indexed field
     transforming in the same way as x \otimes y.
+
+    Returns a possibly empty tuple.
 
     Example:
         >>> s = contract((H('i0'), H('i1')), 'S', epsilons=[])
@@ -281,6 +290,8 @@ def contract(
     # remove contracted isospin epsilons and remove indices from free_indices by
     # side effect
     contracted_epsilons, spectator_epsilons = [], []
+    # contracted epsilons are those all of whose indices are contracted on the
+    # set of fields passed in. Spectator epsilons are all of the others
     for e in epsilons:
         if is_contracted_epsilon(e, free_indices):
             contracted_epsilons.append(e)
@@ -289,9 +300,6 @@ def contract(
 
     undotted, dotted, colour, isospin, _ = Index.indices_by_type(free_indices).values()
 
-    # TODO make this more general
-    # Should at least work for vectors!
-
     # sort out lorentz epsilons from contraction
     scalar = len(undotted) == 0 and len(dotted) == 0
     two_undotted = len(undotted) == 2 and len(dotted) == 0
@@ -299,21 +307,23 @@ def contract(
     one_undotted = len(undotted) == 1 and len(dotted) == 0
     one_dotted = len(dotted) == 1 and len(undotted) == 0
 
-    good_lorentz = scalar or two_undotted or two_dotted or one_undotted or one_dotted
-    assert good_lorentz
+    if not (scalar or two_undotted or two_dotted or one_undotted or one_dotted):
+        return None
 
-    new_epsilons = []
+    # construct new (lorentz) epsilons for scalar contractions (currently not
+    # allowing vector contractions)
+    lorentz_contraction_epsilons = []
     if two_undotted:
         eps_indices = " ".join(str(-i) for i in undotted)
         lorentz_eps = eps(eps_indices)
-        new_epsilons.append(lorentz_eps)
+        lorentz_contraction_epsilons.append(lorentz_eps)
         # remove newly contracted indices
         for i in undotted:
             free_indices.remove(i)
     elif two_dotted:
         eps_indices = " ".join(str(-i) for i in dotted)
         lorentz_eps = eps(eps_indices)
-        new_epsilons.append(lorentz_eps)
+        lorentz_contraction_epsilons.append(lorentz_eps)
         # remove newly contracted indices
         for i in dotted:
             free_indices.remove(i)
@@ -333,26 +343,6 @@ def contract(
         sorted, indices_by_type
     )
 
-    # sort out colour indices
-    # two_raised_colour = (
-    #     len(exotic_colour) == 2 and exotic_colour[0].is_up and exotic_colour[1].is_up
-    # )
-    # two_lowered_colour = (
-    #     len(exotic_colour) == 2
-    #     and not exotic_colour[0].is_up
-    #     and not exotic_colour[1].is_up
-    # )
-    # if two_raised_colour:
-    #     idx = str(-Index.fresh("c"))
-    #     colour_epsilon = eps(idx + " " + " ".join(str(-i) for i in exotic_colour))
-    #     exotic_colour_options = [((idx,), colour_epsilon), (exotic_colour, None)]
-    # elif two_lowered_colour:
-    #     idx = str(Index.fresh("c"))
-    #     colour_epsilon = eps(idx + " " + " ".join(str(-i) for i in exotic_colour))
-    #     exotic_colour_options = [((idx,), colour_epsilon), (exotic_colour, None)]
-    # else:
-    #     exotic_colour_options = [(exotic_colour, None)]
-
     exotic_indices = " ".join(
         str(i)
         for i in [*exotic_undotted, *exotic_dotted, *exotic_colour, *exotic_isospin]
@@ -365,7 +355,6 @@ def contract(
     else:
         symbols_to_use = symbols["boson"]
 
-    # TODO have field_dict map tuple of fields to string and do it that way?
     fs = sorted([f.field for f in fields], key=lambda x: x.label_with_dagger)
     fs = tuple(fs)
     if fs in field_dict.keys():
@@ -384,15 +373,27 @@ def contract(
         partner = exotic_field.dirac_partner()
     elif isinstance(exotic_field, ComplexScalar):
         partner = exotic_field.conj
+    elif isinstance(exotic_field, MajoranaFermion):
+        partner = exotic_field.majorana_partner()
 
-    prod_epsilons = new_epsilons + contracted_epsilons
-    prod = reduce(lambda a, b: a * b, prod_epsilons, prod_fields)
-    terms = colour_singlets(contract_su2(partner.fresh_indices(), prod, 0))
+    # need additional su2 epsilons to fix su2 indices (since not working with
+    # lowered indices at all)
+    partner, fix_su2_epsilons = partner.lower_su2()
 
-    if not terms:
-        raise Exception("No terms constructed from interaciton.")
+    # prod_epsilons = new_epsilons + contracted_epsilons
+    # prod = reduce(lambda a, b: a * b, prod_epsilons, prod_fields)
 
-    return exotic_field, spectator_epsilons, terms, new_epsilons
+    # construct term
+    new_epsilons = [
+        *fix_su2_epsilons,
+        *contracted_epsilons,
+        *lorentz_contraction_epsilons,
+    ]
+    term = reduce(lambda a, b: a * b, new_epsilons, prod_fields)
+    term *= partner
+    assert not term.free_indices
+
+    return exotic_field, term, spectator_epsilons, lorentz_contraction_epsilons
 
 
 def get_connecting_edge(graph: nx.Graph, nodes: List[int]) -> Tuple[int, int]:
@@ -458,14 +459,24 @@ def build_term(
     # update epsilons by side effect
     fields, nodes = [], []
     for leaf in leaves:
+        if leaf == (None, None):
+            return Leaf(None, None)
+
         field, node = leaf
         fields.append(field)
         nodes.append(node)
 
+    # if only one field, SM field at last vertex
+    if len(fields) == 1:
+        return Leaf(field, node)
+
     # update epsilons
-    exotic_field, epsilons, new_terms, new_epsilons = contract(
-        fields, symbols, epsilons, field_dict
-    )
+    try_contract = contract(fields, symbols, epsilons, field_dict)
+
+    if try_contract is None:
+        return Leaf(None, None)
+
+    exotic_field, term, epsilons, new_epsilons = try_contract
     lorentz_epsilons += new_epsilons
 
     exotic_edge = get_connecting_edge(graph, nodes)
@@ -475,8 +486,7 @@ def build_term(
     edge_dict[exotic_field] = exotic_edge
 
     # update terms
-    terms += new_terms
-
+    terms.append(term)
     return Leaf(exotic_field, exotic_edge[0])
 
 
@@ -530,9 +540,48 @@ def cons_completion(
 
     reduced_partition = [reduced_row(row, func) for row in partition]
 
-    # Add last interaction to terms
-    prod = reduce(lambda a, b: a * b, [i.field for i in reduced_partition])
-    prod = reduce(lambda a, b: a * b, epsilons, prod)
+    # Add last interaction to term
+    prod = None
+    for i in reduced_partition:
+        f = i.field
+        if f is None:
+            return None
+
+        if prod is None:
+            prod = f
+        else:
+            prod *= f
+
+        # if isinstance(f, FieldType):
+        #     prod *= f.args[0](*f.args[1])
+        # else:
+        #     prod *= f
+
+    free_indices = prod.get_free_indices()
+    undotted, dotted, colour, isospin, _ = Index.indices_by_type(free_indices).values()
+
+    if len(undotted) == 2 and len(dotted) == 0:
+        eps_indices = " ".join(str(-i) for i in undotted)
+        lorentz_epsilons.append(eps(eps_indices))
+        prod *= eps(eps_indices)
+    elif len(undotted) == 0 and len(dotted) == 2:
+        eps_indices = " ".join(str(-i) for i in dotted)
+        lorentz_epsilons.append(eps(eps_indices))
+        prod *= eps(eps_indices)
+    elif not (len(undotted) == 0 and len(dotted) == 0):
+        return None
+
+    free_indices = prod.free_indices
+    contracted_epsilons, spectator_epsilons = [], []
+    for e in epsilons:
+        if is_contracted_epsilon(e, free_indices):
+            contracted_epsilons.append(e)
+        else:
+            spectator_epsilons.append(e)
+
+    prod = reduce(lambda a, b: a * b, contracted_epsilons, prod)
+    assert not prod.free_indices
+
     terms.append(prod)
 
     return terms, edge_dict, field_dict, lorentz_epsilons
@@ -545,15 +594,18 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
     op = partition["operator"]
 
     # failed is a string with the reason the completion failed
-    failed, *args = cons_completion(partition=part, epsilons=epsilons, graph=graph)
-    if not failed:
+    try:
+        args = cons_completion(partition=part, epsilons=epsilons, graph=graph)
+    except:
+        breakpoint()
+    if args is not None:
         terms, edge_dict, field_dict, lorentz_epsilons = args
     else:
-        return FailedCompletion(failed)
+        return FailedCompletion("Bad lorentz irrep")
 
-    prod = reduce(lambda a, b: a * b, lorentz_epsilons)
+    prod = reduce(lambda a, b: a * b, lorentz_epsilons, 1)
     explicit_op = op.operator * prod
-    exotics = set(f.field for f in edge_dict.keys())
+    exotics = set(f for f in edge_dict.keys())
     eff_operator = EffectiveOperator(op.name, Operator(explicit_op))
 
     return Completion(
@@ -564,9 +616,28 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
 def operator_completions(operator) -> List[Completion]:
     parts = partitions(operator)
     completions = [partition_completion(p) for p in parts]
-    return completions
+    good_completions = [c for c in completions if not isinstance(c, FailedCompletion)]
+    return good_completions
 
 
-def lnv_completions(operator_name) -> List[Completion]:
+def lnv_completions(operator_name: str) -> List[Completion]:
     op = EFF_OPERATORS[operator_name]
     return operator_completions(op)
+
+
+def collect_completions(
+    completions: List[Completion]
+) -> Dict["FieldContent", Completion]:
+    """Return dictionary mapping field content to list of completions."""
+    out = {}
+    for k, g in groupby(completions, key=lambda x: x.exotic_info()):
+        g = list(g)
+        out[k] = g
+
+    return out
+
+
+def filter_completions(
+    completions: List[Completion], sieve: List[Completion]
+) -> List[Completion]:
+    pass

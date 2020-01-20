@@ -38,8 +38,7 @@ def eval_partition(partition: str):
     structure = eval(partition)
 
     # Take first element to simplify output but ensure not losing any info
-    assert len(structure) == 1
-    return structure[0]
+    return structure
 
 
 def eval_graph(graph: str):

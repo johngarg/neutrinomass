@@ -1,3 +1,5 @@
+(* ::Package:: *)
+
 Block[{Print = Identity},
       <<FeynArts`;
       <<IGraphM`;
@@ -5,6 +7,10 @@ Block[{Print = Identity},
 
 (* ----------------------------------------------- *)
 (* code for working with topologies in Mathematica *)
+
+
+(* 0 => no messages, 1 => summary messages, 2 => all messages *)
+$FAVerbose = 1;
 
 
 makeTopologies::usage = "Creates topology objects.";
@@ -109,14 +115,53 @@ decorateGraph[gr_, vrts_, edgs_] :=
 
 (* constructPartition *)
 
-getFirst[y_List] := Map[First, y];
-getRest[x_List] := getRest[Rest[x] /. First[x]];
-getRest[x_List /; Length[x] == 1] := x;
-grouper[x_] := Last[x];
+(* getFirst[y_List] := Map[First, y]; *)
+(* getRest[x_List] := getRest[Rest[x] /. First[x]]; *)
+(* getRest[x_List /; Length[x] == 1] := x; *)
+(* grouper[x_] := Last[x]; *)
+(* constructPartition[{g_Graph, Rule["EdgeColors", assoc_]}] := *)
+(*   Block[{partition, styleReplacement}, *)
+(*         partition = Map[Last, getRest[SortBy[Normal[Map[getFirst, GroupBy[EdgeList[g], grouper]]], Length[#[[2]]]&]]]; *)
+(*         styleReplacement = Map[#[[1, 1]] -> If[#[[2]] == 2, F[#[[1, 1]]], S[#[[1, 1]]]] &, Normal[assoc]]; *)
+(*         partition /. styleReplacement *)
+(*   ]; *)
+
+externalVertices[g_] :=
+  Keys[Select[MapThread[Rule, {VertexList[g], AdjacencyList[g]}],
+    Length[#[[2]]] == 1 &]];
+
+SetAttributes[immediateConnections, HoldRest];
+immediateConnections[g_, v_, seen_] :=
+  Block[{ext = externalVertices[g]},
+        AppendTo[seen, v];
+        If[MemberQ[ext, v],
+           v,
+           Table[
+             Which[
+               i[[1]] == v, If[MemberQ[seen, i[[2]]], Nothing, i[[2]]],
+               i[[2]] == v, If[MemberQ[seen, i[[1]]], Nothing, i[[1]]],
+               True, Nothing
+             ], {i, EdgeList[g]}]
+        ]
+  ]
+
+constructPartitionList[g_] :=
+  Block[{v = Max[VertexList[g]], seen = {}, new = {}, out, prev,
+         counter = 1},
+        out = immediateConnections[g, v, seen];
+        prev = out;
+        While[new =!= prev,
+              prev = out;
+              new = Map[immediateConnections[g, #, seen] &, out, {counter}];
+              out = new;
+              counter++;
+        ];
+        out
+  ];
 
 constructPartition[{g_Graph, Rule["EdgeColors", assoc_]}] :=
   Block[{partition, styleReplacement},
-        partition = Map[Last, getRest[Normal[Map[getFirst, GroupBy[EdgeList[g], grouper]]]]];
+        partition = constructPartitionList[g];
         styleReplacement = Map[#[[1, 1]] -> If[#[[2]] == 2, F[#[[1, 1]]], S[#[[1, 1]]]] &, Normal[assoc]];
         partition /. styleReplacement
   ];
