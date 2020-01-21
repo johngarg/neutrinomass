@@ -593,7 +593,6 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
     graph = partition["graph"]
     op = partition["operator"]
 
-    # failed is a string with the reason the completion failed
     try:
         args = cons_completion(partition=part, epsilons=epsilons, graph=graph)
     except:
@@ -603,10 +602,9 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
     else:
         return FailedCompletion("Bad lorentz irrep")
 
-    prod = reduce(lambda a, b: a * b, lorentz_epsilons, 1)
-    explicit_op = op.operator * prod
+    explicit_op = reduce(lambda a, b: a * b, lorentz_epsilons, op.operator)
     exotics = set(f for f in edge_dict.keys())
-    eff_operator = EffectiveOperator(op.name, Operator(explicit_op))
+    eff_operator = EffectiveOperator(op.name, explicit_op)
 
     return Completion(
         operator=eff_operator, partition=part, graph=graph, exotics=exotics, terms=terms

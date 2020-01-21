@@ -17,7 +17,12 @@ from sympy import flatten
 from sympy.core.numbers import Zero
 
 from mv.tensormethod.lnv import BL_LIST
-from mv.tensormethod.utils import repr_tree
+from mv.tensormethod.utils import (
+    repr_tree,
+    to_tex,
+    TEX_GREEK_LOWERCASE,
+    DOTTED_TEX_GREEK_LOWERCASE,
+)
 
 FERMI, BOSE = "fermi", "bose"
 tensor.TensorManager.set_comms(
@@ -261,6 +266,9 @@ class Field:
         if not isinstance(dynkin, str):
             dynkin = "".join(str(i) for i in dynkin)
 
+        if latex is None:
+            latex = to_tex(label)
+
         self.symmetry = symmetry
         self.history = history
         self.charges = charges
@@ -483,7 +491,7 @@ class Field:
                 return rf"\tilde{{{self.latex}}}"
 
             # add dagger for singlets
-            return self.latex + r"^{\dagger}"
+            return "{" + self.latex + r"^{\dagger}}"
 
         return self.latex
 
@@ -896,9 +904,9 @@ class Operator(tensor.TensMul):
 
         style = {
             "i": isospin_indices,
-            # "c": list(ascii_lowercase[:4]),
-            # "u": copy(utils.TEX_GREEK_LOWERCASE),
-            # "d": copy(utils.DOTTED_TEX_GREEK_LOWERCASE),
+            "c": list(ascii_lowercase[:8]),
+            "u": copy(TEX_GREEK_LOWERCASE),
+            "d": copy(DOTTED_TEX_GREEK_LOWERCASE),
             # "g": list(ascii_lowercase[19:]),
         }
         # extract first non D in field name e.g. H for DDH
@@ -916,8 +924,28 @@ class Operator(tensor.TensMul):
 
         latex_epsilons = []
         for epsilon in self.epsilons:
-            eps_indices = sorted([index_dict[-idx] for idx in epsilon.indices])
-            eps_latex = rf"\epsilon_{{{' '.join(eps_indices)}}}"
+            symb = r"\epsilon"
+            # tread deltas differently
+            if str(epsilon)[0] == "K":
+                symb = r"\delta"
+
+            # If two epsilons contracted, they will have an additional index
+            # that isn't in index_dict, need to add it in manually. For now,
+            # disregard raised and lowered indices for SU(3)
+            eps_indices = []
+            for idx in epsilon.indices:
+                if -idx not in index_dict.keys():
+                    type_ = Index.get_index_labels()[idx.index_type]
+                    breakpoint()
+                    index_string = style[type_].pop(0)
+                    index_dict[-idx] = index_string
+                    index_dict[idx] = index_string
+
+                eps_indices.append(index_dict[-idx])
+
+            eps_indices.sort()
+            # eps_indices = sorted([index_dict[-idx] for idx in epsilon.indices])
+            eps_latex = rf"{symb}_{{{' '.join(eps_indices)}}}"
             latex_epsilons.append(eps_latex)
 
         # add on epsilons
