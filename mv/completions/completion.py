@@ -17,7 +17,7 @@ from mv.tensormethod.contract import (
     invariants,
     contract_su2,
 )
-from utils import flatten, chunks
+from utils import flatten, chunks, factors
 from core import (
     Completion,
     FailedCompletion,
@@ -37,6 +37,7 @@ from copy import deepcopy
 from itertools import permutations, groupby
 from sympy.utilities.iterables import multiset_partitions
 from sympy.tensor.tensor import Tensor
+from sympy import prime
 
 from functools import lru_cache, reduce
 
@@ -635,7 +636,47 @@ def collect_completions(
     return out
 
 
+def prime_registry(sieve):
+    reg = {}
+    counter = 1
+    for k, v in sieve.items():
+        for field in k:
+            if field not in reg:
+                reg[field] = prime(counter)
+                counter += 1
+    return reg
+
+
+def model_registry(completions, registry):
+    reg = {}
+    for k in completions:
+        prod = 1
+        for field in k:
+            prod *= registry[field]
+
+        reg[k] = prod
+
+    return reg
+
+
 def filter_completions(
-    completions: List[Completion], sieve: List[Completion]
-) -> List[Completion]:
-    pass
+    completions: Dict[tuple, List[Completion]], sieve: Dict[tuple, List[Completion]]
+) -> Dict[tuple, List[Completion]]:
+    # establish prime registry
+    registry = prime_registry({**sieve, **completions})
+
+    # construct dictionaries mapping tuples of field info to integers (products
+    # of primes)
+    completions_model_registry = model_registry(completions, registry)
+    sieve_model_registry = model_registry(sieve, registry)
+
+    unique = {}
+    for k, v in completions_model_registry.items():
+        factors_ = factors(v)
+        for ref_val in sieve_model_registry.values():
+            if ref_val in factors_:
+                break
+        else:  # no break => unique model
+            unique[k] = completions[k]
+
+    return unique

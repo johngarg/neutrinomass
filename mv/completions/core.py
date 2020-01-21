@@ -14,13 +14,6 @@ class FieldType(IndexedField):
     def __new__(cls, *args, **kwargs):
         return super(FieldType, cls).__new__(cls, *args, **kwargs)
 
-    # def __mul__(self, other):
-    #     if isinstance(other, self.__class__):
-    #         return TensorProduct(self, other)
-    #     elif isinstance(other, TensorProduct):
-    #         return TensorProduct(self, *other.tensors)
-    #
-
     def lower_su2(self):
         undotted, dotted, _, isospin, _ = self.indices_by_type.values()
         epsilons = []

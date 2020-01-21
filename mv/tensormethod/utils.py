@@ -1,5 +1,35 @@
 #!/usr/bin/env python
 
+import string
+
+TEX_GREEK_LOWERCASE = [
+    r"\alpha",
+    r"\beta",
+    r"\gamma",
+    r"\delta",
+    r"\epsilon",
+    r"\zeta",
+    r"\eta",
+    r"\theta",
+    r"\iota",
+    r"\kappa",
+    r"\lambda",
+    r"\mu",
+    r"\nu",
+    r"\xi",
+    r"\pi",
+    r"\rho",
+    r"\sigma",
+    r"\tau",
+    r"\upsilon",
+    r"\phi",
+    r"\chi",
+    r"\psi",
+    r"\omega",
+]
+
+DOTTED_TEX_GREEK_LOWERCASE = [rf"\dotted{{{a}}}" for a in TEX_GREEK_LOWERCASE]
+
 
 def is_deriv_in(coll: list):
     """Check to see if there are any derivatives acting on fields in `coll`."""
@@ -56,30 +86,12 @@ def repr_tree(expr, string="", spaces=2):
     return string
 
 
-TEX_GREEK_LOWERCASE = [
-    r"\alpha",
-    r"\kappa",
-    r"\upsilon",
-    r"\beta",
-    r"\zeta",
-    r"\lambda",
-    r"\pi",
-    r"\phi",
-    r"\gamma",
-    r"\eta",
-    r"\mu",
-    r"\rho",
-    r"\chi",
-    r"\delta",
-    r"\theta",
-    r"\nu",
-    r"\sigma",
-    r"\psi",
-    r"\epsilon",
-    r"\iota",
-    r"\xi",
-    r"\tau",
-    r"\omega",
-]
+def to_tex(label):
+    char = str(label)[0]
 
-DOTTED_TEX_GREEK_LOWERCASE = [rf"\dotted{{{a}}}" for a in TEX_GREEK_LOWERCASE]
+    if char in string.ascii_letters:
+        return label
+
+    greek = "αβγδεζηθικλμνξπρστυφχψω"
+    d = dict(zip(greek, TEX_GREEK_LOWERCASE))
+    return d[char]
