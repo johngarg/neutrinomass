@@ -28,7 +28,7 @@ TEX_GREEK_LOWERCASE = [
     r"\omega",
 ]
 
-DOTTED_TEX_GREEK_LOWERCASE = [rf"\dotted{{{a}}}" for a in TEX_GREEK_LOWERCASE]
+DOTTED_TEX_GREEK_LOWERCASE = [rf"\dot{{{a}}}" for a in TEX_GREEK_LOWERCASE]
 
 
 def is_deriv_in(coll: list):

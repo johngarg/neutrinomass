@@ -901,7 +901,7 @@ class Operator(tensor.TensMul):
     def __mul__(self, other):
         return Operator(*self.tensors, other)
 
-    def latex(self):
+    def latex(self, ignore=None):
         # ordering of fields within the oeprator and style of indices
         field_ordering = ["L", "e", "Q", "u", "d", "H"]
         # indices i, j, ... q used for isospin
@@ -915,6 +915,12 @@ class Operator(tensor.TensMul):
             "d": copy(DOTTED_TEX_GREEK_LOWERCASE),
             # "g": list(ascii_lowercase[19:]),
         }
+
+        # remove styles you don't care about
+        if ignore is not None:
+            for char in ignore:
+                style.pop(char)
+
         # extract first non D in field name e.g. H for DDH
         first_non_deriv = lambda f: str(f).split("D")[-1][0]
         order_func = lambda f: field_ordering.index(first_non_deriv(f))
@@ -942,7 +948,6 @@ class Operator(tensor.TensMul):
             for idx in epsilon.indices:
                 if -idx not in index_dict.keys():
                     type_ = Index.get_index_labels()[idx.index_type]
-                    breakpoint()
                     index_string = style[type_].pop(0)
                     index_dict[-idx] = index_string
                     index_dict[idx] = index_string

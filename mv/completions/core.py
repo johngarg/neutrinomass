@@ -283,12 +283,26 @@ class Completion:
         pass
 
     def exotic_info(self):
-        exotics = sorted(
-            (f.field.dynkin, tuple(sorted(f.field.charges.items())))
-            for f in self.exotics
-        )
+        info = set()
+        for e in self.exotics:
+            # normalise hypercharge to be positive
+            if e.y < 0:
+                charges = sorted(e.conj.charges.items())
+                sm = e.conj.sm_irrep
+            else:
+                charges = sorted(e.charges.items())
+                sm = e.sm_irrep
 
-        return tuple(exotics)
+            if e.is_fermion:
+                lorentz = "F"
+            elif e.is_scalar:
+                lorentz = "S"
+            else:
+                raise ValueError("Unrecognised exotic field type.")
+
+            info.add((lorentz,) + sm + tuple(charges))
+
+        return tuple(sorted(info))
 
     def exotic_fields(self):
         return set([e.field for e in self.exotics])
@@ -302,13 +316,13 @@ def cons_completion_field(indexed_field: IndexedField) -> FieldType:
 
     if indexed_field.is_fermion:
         if indexed_field.is_real_sm_irrep:
-            return MajoranaFermion(label, indices, latex=latex)
+            return MajoranaFermion(label, indices, charges=charges, latex=latex)
 
         return VectorLikeDiracFermion(label, indices, charges=charges, latex=latex)
 
     if indexed_field.is_scalar:
         if indexed_field.is_real_sm_irrep:
-            return RealScalar(label, indices, latex=latex)
+            return RealScalar(label, indices, charges=charges, latex=latex)
 
         return ComplexScalar(label, indices, charges=charges, latex=latex)
 

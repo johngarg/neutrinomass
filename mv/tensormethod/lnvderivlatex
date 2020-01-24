@@ -6,30 +6,32 @@ from mv.tensormethod.contract import invariants
 from mv.tensormethod.parse_hs import parse, H9_LNV_NF3, H11_LNV_NF3
 from mv.tensormethod.utils import is_linear_in_deriv
 
+from string import ascii_lowercase
+
 # write out data as pickled dictionary of string label to Operator
 save_data = True
 
-# parsed_hs = parse(H9_LNV_NF3)
-parsed_hs = parse(H11_LNV_NF3)
+parsed_hs = parse(H9_LNV_NF3)
+# parsed_hs = parse(H11_LNV_NF3)
 
 out_dict = {}
 counter = 1
 for fields in parsed_hs:
-    breakpoint()
     if not is_linear_in_deriv(fields):
-        print("Not linear")
+        # print("Not linear")
         continue
 
     invs = invariants(*fields)
     if not invs:
-        print("No invariants")
+        # print("No invariants")
         continue
 
     print(f"Invariants for operator {counter}:")
-    for inv in invs:
-        print(f"{counter} & {inv.latex()}")
+    for i, inv in enumerate(invs):
+        label = str(counter) + (ascii_lowercase[i] if len(invs) > 1 else "")
+        print(f"${label}$ & ${inv.latex(ignore=['c', 'u', 'd'])}$ \\\\")
         if save_data:
-            out_dict[str(counter)] = inv.pickle_form()
+            out_dict[label] = inv.pickle_form()
 
     print("\n")
     counter += 1

@@ -72,7 +72,7 @@ def D(field, dynkin):
     rest = {"charges": field.charges, "comm": field.comm}
 
     new_field = Field(symbol, dynkin=new_field_dynkin, **rest)
-    new_field.latex = f"(D{strip_parens(field.latex)})"
+    new_field.latex = f"(D{strip_parens(field.get_latex())})"
     return new_field
 
 

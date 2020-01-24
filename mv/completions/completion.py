@@ -484,6 +484,8 @@ def build_term(
         return Leaf(None, None)
 
     exotic_field, term, epsilons, new_epsilons = try_contract
+    # if len(exotic_field.charges) == 1:
+    #     breakpoint()
     lorentz_epsilons += new_epsilons
 
     exotic_edge = get_connecting_edge(graph, nodes)
@@ -522,7 +524,7 @@ def reduced_row(row, func):
 def cons_completion(
     partition, epsilons, graph, filter_function=None
 ) -> Tuple[str, tuple]:
-    """Work in progress...
+    """
 
     ``filter_function`` is a dyadic function that takes an IndexedField and an
     interaction operator and returns a bool. Implement no vectors in completions
@@ -600,10 +602,7 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
     graph = partition["graph"]
     op = partition["operator"]
 
-    try:
-        args = cons_completion(partition=part, epsilons=epsilons, graph=graph)
-    except:
-        breakpoint()
+    args = cons_completion(partition=part, epsilons=epsilons, graph=graph)
     if args is not None:
         terms, edge_dict, field_dict, lorentz_epsilons = args
     else:
@@ -642,7 +641,13 @@ def collect_completions(
     return out
 
 
-def prime_registry(sieve):
+def prime_registry(sieve: Dict[tuple, List[Completion]]) -> Dict[tuple, int]:
+    """Ascribe a unique prime number to each exotic appearing in `sieve`.
+
+    `sieve` is a dictionary mapping a tuple of field information to a list of
+    completions.
+
+    """
     reg = {}
     counter = 1
     for k, v in sieve.items():
@@ -653,7 +658,8 @@ def prime_registry(sieve):
     return reg
 
 
-def model_registry(completions, registry):
+def model_registry(completions, registry) -> Dict[tuple, int]:
+    """Assigns an unique integer to every model by multiplying primes of fields."""
     reg = {}
     for k in completions:
         prod = 1

@@ -120,7 +120,7 @@ for fields, num in BL_LIST.items():
 
     print(f"Invariants for operator {num}:")
     for label, inv in inv_labels:
-        print(f"{label} & {inv.latex()}")
+        print(f"{label} & {inv.latex(ignore=['c', 'u', 'd'])}")
         if save_data:
             out_dict[label] = inv.pickle_form()
     print("\n")
