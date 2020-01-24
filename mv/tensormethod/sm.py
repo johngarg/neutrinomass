@@ -37,6 +37,14 @@ Gb.latex = r"\bar{G}"
 Wb.latex = r"\bar{W}"
 Bb.latex = r"\bar{B}"
 
+# Add baryon number
+L.charges["3b"] = 0
+Q.charges["3b"] = 1
+H.charges["3b"] = 0
+eb.charges["3b"] = 0
+ub.charges["3b"] = -1
+db.charges["3b"] = -1
+
 
 def D(field, dynkin):
     """A derivative.

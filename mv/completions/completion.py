@@ -17,8 +17,8 @@ from mv.tensormethod.contract import (
     invariants,
     contract_su2,
 )
-from utils import flatten, chunks, factors
-from core import (
+from mv.completions.utils import flatten, chunks, factors
+from mv.completions.core import (
     Completion,
     FailedCompletion,
     EffectiveOperator,
@@ -28,8 +28,8 @@ from core import (
     MajoranaFermion,
     ComplexScalar,
 )
-from operators import EFF_OPERATORS
-from topologies import get_topology_data, Leaf
+from mv.completions.operators import EFF_OPERATORS
+from mv.completions.topologies import get_topology_data, Leaf
 from typing import Tuple, List, Dict, Union
 import networkx as nx
 from copy import deepcopy
@@ -332,7 +332,13 @@ def contract(
     # construct exotic field
     # deal with charges
     exotic_charges = {}
-    pairs = map(lambda x: x.charges.items(), fields)
+    pairs = list(map(lambda x: x.charges.items(), fields))
+
+    # ensure no fields have missing or extra charges
+    fst, *rst = pairs
+    for pair in rst:
+        assert len(pair) == len(fst)
+
     for n_pairs in zip(*pairs):
         # fish out key
         (k, _), *rst = n_pairs

@@ -77,7 +77,7 @@ class ComplexScalar(FieldType):
 
 
 class RealScalar(FieldType):
-    def __init__(self, label, indices, latex=None, **kwargs):
+    def __init__(self, label, indices, charges=None, latex=None, **kwargs):
         if isinstance(indices, list):
             indices = " ".join(str(i) for i in indices)
 
@@ -85,7 +85,7 @@ class RealScalar(FieldType):
             self,
             label=label,
             indices=indices,
-            charges=None,
+            charges=charges,
             is_conj=False,
             symmetry=None,
             comm=BOSE,
@@ -97,7 +97,7 @@ class RealScalar(FieldType):
 
 
 class MajoranaFermion(FieldType):
-    def __init__(self, label, indices, latex=None, **kwargs):
+    def __init__(self, label, indices, charges=None, latex=None, **kwargs):
         if isinstance(indices, list):
             indices = " ".join(str(i) for i in indices)
 
@@ -105,7 +105,7 @@ class MajoranaFermion(FieldType):
             self,
             label=label,
             indices=indices,
-            charges=None,
+            charges=charges,
             is_conj=False,
             symmetry=None,
             comm=FERMI,

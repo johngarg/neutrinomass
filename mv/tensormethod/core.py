@@ -29,6 +29,8 @@ tensor.TensorManager.set_comms(
     (FERMI, FERMI, 1), (BOSE, BOSE, 0), (FERMI, BOSE, 0), (BOSE, FERMI, 0)
 )
 
+CHARGES = ("y", "3b")
+
 
 class History(NamedTuple):
     """A structure representing the left and right parents of the result of a binary
@@ -250,8 +252,12 @@ class Field:
         """
 
         # initialise charges
+        default_charges = {k: 0 for k in CHARGES}  # {"y": 0, "3b": 0}
         if charges is None:
-            charges = {"y": 0}
+            charges = default_charges
+        else:
+            # Will fill in absent keys with default values
+            charges = {**default_charges, **charges}
 
         # make sure charges contains hypercharge
         assert "y" in charges.keys()
@@ -549,11 +555,11 @@ class IndexedField(tensor.Tensor, Field):
 
         """
         # initialise charges again (in case initialised independently)
-        if charges is None:
-            charges = {"y": 0}
+        # if charges is None:
+        #     charges = {"y": 0, "3b": 0}
 
         # make sure charges contains hypercharge
-        assert "y" in charges
+        # assert "y" in charges
 
         Field.__init__(
             self,
