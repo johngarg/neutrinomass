@@ -19,10 +19,19 @@ filename = "../operators.p"
 with open(filename, "rb") as f:
     pickle_form_ops = pickle.load(f)
 
-# define oeprators
+
+filename = "../deriv_operators.p"
+with open(filename, "rb") as f:
+    pickle_form_deriv_ops = pickle.load(f)
+
+# define operators
 EFF_OPERATORS = {}
 for k, op in pickle_form_ops.items():
     EFF_OPERATORS[k] = EffectiveOperator(k, Operator.from_pickle_form(op))
+
+DERIV_EFF_OPERATORS = {}
+for k, op in pickle_form_deriv_ops.items():
+    DERIV_EFF_OPERATORS[k] = EffectiveOperator(k, Operator.from_pickle_form(op))
 
 # add additional operators not in BL/dGJ list
 
