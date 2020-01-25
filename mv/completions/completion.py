@@ -28,7 +28,6 @@ from mv.completions.core import (
     MajoranaFermion,
     ComplexScalar,
 )
-from mv.completions.operators import EFF_OPERATORS
 from mv.completions.topologies import get_topology_data, Leaf
 from typing import Tuple, List, Dict, Union
 import networkx as nx
