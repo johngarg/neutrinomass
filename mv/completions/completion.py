@@ -624,11 +624,6 @@ def operator_completions(operator) -> List[Completion]:
     return good_completions
 
 
-def lnv_completions(operator_name: str) -> List[Completion]:
-    op = EFF_OPERATORS[operator_name]
-    return operator_completions(op)
-
-
 def collect_completions(
     completions: List[Completion]
 ) -> Dict["FieldContent", Completion]:
