@@ -669,7 +669,8 @@ class IndexedField(tensor.Tensor, Field):
         return super(self.__class__, self).__hash__()
 
     def __mul__(self, other):
-        return Operator(self, other)
+        prod = normalise_operator_input(self, other)
+        return Operator(*prod)
 
     def __add__(self, other):
         pass
@@ -880,7 +881,8 @@ class Operator(tensor.TensMul):
                 replacements.append((i, new_index))
 
         tensors = [t.fun_eval(*replacements) for t in self.tensors]
-        return Operator(*tensors)
+        prod = normalise_operator_input(*tensors)
+        return Operator(*prod)
 
     @property
     def indices_by_type(self):
@@ -899,11 +901,12 @@ class Operator(tensor.TensMul):
 
     # Always multiply invariant symbols on the right
     def __mul__(self, other):
-        return Operator(*self.tensors, other)
+        prod = normalise_operator_input(*self.tensors, other)
+        return Operator(*prod)
 
     def latex(self, ignore=None):
         # ordering of fields within the oeprator and style of indices
-        field_ordering = ["L", "e", "Q", "u", "d", "H"]
+        field_ordering = ["L", "e", "Q", "u", "d", "H", "B", "W", "G"]
         # indices i, j, ... q used for isospin
         isospin_indices = list(ascii_lowercase[8:])
         isospin_indices.remove("o")  # remove o because it's unsightly
@@ -1078,3 +1081,22 @@ def is_invariant_symbol(tensor):
         or str_tensor.startswith("KD")
         or str_tensor.startswith("metric")
     )
+
+
+def normalise_operator_input(*args):
+    """Input to Operator may contain products of epsilons which are sympy TensMul
+    objects. This causes problems since I don't want to define products of
+    epsilons or deltas to be operators.
+
+    This function normalises the input to the Operator constructor to avoid
+    problems.
+
+    """
+    new_product = []
+    for fac in args:
+        if isinstance(fac, tensor.TensMul):
+            new_product += list(fac.args)
+        else:
+            new_product.append(fac)
+
+    return sorted(new_product, key=type)
