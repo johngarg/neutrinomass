@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 
 from mv.completions.completion import *
-from mv.tensormethod.sm import Q
+from mv.completions.operators import EFF_OPERATORS
+
+
+def lnv_completions(op):
+    return operator_completions(EFF_OPERATORS[op])
+
 
 # completions of dimension 5 and 7 operators
 sieve = collect_completions(lnv_completions("1"))
