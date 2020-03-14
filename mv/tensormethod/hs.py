@@ -16,6 +16,90 @@ H, Hd, L, Ld, Q, Qd = symbols("H Hd L Ld Q Qd", cls=Function)
 eb, ebd, ub, ubd, db, dbd = symbols("eb ebd ub ubd db dbd", cls=Function)
 G, Gb, W, Wb, B, Bb = symbols("G Gb W Wb B Bb", cls=Function)
 
+H6 = (
+    (Nf ** 2 * db(X) ** 2 * dbd(X) ** 2) / 2
+    + (Nf ** 4 * db(X) ** 2 * dbd(X) ** 2) / 2
+    + Nf ** 4 * db(X) * dbd(X) * eb(X) * ebd(X)
+    + (Nf ** 2 * eb(X) ** 2 * ebd(X) ** 2) / 4
+    + -(Nf ** 3 * eb(X) ** 2 * ebd(X) ** 2) / 2
+    + (Nf ** 4 * eb(X) ** 2 * ebd(X) ** 2) / 4
+    + G(X) ** 3
+    + Gb(X) ** 3
+    + B(X) ** 2 * H(X) * Hd(X)
+    + Bb(X) ** 2 * H(X) * Hd(X)
+    + -D * Nf ** 2 * db(X) * dbd(X) * H(X) * Hd(X)
+    + D * Nf ** 2 * eb(X) * ebd(X) * H(X) * Hd(X)
+    + G(X) ** 2 * H(X) * Hd(X)
+    + Gb(X) ** 2 * H(X) * Hd(X)
+    + -2 * D ** 2 * H(X) ** 2 * Hd(X) ** 2
+    + H(X) ** 3 * Hd(X) ** 3
+    + Nf ** 2 * B(X) * ebd(X) * Hd(X) * L(X)
+    + Nf ** 2 * ebd(X) * H(X) * Hd(X) ** 2 * L(X)
+    + -Nf ** 2 * Bb(X) * eb(X) * H(X) * Ld(X)
+    + Nf ** 2 * eb(X) * H(X) ** 2 * Hd(X) * Ld(X)
+    + Nf ** 4 * db(X) * dbd(X) * L(X) * Ld(X)
+    + Nf ** 4 * eb(X) * ebd(X) * L(X) * Ld(X)
+    + -2 * D * Nf ** 2 * H(X) * Hd(X) * L(X) * Ld(X)
+    + (Nf ** 2 * L(X) ** 2 * Ld(X) ** 2) / 2
+    + (Nf ** 4 * L(X) ** 2 * Ld(X) ** 2) / 2
+    + Nf ** 2 * B(X) * dbd(X) * Hd(X) * Q(X)
+    + -Nf ** 2 * dbd(X) * G(X) * Hd(X) * Q(X)
+    + Nf ** 2 * dbd(X) * H(X) * Hd(X) ** 2 * Q(X)
+    + Nf ** 4 * dbd(X) * eb(X) * Ld(X) * Q(X)
+    + (Nf ** 2 * L(X) * Q(X) ** 3) / 3
+    + -(2 * Nf ** 4 * L(X) * Q(X) ** 3) / 3
+    + Nf ** 2 * Bb(X) * db(X) * H(X) * Qd(X)
+    + Nf ** 2 * db(X) * Gb(X) * H(X) * Qd(X)
+    + Nf ** 2 * db(X) * H(X) ** 2 * Hd(X) * Qd(X)
+    + -Nf ** 4 * db(X) * ebd(X) * L(X) * Qd(X)
+    + 2 * Nf ** 4 * db(X) * dbd(X) * Q(X) * Qd(X)
+    + Nf ** 4 * eb(X) * ebd(X) * Q(X) * Qd(X)
+    + -2 * D * Nf ** 2 * H(X) * Hd(X) * Q(X) * Qd(X)
+    + 2 * Nf ** 4 * L(X) * Ld(X) * Q(X) * Qd(X)
+    + Nf ** 2 * Q(X) ** 2 * Qd(X) ** 2
+    + Nf ** 4 * Q(X) ** 2 * Qd(X) ** 2
+    + -(Nf ** 2 * Ld(X) * Qd(X) ** 3) / 3
+    + (2 * Nf ** 4 * Ld(X) * Qd(X) ** 3) / 3
+    + D * Nf ** 2 * dbd(X) * Hd(X) ** 2 * ub(X)
+    + Nf ** 4 * db(X) * L(X) * Q(X) * ub(X)
+    + -(Nf ** 3 * eb(X) * Q(X) ** 2 * ub(X)) / 2
+    + (Nf ** 4 * eb(X) * Q(X) ** 2 * ub(X)) / 2
+    + Nf ** 2 * Bb(X) * Hd(X) * Qd(X) * ub(X)
+    + Nf ** 2 * Gb(X) * Hd(X) * Qd(X) * ub(X)
+    + -Nf ** 2 * H(X) * Hd(X) ** 2 * Qd(X) * ub(X)
+    + 2 * Nf ** 4 * eb(X) * Ld(X) * Qd(X) * ub(X)
+    + 2 * Nf ** 4 * db(X) * Qd(X) ** 2 * ub(X)
+    + Nf ** 4 * db(X) * eb(X) * ub(X) ** 2
+    + -D * Nf ** 2 * db(X) * H(X) ** 2 * ubd(X)
+    + Nf ** 2 * B(X) * H(X) * Q(X) * ubd(X)
+    + Nf ** 2 * G(X) * H(X) * Q(X) * ubd(X)
+    + Nf ** 2 * H(X) ** 2 * Hd(X) * Q(X) * ubd(X)
+    + -2 * Nf ** 4 * ebd(X) * L(X) * Q(X) * ubd(X)
+    + 2 * Nf ** 4 * dbd(X) * Q(X) ** 2 * ubd(X)
+    + Nf ** 4 * dbd(X) * Ld(X) * Qd(X) * ubd(X)
+    + -(Nf ** 3 * ebd(X) * Qd(X) ** 2 * ubd(X)) / 2
+    + (Nf ** 4 * ebd(X) * Qd(X) ** 2 * ubd(X)) / 2
+    + 2 * Nf ** 4 * db(X) * dbd(X) * ub(X) * ubd(X)
+    + -Nf ** 4 * eb(X) * ebd(X) * ub(X) * ubd(X)
+    + D * Nf ** 2 * H(X) * Hd(X) * ub(X) * ubd(X)
+    + Nf ** 4 * L(X) * Ld(X) * ub(X) * ubd(X)
+    + -2 * Nf ** 4 * Q(X) * Qd(X) * ub(X) * ubd(X)
+    + Nf ** 4 * dbd(X) * ebd(X) * ubd(X) ** 2
+    + (Nf ** 2 * ub(X) ** 2 * ubd(X) ** 2) / 2
+    + (Nf ** 4 * ub(X) ** 2 * ubd(X) ** 2) / 2
+    + -B(X) * H(X) * Hd(X) * W(X)
+    + Nf ** 2 * ebd(X) * Hd(X) * L(X) * W(X)
+    + Nf ** 2 * dbd(X) * Hd(X) * Q(X) * W(X)
+    + Nf ** 2 * H(X) * Q(X) * ubd(X) * W(X)
+    + -H(X) * Hd(X) * W(X) ** 2
+    + W(X) ** 3
+    + Bb(X) * H(X) * Hd(X) * Wb(X)
+    + Nf ** 2 * eb(X) * H(X) * Ld(X) * Wb(X)
+    + Nf ** 2 * db(X) * H(X) * Qd(X) * Wb(X)
+    + -Nf ** 2 * Hd(X) * Qd(X) * ub(X) * Wb(X)
+    + H(X) * Hd(X) * Wb(X) ** 2
+    + Wb(X) ** 3
+)
 
 H7_LNV = (
     Nf ** 2 * D * ebd(X) * H(X) ** 3 * L(X)

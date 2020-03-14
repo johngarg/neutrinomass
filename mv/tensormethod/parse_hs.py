@@ -14,6 +14,7 @@ from mv.tensormethod.contract import invariants
 from mv.tensormethod.hs import X
 
 # plug in 3 fermion generations
+H6_NF3 = hs.H6.xreplace({hs.Nf: 3})
 H7_LNV_NF3 = hs.H7_LNV.xreplace({hs.Nf: 3})
 H9_LNV_NF3 = hs.H9_LNV.xreplace({hs.Nf: 3})
 H11_LNV_NF3 = hs.H11_LNV.xreplace({hs.Nf: 3})

@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
-"""Functions to multiply tensors by epsilons and deltas."""
+"""Functions to multiply tensors by epsilons and deltas.
+
+"""
 
 import itertools
 from functools import reduce

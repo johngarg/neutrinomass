@@ -3,6 +3,7 @@
 """Script to check that no operators are missing from the numbered list."""
 
 from mv.tensormethod.parse_hs import parse
+from mv.tensormethod.parse_hs import H6_NF3
 from mv.tensormethod.parse_hs import H7_LNV_NF3
 from mv.tensormethod.parse_hs import H9_LNV_NF3
 from mv.tensormethod.parse_hs import H11_LNV_NF3
@@ -19,16 +20,13 @@ def list_invariants(hs):
             print("Skipped!")
             continue
 
-        try:
-            invs = invariants(*fields)
-        except:
-            breakpoint()
+        invs = invariants(*fields)
 
         # flatten list
         for inv in invs:
 
-            if inv.contains_derivative:
-                continue
+            # if inv.contains_derivative:
+            #     continue
 
             bl = inv.BL_classification
             if bl == -1:
