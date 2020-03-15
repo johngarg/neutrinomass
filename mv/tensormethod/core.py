@@ -690,7 +690,16 @@ class IndexedField(tensor.Tensor, Field):
 
     def __hash__(self):
         charges_tuple = tuple(self.charges.items())
-        return hash((self.label, self.dynkin, charges_tuple, self.is_conj, self.comm))
+        return hash(
+            (
+                self.label,
+                tuple(self.indices),
+                self.dynkin,
+                charges_tuple,
+                self.is_conj,
+                self.comm,
+            )
+        )
 
     def __mul__(self, other):
         prod = normalise_operator_input(self, other)
@@ -714,13 +723,7 @@ class IndexedField(tensor.Tensor, Field):
         if not isinstance(other, self.__class__):
             return False
 
-        sd = self._dict.pop("indices")
-        sd["dynkin"] = self.dynkin
-
-        od = other._dict.pop("indices")
-        od["dynkin"] = self.dynkin
-
-        return sd == od
+        return self._dict == other._dict
 
     def __lt__(self, other):
         """An arbitrary way to order indexed fields."""
