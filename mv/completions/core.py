@@ -274,6 +274,18 @@ class Completion:
         self.exotics = exotics
         self.terms = terms
 
+    def __eq__(self, other):
+        if not isinstance(other, Completion):
+            return False
+        return (
+            self.operator == other.operator
+            and self.exotic_info() == other.exotic_info()
+            and self.partition == other.partition
+        )
+
+    def __hash__(self):
+        return hash((self.operator, self.exotic_info(), self.partition))
+
     @property
     def lagrangian(self):
         return Lagrangian(terms=self.terms)
