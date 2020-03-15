@@ -397,7 +397,9 @@ def contract(
     ]
     term = reduce(lambda a, b: a * b, new_epsilons, prod_fields)
     term *= partner
-    assert not term.free_indices
+
+    for free in term.free_indices:
+        assert free.index_type == "Generation"
 
     return exotic_field, term, spectator_epsilons, lorentz_contraction_epsilons
 
@@ -588,7 +590,9 @@ def cons_completion(
             spectator_epsilons.append(e)
 
     prod = reduce(lambda a, b: a * b, contracted_epsilons, prod)
-    assert not prod.free_indices
+
+    for free in prod.free_indices:
+        assert free.index_type == "Generation"
 
     terms.append(prod)
 

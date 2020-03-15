@@ -111,7 +111,8 @@ class Index(tensor.TensorIndex):
             return Index(label=self.label.replace("d", "u"))
 
         # conj does nothing to isospin indices (implicit epsilon)
-        if self.index_type == "Isospin":
+        # conj also does nothing to generation indices
+        if self.index_type == "Isospin" or self.index_type == "Generation":
             return self
 
         # generally lower index (only affects colour here)
@@ -232,6 +233,7 @@ class Field:
         history=None,  # parents
         multiplicity=1,  # number of possibilities
         latex=None,  # base latex representation
+        nf=1,  # number of generations (currently 1 or 3)
         **kwargs,
     ):
         """A representation of a tensor transforming under Lorentz x SM with charges and
@@ -275,6 +277,9 @@ class Field:
         if latex is None:
             latex = to_tex(label)
 
+        if nf != 1 and nf != 3:
+            raise ValueError("Only currently supporting 1 or 3 generations.")
+
         self.symmetry = symmetry
         self.history = history
         self.charges = charges
@@ -284,6 +289,7 @@ class Field:
         self.comm = comm
         self.is_conj = is_conj
         self.latex = latex
+        self.nf = nf
 
     def __call__(self, indices: str) -> "IndexedField":
         """Returns an IndexedField object.
@@ -301,7 +307,11 @@ class Field:
         )
 
         # make sure names of indices are correct (to avoid user confusion)
-        assert_consistent_indices(indices.split(), index_types, (su3_up, su3_down))
+        assert_consistent_indices(
+            [i for i in indices.split() if i[0] != "g"],  # ignore generation indices
+            index_types,
+            (su3_up, su3_down),
+        )
         return IndexedField(
             label=self.label_with_dagger,
             indices=indices,
@@ -480,9 +490,15 @@ class Field:
         label = (
             self.label_with_dagger if not isinstance(self, IndexedField) else self.label
         )
+
+        g = ""
+        if self.nf > 1:
+            g += " "
+            g += str(Index.fresh("g"))
+
         return IndexedField(
             label=label,
-            indices=fresh_indices,
+            indices=fresh_indices + g,
             charges=self.charges,
             is_conj=self.is_conj,
             symmetry=self.symmetry,
@@ -528,7 +544,8 @@ class IndexedField(tensor.Tensor, Field):
         if isinstance(label, tensor.TensorHead):
             tensor_head = label
         else:
-            tensor_head = tensor.tensorhead(label, index_types, sym=symmetry, comm=comm)
+            sym = symmetry + ([[1]] if GENERATION in index_types else [])
+            tensor_head = tensor.tensorhead(label, index_types, sym=sym, comm=comm)
 
         return super(IndexedField, cls).__new__(cls, tensor_head, tensor_indices)
 
@@ -541,6 +558,7 @@ class IndexedField(tensor.Tensor, Field):
         symmetry=None,
         comm=0,
         latex=None,
+        nf=1,
         **kwargs,
     ):
         """Initialises IndexedField object.
@@ -570,6 +588,7 @@ class IndexedField(tensor.Tensor, Field):
             symmetry=symmetry,
             comm=comm,
             latex=latex,
+            nf=nf,
         )
 
         # self.comm = FERMI if self.is_fermion else BOSE
@@ -585,6 +604,7 @@ class IndexedField(tensor.Tensor, Field):
             symmetry=self.symmetry,
             comm=self.comm,
             latex=self.latex,
+            nf=self.nf,
         )
 
     def substitute_indices(self, *indices):
@@ -612,6 +632,7 @@ class IndexedField(tensor.Tensor, Field):
             multiplicity=self.multiplicity,
             comm=self.comm,
             latex=self.latex,
+            nf=self.nf,
         )
 
     @property
@@ -632,6 +653,7 @@ class IndexedField(tensor.Tensor, Field):
             symmetry=self.symmetry,
             latex=self.latex,
             comm=self.comm,
+            nf=self.nf,
         )
 
     @property
@@ -663,10 +685,12 @@ class IndexedField(tensor.Tensor, Field):
             "symmetry": self.symmetry,
             "comm": self.comm,
             "latex": self.latex,
+            "nf": self.nf,
         }
 
     def __hash__(self):
-        return super(self.__class__, self).__hash__()
+        charges_tuple = tuple(self.charges.items())
+        return hash((self.label, self.dynkin, charges_tuple, self.is_conj, self.comm))
 
     def __mul__(self, other):
         prod = normalise_operator_input(self, other)
@@ -689,7 +713,14 @@ class IndexedField(tensor.Tensor, Field):
     def __eq__(self, other):
         if not isinstance(other, self.__class__):
             return False
-        return self._dict == other._dict
+
+        sd = self._dict.pop("indices")
+        sd["dynkin"] = self.dynkin
+
+        od = other._dict.pop("indices")
+        od["dynkin"] = self.dynkin
+
+        return sd == od
 
     def __lt__(self, other):
         """An arbitrary way to order indexed fields."""
@@ -1006,6 +1037,10 @@ def get_dynkin(indices: Union[str, Iterable[Index]]):
 
     for i in indices:
         idx = Index(i)
+
+        if idx.index_type == "Generation":
+            continue
+
         dynkin[idx.index_type][idx.is_up] += 1
 
     flat_dynkin = flatten(map(lambda x: list(x.values()), dynkin.values()))
