@@ -7,12 +7,14 @@ from mv.tensormethod.core import Field, FERMI, BOSE
 from mv.tensormethod.lnv import BL_LIST
 from mv.tensormethod.utils import strip_parens
 
+NF = 3
+
 # fermions
-L = Field("L", dynkin="10001", charges={"y": Rational("-1/2")}, comm=FERMI)
-Q = Field("Q", dynkin="10101", charges={"y": Rational("1/6")}, comm=FERMI)
-eb = Field("eb", dynkin="10000", charges={"y": Rational("1")}, comm=FERMI)
-ub = Field("ub", dynkin="10010", charges={"y": Rational("-2/3")}, comm=FERMI)
-db = Field("db", dynkin="10010", charges={"y": Rational("1/3")}, comm=FERMI)
+L = Field("L", dynkin="10001", charges={"y": Rational("-1/2")}, comm=FERMI, nf=NF)
+Q = Field("Q", dynkin="10101", charges={"y": Rational("1/6")}, comm=FERMI, nf=NF)
+eb = Field("eb", dynkin="10000", charges={"y": Rational("1")}, comm=FERMI, nf=NF)
+ub = Field("ub", dynkin="10010", charges={"y": Rational("-2/3")}, comm=FERMI, nf=NF)
+db = Field("db", dynkin="10010", charges={"y": Rational("1/3")}, comm=FERMI, nf=NF)
 
 # bosons
 H = Field("H", dynkin="00001", charges={"y": Rational("1/2")}, comm=BOSE)

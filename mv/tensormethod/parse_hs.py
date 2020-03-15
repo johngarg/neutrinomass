@@ -136,20 +136,15 @@ def no_numbers(expr):
 
 
 def deriv_possibilities(field, order):
-    if order <= 0:
+    if order < 1:
         return [field]
 
-    if not field.is_fermion:
-        # Gauge boson or Higgs. Only allowed derivatives acting on gauge
-        # bosons must have no indices contracted, right? Also true of Higgs
-        u, d = field.lorentz_irrep
-        u += 1
-        d += 1
-        new_dynkin = str(u) + str(d)
-        return deriv_possibilities(sm.D(field, new_dynkin), order - 1)
+    if field.is_fermion:
+        deltas = [(1, 1), (-1, 1), (1, -1)]
+    else:
+        deltas = [(1, 1), (-1, -1)]
 
     dynkin_options = []
-    deltas = [(1, 1), (-1, 1), (1, -1)]
     for delta_u, delta_d in deltas:
         u, d = field.lorentz_irrep
         sum_u = delta_u + u
