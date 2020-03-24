@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 from mv.tensormethod.core import Index, delta, eps
 

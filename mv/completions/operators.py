@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import pickle
+import os
 
 from functools import reduce
 
@@ -15,13 +16,10 @@ def prod(lst):
 
 
 # read in pickled data from tensormethod script lnvlatex
-filename = "../operators.p"
-with open(filename, "rb") as f:
+with open(os.path.join(os.path.dirname(__file__), "operators.p"), "rb") as f:
     pickle_form_ops = pickle.load(f)
 
-
-filename = "../deriv_operators.p"
-with open(filename, "rb") as f:
+with open(os.path.join(os.path.dirname(__file__), "deriv_operators.p"), "rb") as f:
     pickle_form_deriv_ops = pickle.load(f)
 
 # define operators
