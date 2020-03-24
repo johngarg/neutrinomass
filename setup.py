@@ -29,7 +29,7 @@ with open(path.join(here, "README.org"), encoding="utf-8") as f:
 
 setup(
     name="mv",
-    description="Example code behind arXiv:190x.xxxxx.",
+    description="Example code behind arXiv:20xx.xxxxx.",
     long_description=long_description,
     author="John Gargalionis",
     author_email="garj@student.unimelb.edu.au",
@@ -46,4 +46,5 @@ setup(
     tests_require=["pytest"],
     package_data={},
     cmdclass={"test": PyTest},
+    include_package_data=True,
 )

@@ -1,0 +1,2 @@
+include mv/completions/operators.p
+include mv/completions/deriv_operators.p
