@@ -2,6 +2,8 @@
 
 """Core classes and functions for completions code."""
 
+from typing import Dict
+
 from functools import reduce
 
 from mv.tensormethod import IndexedField
@@ -294,8 +296,8 @@ class Completion:
     def diagram(self):
         pass
 
-    def exotic_info(self):
-        info = set()
+    def exotic_info(self) -> Dict[FieldType, tuple]:
+        info = {}
         for e in self.exotics:
             # normalise hypercharge to be positive
             if e.y < 0:
@@ -312,9 +314,9 @@ class Completion:
             else:
                 raise ValueError("Unrecognised exotic field type.")
 
-            info.add((lorentz,) + sm + tuple(charges))
+            info[e] = (lorentz,) + sm + tuple(charges)
 
-        return tuple(sorted(info))
+        return info
 
     def exotic_fields(self):
         return set([e.field for e in self.exotics])

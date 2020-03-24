@@ -2,7 +2,7 @@
 
 
 from collections import defaultdict
-from copy import copy
+from copy import copy, deepcopy
 from itertools import groupby
 from string import ascii_lowercase
 from typing import Iterable
@@ -543,6 +543,7 @@ class IndexedField(tensor.Tensor, Field):
         index_types = [i.tensor_index_type for i in tensor_indices]
         if isinstance(label, tensor.TensorHead):
             tensor_head = label
+            label = str(label.args[0])
         else:
             sym = symmetry + ([[1]] if GENERATION in index_types else [])
             tensor_head = tensor.tensorhead(label, index_types, sym=sym, comm=comm)
@@ -578,6 +579,9 @@ class IndexedField(tensor.Tensor, Field):
 
         # make sure charges contains hypercharge
         # assert "y" in charges
+
+        if isinstance(label, tensor.TensorHead):
+            label = str(label.args[0])
 
         Field.__init__(
             self,
@@ -879,6 +883,10 @@ class Operator(tensor.TensMul):
                 out[k] = flatten([f.indices for f in g])
 
         return out
+
+    @property
+    def safe_nocoeff(self):
+        return self.nocoeff if not isinstance(self, Zero) else 0
 
     def simplify(self, fill=False):
         if fill:

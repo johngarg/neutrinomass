@@ -17,7 +17,14 @@ from mv.tensormethod.contract import (
     invariants,
     contract_su2,
 )
-from mv.completions.utils import flatten, chunks, factors
+from mv.tensormethod.utils import safe_nocoeff
+from mv.completions.utils import (
+    flatten,
+    chunks,
+    factors,
+    remove_equivalent,
+    multiple_replace,
+)
 from mv.completions.core import (
     Completion,
     FailedCompletion,
@@ -39,6 +46,7 @@ from sympy.tensor.tensor import Tensor
 from sympy import prime
 
 from functools import lru_cache, reduce
+import re
 
 
 @lru_cache(maxsize=None)
@@ -188,19 +196,7 @@ def remove_isomorphic(partitions: List[dict]) -> List[dict]:
     isomorphic graphs to reduce double-ups of completions.
 
     """
-    parts_copy = deepcopy(partitions)
-
-    i = 0
-    while i < len(parts_copy) - 1:
-        j = i + 1
-        while j <= len(parts_copy) - 1:
-            if are_equivalent_partitions(parts_copy[i], parts_copy[j]):
-                parts_copy.pop(j)
-            else:
-                j += 1
-        i += 1
-
-    return parts_copy
+    return remove_equivalent(partitions, are_equivalent_partitions)
 
 
 def _fix_su2_indices(free_indices: List[Index]) -> Tuple[list, list]:
@@ -627,13 +623,90 @@ def operator_completions(operator) -> List[Completion]:
     return good_completions
 
 
-def collect_completions(
-    completions: List[Completion]
-) -> Dict["FieldContent", Completion]:
+def compare_terms(comp1: Completion, comp2: Completion) -> Dict[str, str]:
+    """Returns a dictionary representing the field relabellings that would need to
+    be applied to the terms of comp1 to make it equivalent to comp2. This
+    includes the identity remapping. That is, if the terms of comp1 are the same
+    as the terms in comp2, the function returns a dictionary like
+
+       {"φ": "φ", "η": "η", ...}
+
+    """
+    # make sure field content is the same
+    if set(comp1.exotic_info().values()) != set(comp2.exotic_info().values()):
+        return {}
+
+    # cannot be equivalent
+    if len(comp1.terms) != len(comp2.terms):
+        return {}
+
+    # qnumbers -> label
+    rev_map2 = {
+        qnumbers: field.label for field, qnumbers in comp2.exotic_info().items()
+    }
+    remapping = {
+        rev_map2[qnumbers]: field.label
+        for field, qnumbers in comp1.exotic_info().items()
+    }
+
+    new_terms = set()
+    for term in comp1.terms:
+        for k, v in remapping.items():
+            simple = term.simplify()
+            s = str(safe_nocoeff(simple))
+            s = multiple_replace(remapping, s)
+            # remove generation indices in comparison
+            s = re.sub(r"g[0-9]+_", "g_", s)
+            # remove negative signs on indices
+            s = re.sub(r"-", "", s)
+            ss = tuple(sorted(s.split("*")))
+            new_terms.add(ss)
+
+    comp2_strs = []
+    for term in comp2.terms:
+        simple = term.simplify()
+        s = str(safe_nocoeff(simple))
+        comp2_strs.append(s)
+
+    comp2_strs = [re.sub(r"g[0-9]+_", "g_", s) for s in comp2_strs]
+    comp2_strs = [re.sub(r"-", "", s) for s in comp2_strs]
+    comp2_tups = [tuple(sorted(s.split("*"))) for s in comp2_strs]
+
+    if new_terms == set(comp2_tups):
+        return remapping
+
+    # otherwise, no equivalence, return empty dict
+    return {}
+
+
+def are_equivalent_completions(comp1: Completion, comp2: Completion) -> bool:
+    """Checks to see if the Lagrangian terms describing two completions are
+    equivalent.
+
+    Two completions are equivalent if their Lagrangian terms in canonical form
+    are the same up to field relabellings.
+
+    """
+    return bool(compare_terms(comp1, comp2))
+
+
+def remove_equivalent_completions(comps: List[Completion]) -> List[Completion]:
+    """Compares completions by comparing Lagrangian terms. Removes duplicates and
+    returns copied list.
+
+    """
+    return remove_equivalent(comps, are_equivalent_completions)
+
+
+def collect_completions(completions: List[Completion]) -> Dict[tuple, Completion]:
     """Return dictionary mapping field content to list of completions."""
     out = {}
-    for k, g in groupby(completions, key=lambda x: x.exotic_info()):
+    func = lambda x: tuple(sorted(x.exotic_info().values()))
+    for k, g in groupby(completions, key=func):
         g = list(g)
+        # TODO calling this here will be a bottleneck
+        g = remove_equivalent_completions(g)
+        k = tuple(sorted(set(k)))
         out[k] = g
 
     return out

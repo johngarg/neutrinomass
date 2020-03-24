@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import string
+from sympy.core.numbers import Zero
 
 TEX_GREEK_LOWERCASE = [
     r"\alpha",
@@ -95,3 +96,9 @@ def to_tex(label):
     greek = "αβγδεζηθικλμνξπρστυφχψω"
     d = dict(zip(greek, TEX_GREEK_LOWERCASE))
     return d[char]
+
+
+def safe_nocoeff(expr):
+    if isinstance(expr, Zero) or isinstance(expr, int):
+        return 0
+    return expr.nocoeff
