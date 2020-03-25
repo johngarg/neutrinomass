@@ -7,7 +7,7 @@ from typing import Dict
 from functools import reduce
 
 from mv.tensormethod import IndexedField
-from mv.tensormethod.core import BOSE, FERMI, Index, eps
+from mv.tensormethod.core import BOSE, FERMI, Index, eps, get_dynkin
 
 
 class FieldType(IndexedField):
@@ -78,8 +78,20 @@ class ComplexScalar(FieldType):
         assert self.is_scalar
 
 
+def assert_real_rep(indices: str, charges) -> None:
+    if charges and "y" in charges:
+        assert charges["y"] == 0
+
+    colour_dynkin_str = get_dynkin(indices)[2:4]
+
+    # simplistic way to check if colour rep is real
+    assert colour_dynkin_str == "".join(reversed(colour_dynkin_str))
+
+
 class RealScalar(FieldType):
-    def __init__(self, label, indices, charges=None, latex=None, **kwargs):
+    def __init__(
+        self, label, indices, charges=None, latex=None, is_conj=False, **kwargs
+    ):
         if isinstance(indices, list):
             indices = " ".join(str(i) for i in indices)
 
@@ -88,7 +100,7 @@ class RealScalar(FieldType):
             label=label,
             indices=indices,
             charges=charges,
-            is_conj=False,
+            is_conj=is_conj,
             symmetry=None,
             comm=BOSE,
             latex=latex,
@@ -96,10 +108,13 @@ class RealScalar(FieldType):
         )
 
         assert self.is_scalar
+        assert_real_rep(indices, charges)
 
 
 class MajoranaFermion(FieldType):
-    def __init__(self, label, indices, charges=None, latex=None, **kwargs):
+    def __init__(
+        self, label, indices, charges=None, latex=None, is_conj=False, **kwargs
+    ):
         if isinstance(indices, list):
             indices = " ".join(str(i) for i in indices)
 
@@ -108,7 +123,7 @@ class MajoranaFermion(FieldType):
             label=label,
             indices=indices,
             charges=charges,
-            is_conj=False,
+            is_conj=is_conj,
             symmetry=None,
             comm=FERMI,
             latex=latex,
@@ -116,8 +131,10 @@ class MajoranaFermion(FieldType):
         )
 
         assert self.is_fermion
+        assert_real_rep(indices, charges)
 
     def majorana_partner(self):
+        """New copy of fermion with colour indices flipped"""
         undotted, dotted, colour, isospin, _ = Index.indices_by_type(
             self.indices
         ).values()
