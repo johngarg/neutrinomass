@@ -5,7 +5,7 @@ from mv.tensormethod.core import *
 A = Field("A", dynkin="10011", charges={"y": 1})
 B = IndexedField("B", indices="i0 i1")
 C = IndexedField("C", indices="c0 c1")
-D = IndexedField("D", indices="-c0 c2")
+D = IndexedField("D", indices="-c0 c2", charges={"y": 2, "3b": 1})
 
 
 def test_get_dynkin():
@@ -88,3 +88,18 @@ def test_decompose_product():
     ]
     assert prods[:2] == [Field(**x) for x in first_two]
     assert prods[-2:] == [Field(**x) for x in last_two]
+
+
+def test_indexed_field_conj():
+    assert B.conj.conj == B
+    assert not B.is_conj
+    assert B.conj.is_conj
+
+    assert C.conj.conj == C
+    assert not C.is_conj
+    assert C.conj.is_conj
+
+    assert D.conj.conj == D
+    assert not D.is_conj
+    assert D.conj.is_conj
+    assert D.conj.y == -2

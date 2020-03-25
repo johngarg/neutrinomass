@@ -20,9 +20,16 @@ o8 = collect_completions(lnv_completions("8"))
 
 def test_completions():
     # test on results of 1410.0689
-    assert len(filter_completions(o2, sieve)) == 2
-    assert len(filter_completions(o3a, sieve)) == 6
-    assert len(filter_completions(o3b, sieve)) == 5
-    assert len(filter_completions(o4a, sieve)) == 0
-    assert len(filter_completions(o4b, sieve)) == 3
-    assert len(filter_completions(o8, sieve)) == 4
+    o2_comps = filter_completions(o2, sieve)
+    o3a_comps = filter_completions(o3a, sieve)
+    o3b_comps = filter_completions(o3b, sieve)
+    o4a_comps = filter_completions(o4a, sieve)
+    o4b_comps = filter_completions(o4b, sieve)
+    o8_comps = filter_completions(o8, sieve)
+
+    assert len(o2_comps) == 2
+    assert len(o3a_comps) == 6
+    assert len(o3b_comps) == 5
+    assert len(o4a_comps) == 0
+    assert len(o4b_comps) == 3
+    assert len(o8_comps) == 4
