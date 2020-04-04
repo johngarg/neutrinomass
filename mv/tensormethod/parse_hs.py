@@ -47,10 +47,12 @@ def distribute_derivatives(expr):
 
     """
     new_terms = []
-    for i, term in enumerate(expr.args):
+    for term in expr.args:
         # derivatives will never be outside of Mul
         if not isinstance(term, sympy.Mul):
+            new_terms.append(term)
             continue
+
         # iterate through items in a term to extract derivative order if present
         for item in term.args:
             if not str(item).startswith("D"):
@@ -196,15 +198,17 @@ def parse_hs(expr, term=False):
     if is_number(expr):
         return proc_number(expr)
 
-    if is_field(expr, term):
+    if is_field(expr, term=term):
         return proc_field(expr)
 
     if is_deriv(expr):
         return proc_deriv(expr)
 
-    # recursive call
+    # recursive calls
+    # term is a product of fields (not power)
     if is_term(expr):
-        return proc_term([parse_hs(item, term=True) for item in expr.args])
+        args = expr.args if not isinstance(expr, sympy.Pow) else [expr]
+        return proc_term([parse_hs(item, term=True) for item in args])
 
     if is_sum(expr):
         return proc_sum([parse_hs(item) for item in expr.args])
