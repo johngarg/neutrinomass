@@ -309,9 +309,21 @@ class Completion:
     def lagrangian(self):
         return Lagrangian(terms=self.terms)
 
-    @property
-    def diagram(self):
-        pass
+    def draw_diagram(self):
+        import matplotlib.pyplot as plt
+        import networkx as nx
+
+        g = self.graph
+        edge_labels = nx.get_edge_attributes(g, name="particle")
+        pos = nx.spring_layout(g)
+
+        plt.figure()
+        nx.draw(g, pos=pos, edge_color="black", node_size=0)
+        nx.draw_networkx_edge_labels(
+            g, pos=pos, edge_labels=edge_labels, font_color="red"
+        )
+        plt.axis("off")
+        plt.show()
 
     def exotic_info(self) -> Dict[FieldType, tuple]:
         info = {}

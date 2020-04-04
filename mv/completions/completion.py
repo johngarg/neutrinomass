@@ -125,14 +125,21 @@ def node_dictionary(partition):
     flat_data = list(flatten(partition))
     tuples = chunks(flat_data, 2)
     reversed_data = map(reversed, tuples)
-    return {k: {"external": v} for k, v in reversed_data}
+    return {k: {"particle": v} for k, v in reversed_data}
 
 
 def set_external_fields(partition, graph):
-    """Add indexed fields as node attributes on graph through side effect."""
+    """Add indexed fields as edge attributes on graph through side effect."""
     g = deepcopy(graph)
-    attrs = node_dictionary(partition)
-    nx.set_node_attributes(g, attrs)
+    node_attrs = node_dictionary(partition)
+
+    edge_attrs = {}
+    for edge in graph.edges:
+        for n, field_dict in node_attrs.items():
+            if n in edge:
+                edge_attrs[edge] = field_dict
+
+    nx.set_edge_attributes(g, edge_attrs)
     return g
 
 
@@ -610,6 +617,9 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
     explicit_op = reduce(lambda a, b: a * b, lorentz_epsilons, op.operator)
     exotics = set(f for f in edge_dict.keys())
     eff_operator = EffectiveOperator(op.name, explicit_op)
+
+    new_edge_attrs = {v: {"particle": k} for k, v in edge_dict.items()}
+    nx.set_edge_attributes(graph, new_edge_attrs)
 
     return Completion(
         operator=eff_operator, partition=part, graph=graph, exotics=exotics, terms=terms
