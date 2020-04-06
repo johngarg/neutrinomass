@@ -9,6 +9,8 @@ from functools import reduce
 from mv.tensormethod import IndexedField
 from mv.tensormethod.core import BOSE, FERMI, Index, eps, get_dynkin
 
+# from mv.completions.tikzfeynman import tikz_export
+
 
 class FieldType(IndexedField):
     """Base class for exotic fields."""
@@ -27,6 +29,10 @@ class FieldType(IndexedField):
             epsilons.append(epsilon)
 
         return cons_completion_field(partner), epsilons
+
+    @property
+    def indexed_field(self):
+        return IndexedField(label=self.label, indices=self.index_labels)
 
     # @property
     # def info(self):
@@ -349,6 +355,13 @@ class Completion:
 
     def exotic_fields(self):
         return set([e.field for e in self.exotics])
+
+    def export(self, path: str):
+        # currently gives you circular import
+
+        # export graph tex file
+        # tikz_export(g=self.graph, path=path)
+        pass
 
 
 def cons_completion_field(indexed_field: IndexedField) -> FieldType:

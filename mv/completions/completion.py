@@ -36,6 +36,7 @@ from mv.completions.core import (
     ComplexScalar,
 )
 from mv.completions.topologies import get_topology_data, Leaf
+
 from typing import Tuple, List, Dict, Union
 import networkx as nx
 from copy import deepcopy
@@ -372,8 +373,16 @@ def contract(
         symbol = symbols_to_use.pop(0)
         field_dict[fs] = symbol
 
-    # mutate available symbols
-    exotic_field = IndexedField(symbol, exotic_indices, charges=exotic_charges)
+    # for Dirac and Majorana fermions, always keep plain symbol left handed
+    to_conj = False
+    if exotic_indices and exotic_indices[0] == "d":
+        exotic_indices = Index.conj_index_string(exotic_indices)
+        to_conj = True
+
+    exotic_field = IndexedField(
+        label=symbol, indices=exotic_indices, charges=exotic_charges
+    )
+    exotic_field = exotic_field.conj if to_conj else exotic_field
 
     # construct MajoranaFermion, VectorLikeDiracFermion, ...
     exotic_field = cons_completion_field(exotic_field)

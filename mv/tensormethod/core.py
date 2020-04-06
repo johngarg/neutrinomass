@@ -216,6 +216,12 @@ class Index(tensor.TensorIndex):
         prefix = ("-" if not is_up else "") + prefix
         return Index(prefix + str(label))
 
+    @classmethod
+    def conj_index_string(cls, index_string: str) -> str:
+        """Return string of conjugated indices"""
+        indices = [cls(s).conj for s in index_string.split(" ")]
+        return " ".join(str(i) for i in indices)
+
     @property
     def _dict(self):
         return {"label": self.label}
@@ -330,6 +336,8 @@ class Field:
 
     def __repr__(self):
         return self.label_with_dagger + f"({self.dynkin})({self.y})"
+
+    __str__ = __repr__
 
     @property
     def y(self):
