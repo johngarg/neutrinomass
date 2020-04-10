@@ -11,9 +11,10 @@ from neutrinomass.completions.core import (
     RealScalar,
     VectorLikeDiracFermion,
     MajoranaFermion,
+    Completion,
 )
 from neutrinomass.completions.operators import EFF_OPERATORS
-from neutrinomass.tensormethod.core import Operator, IndexedField, Completion
+from neutrinomass.tensormethod.core import Operator, IndexedField
 
 # g = operator_completions(EFF_OPERATORS["3b"])[0].graph
 
