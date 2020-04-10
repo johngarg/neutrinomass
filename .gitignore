@@ -117,6 +117,7 @@ data/
 *.dat
 *.cprof
 *.p
+upload.sh
 
 # latex specific
 .auctex-auto/

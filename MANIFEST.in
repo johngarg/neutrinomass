@@ -1,2 +1,5 @@
 include neutrinomass/completions/operators.p
 include neutrinomass/completions/deriv_operators.p
+include neutrinomass/completions/topology_data/diagrams/*
+include neutrinomass/completions/topology_data/graphs/*
+include neutrinomass/completions/topology_data/partitions/*

@@ -1,6 +1,7 @@
-from setuptools import setup, find_packages
+from setuptools import setup
 from setuptools.command.test import test as _test
 from os import path
+import sys
 
 here = path.abspath(path.dirname(__file__))
 
@@ -29,11 +30,12 @@ with open(path.join(here, "README.org"), encoding="utf-8") as f:
 
 setup(
     name="neutrinomass",
-    description="Example code behind arXiv:20xx.xxxxx.",
-    long_description=long_description,
+    description="Code behind arXiv:20xx.xxxxx.",
+    # long_description=long_description,
     author="John Gargalionis",
     author_email="garj@student.unimelb.edu.au",
-    license="BSD-2",
+    url="https://github.com/johngarg/neutrinomass",
+    license="MIT",
     packages=[
         "neutrinomass",
         "neutrinomass.tensormethod",
@@ -49,8 +51,14 @@ setup(
         "networkx>=2.2",
         "sympy>=1.2,<1.4",
     ],
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
+    ],
     tests_require=["pytest"],
     package_data={},
     cmdclass={"test": PyTest},
     include_package_data=True,
+    python_requires=">=3.6",
 )

@@ -9,9 +9,10 @@ import networkx as nx
 from typing import NamedTuple
 from neutrinomass.tensormethod.core import IndexedField
 
-PATH_TO_MV = "/Users/johngargalionis/Dropbox/PhD/mv/"
-INTERNAL_PATH = "neutrinomass/neutrinomass/completions/topology_data/"
-TOPOLOGY_PATH = PATH_TO_MV + INTERNAL_PATH
+# PATH_TO_MV = "/Users/johngargalionis/Dropbox/PhD/mv/"
+TOPOLOGY_PATH = os.path.join(os.path.dirname(__file__), "topology_data")
+# INTERNAL_PATH = "neutrinomass/neutrinomass/completions/topology_data/"
+# TOPOLOGY_PATH = PATH_TO_MV + INTERNAL_PATH
 PARTITIONS = os.path.join(TOPOLOGY_PATH, "partitions")
 DIAGRAMS = os.path.join(TOPOLOGY_PATH, "diagrams")
 GRAPHS = os.path.join(TOPOLOGY_PATH, "graphs")
