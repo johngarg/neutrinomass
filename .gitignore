@@ -116,7 +116,6 @@ Makefile
 data/
 *.dat
 *.cprof
-*.txt
 *.p
 
 # latex specific

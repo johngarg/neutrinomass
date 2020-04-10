@@ -1,0 +1,5 @@
+matplotlib==3.0.2
+pytest==3.8.0
+basisgen==1.0.1
+networkx==2.2
+sympy==1.3
