@@ -13,9 +13,9 @@ from mv.completions.core import (
     MajoranaFermion,
 )
 from mv.completions.operators import EFF_OPERATORS
-from mv.tensormethod.core import Operator, IndexedField
+from mv.tensormethod.core import Operator, IndexedField, Completion
 
-g = operator_completions(EFF_OPERATORS["3b"])[0].graph
+# g = operator_completions(EFF_OPERATORS["3b"])[0].graph
 
 import networkx as nx
 
@@ -127,4 +127,8 @@ def tikz_export(g: nx.Graph, path: str) -> None:
 
 
 def tikz_export_generic(g: nx.Graph, path: str) -> None:
+    pass
+
+
+def export_completion(comp: Completion, path: str) -> None:
     pass
