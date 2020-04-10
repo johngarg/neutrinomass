@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+
+"""Script to print SU(2) structures of operators in ΔL = 2 SMEFT up to dimension
+11.
+
+"""
+
+import pickle
+
+from neutrinomass.tensormethod.contract import invariants
+from neutrinomass.tensormethod.lnv import BL_LIST
+from neutrinomass.tensormethod.sm import *  # needed for eval step
+
+# write out data as pickled dictionary of string label to Operator
+save_data = True
+
+ordering = {
+    "1": ("1",),
+    "2": ("2",),
+    "3": ("3b", "3a"),
+    "4": ("4a", "4b"),
+    "5": ("5b", "5a", "5d", "5c"),
+    "6": ("6b", "6a", "6c", "6d"),
+    "7": ("7",),
+    "8": ("8",),
+    "9": ("9",),
+    "10": ("10",),
+    "11": ("11b", "11a"),
+    "12": ("12a", "12b"),
+    "13": ("13",),
+    "14": ("14b", "14a"),
+    "15": ("15",),
+    "16": ("16",),
+    "17": ("17",),
+    "18": ("18",),
+    "19": ("19",),
+    "20": ("20",),
+    "21": ("21a", "21b"),
+    "22": ("22a", "22b"),
+    "23": ("23a", "23b"),
+    "24": ("24d", "24a", "24c", "24b", "24f", "24e"),
+    "25": ("25c", "25b", "25a"),
+    "26": ("26d", "26a", "26c", "26b"),
+    "27": ("27d", "27a", "27c", "27b"),
+    "28": ("28f", "28e", "28a", "28c", "28d", "28g", "28b", "28i", "28h"),
+    "29": ("29c", "29b", "29d", "29a"),
+    "30": ("30c", "30a", "30d", "30b"),
+    "31": ("31a", "31c", "31b"),
+    "32": ("32c", "32a", "32d", "32b", "32e", "32f"),
+    "33": ("33",),
+    "34": ("34",),
+    "35": ("35",),
+    "36": ("36",),
+    "37": ("37",),
+    "38": ("38",),
+    "39": ("39a", "39c", "39b", "39d"),
+    "40": (
+        "40g",
+        "40a",
+        "40e",
+        "40f",
+        "40h",
+        "40d",
+        "40i",
+        "40c",
+        "40j",
+        "40k",
+        "40b",
+        "40l",
+    ),
+    "41": ("41a", "41b"),
+    "42": ("42a", "42b"),
+    "43": ("43b", "43c", "43a", "43d"),
+    "44": ("44a", "44d", "44c", "44b"),
+    "45": ("45",),
+    "46": ("46",),
+    "47": (
+        "47a",
+        "47d",
+        "47k",
+        "47b",
+        "47g",
+        "47e",
+        "47f",
+        "47l",
+        "47i",
+        "47h",
+        "47c",
+        "47j",
+    ),
+    "48": ("48",),
+    "49": ("49",),
+    "50": ("50a", "50b"),
+    "51": ("51",),
+    "52": ("52a", "52b"),
+    "53": ("53",),
+    "54": ("54a", "54d", "54b", "54c"),
+    "55": ("55a", "55d", "55b", "55c"),
+    "56": ("56",),
+    "57": ("57",),
+    "58": ("58",),
+    "58": ("58",),
+    "59": ("59a", "59c", "59b"),
+    "60": ("60b", "60a", "60c"),
+    "61": ("61a", "61b"),
+    "62": ("62a", "62b"),
+    "63": ("63b", "63c", "63a", "63d"),
+    "64": ("64a", "64c", "64b", "64d"),
+    "65": ("65a", "65b"),
+    "71": ("71",),
+    "75": ("75",),
+    "76": ("76",),
+}
+
+out_dict = {}
+for fields, num in BL_LIST.items():
+    invs = invariants(*[eval(f) for f in fields])
+    inv_labels = zip(ordering[str(num)], invs)
+    inv_labels = sorted(inv_labels, key=lambda x: x[0])
+
+    print(f"Invariants for operator {num}:")
+    for label, inv in inv_labels:
+        print(f"{label} & {inv.latex(ignore=['c', 'u', 'd'])}")
+        if save_data:
+            out_dict[label] = inv.pickle_form()
+    print("\n")
+
+if save_data:
+    # pickle data
+    filename = "output.p"
+    with open(filename, "wb+") as out:
+        pickle.dump(out_dict, out)

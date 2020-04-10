@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+
+import os
+
+from neutrinomass.tensormethod.parse_hs import H6_NF3
+from neutrinomass.tensormethod.parse_hs import H7_LNV_NF3
+from neutrinomass.tensormethod.parse_hs import H9_LNV_NF3
+from neutrinomass.tensormethod.parse_hs import H11_LNV_NF3
+from neutrinomass.tensormethod.operatorxcheck import list_invariants
+
+dimension = 6
+hs = H6_NF3
+
+rows = []
+for inv in list_invariants(hs):
+    rows.append(r"$" + inv.latex() + r"$ \\")
+
+table_string = "\n".join(rows)
+
+build_dir = "texbuild"
+mkdir = f"mkdir -p {build_dir}/; "
+latex = (
+    r"""
+\documentclass{standalone}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{accents}
+\begin{document}
+\begin{tabular}{l}
+%s
+\end{tabular}
+\end{document}
+"""
+    % table_string
+)
+
+file_name = f"d{dimension}_operators"
+with open(f"{file_name}.tex", "w+") as tex_file:
+    tex_file.write(latex)
+
+compile_command = rf"pdflatex -output-directory={build_dir} {file_name}.tex; "
+rm_command = rf"rm {file_name}.tex; "
+open_command = f"open {build_dir}/{file_name}.pdf; "
+commands = mkdir + compile_command + rm_command + open_command
+
+print(commands)
+os.system(commands)

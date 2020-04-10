@@ -1,2 +1,2 @@
-include mv/completions/operators.p
-include mv/completions/deriv_operators.p
+include neutrinomass/completions/operators.p
+include neutrinomass/completions/deriv_operators.p

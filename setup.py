@@ -28,19 +28,19 @@ with open(path.join(here, "README.org"), encoding="utf-8") as f:
     long_description = f.read()
 
 setup(
-    name="mv",
+    name="neutrinomass",
     description="Example code behind arXiv:20xx.xxxxx.",
     long_description=long_description,
     author="John Gargalionis",
     author_email="garj@student.unimelb.edu.au",
     license="BSD-2",
     packages=[
-        "mv",
-        "mv.tensormethod",
-        "mv.completions",
-        "mv.database",
-        "mv.analysis",
-        "mv.utils",
+        "neutrinomass",
+        "neutrinomass.tensormethod",
+        "neutrinomass.completions",
+        "neutrinomass.database",
+        "neutrinomass.analysis",
+        "neutrinomass.utils",
     ],
     install_requires=["numpy", "sympy"],
     tests_require=["pytest"],
