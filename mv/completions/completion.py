@@ -636,6 +636,7 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
 
 
 def operator_completions(operator) -> List[Completion]:
+    # print(f"Finding completions of {operator.name}...")
     parts = partitions(operator)
     completions = [partition_completion(p) for p in parts]
     good_completions = [c for c in completions if not isinstance(c, FailedCompletion)]
@@ -717,16 +718,28 @@ def remove_equivalent_completions(comps: List[Completion]) -> List[Completion]:
     return remove_equivalent(comps, are_equivalent_completions)
 
 
-def collect_completions(completions: List[Completion]) -> Dict[tuple, Completion]:
-    """Return dictionary mapping field content to list of completions."""
+def collect_completions(
+    completions: List[Completion], key=None
+) -> Dict[tuple, Completion]:
+    """Return dictionary mapping field content to list of completions.
+
+    `key` is a function that takes a completion and returns a dictionary mapping
+    FieldType to a tuple of numbers representing that field. This defaults to
+    the `exotic_info` method.
+
+    """
     out = {}
-    func = lambda x: tuple(sorted(x.exotic_info().values()))
+
+    if key is None:
+        key = lambda x: x.exotic_info()
+
+    func = lambda c: tuple(sorted(key(c).values()))
     for k, g in groupby(completions, key=func):
-        g = list(g)
+        g_list = list(g)
         # TODO calling this here will be a bottleneck
-        g = remove_equivalent_completions(g)
+        g_clean = remove_equivalent_completions(g_list)
         k = tuple(sorted(set(k)))
-        out[k] = g
+        out[k] = g_clean
 
     return out
 

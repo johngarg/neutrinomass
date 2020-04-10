@@ -3,6 +3,7 @@
 """Core classes and functions for completions code."""
 
 from typing import Dict
+from copy import deepcopy
 
 from functools import reduce
 
@@ -53,6 +54,17 @@ class FieldType(IndexedField):
             "charges": tuple(sorted(self.charges.items())),
         }
         return hash(tuple(dict_.items()))
+
+    def __deepcopy__(self, memo):
+        return self.__class__(
+            label=self.label,
+            indices=deepcopy(self.indices, memo),
+            charges=deepcopy(self.charges, memo),
+            latex=self.latex,
+            is_conj=self.is_conj,
+            symmetry=deepcopy(self.symmetry, memo),
+            comm=self.comm,
+        )
 
 
 class ComplexScalar(FieldType):
