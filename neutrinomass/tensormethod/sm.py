@@ -5,7 +5,6 @@ import sympy.tensor.tensor as tensor
 
 from neutrinomass.tensormethod.core import Field, FERMI, BOSE
 from neutrinomass.tensormethod.lnv import BL_LIST
-from neutrinomass.tensormethod.utils import strip_parens
 
 NF = 3
 
@@ -46,36 +45,5 @@ H.charges["3b"] = 0
 eb.charges["3b"] = 0
 ub.charges["3b"] = -1
 db.charges["3b"] = -1
-
-
-def D(field, dynkin):
-    """A derivative.
-
-    Returns a new field with additional dotted and undotted indices.
-
-    Example:
-       >>> D(L, "01")
-       DL(01001)(-1/2)
-
-       >>> D(L, "21")
-       DL(21001)(-1/2)
-
-    """
-    undotted_delta = int(dynkin[0]) - field.dynkin_ints[0]
-    dotted_delta = int(dynkin[1]) - field.dynkin_ints[1]
-
-    # derivative can only change one dotted and one undotted index
-    assert abs(undotted_delta) == 1
-    assert abs(dotted_delta) == 1
-
-    # other info to construct field instance
-    symbol = "D" + field.label
-    new_field_dynkin = dynkin + field.dynkin[2:]
-    rest = {"charges": field.charges, "comm": field.comm}
-
-    new_field = Field(symbol, dynkin=new_field_dynkin, **rest)
-    new_field.latex = f"(D{strip_parens(field.get_latex())})"
-    return new_field
-
 
 LNV_OPERATORS = {tuple([eval(field) for field in k]): v for k, v in BL_LIST.items()}

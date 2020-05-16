@@ -287,7 +287,7 @@ class EffectiveOperator:
 
         n_scalars, n_fermions = 0, 0
         for f in self.fields:
-            if f.is_scalar:
+            if f.is_scalar or f.is_vector:
                 n_scalars += 1
             elif f.is_fermion:
                 n_fermions += 1
@@ -322,6 +322,15 @@ class Completion:
 
     def __hash__(self):
         return hash((self.operator, self.exotic_info(), self.partition))
+
+    def __deepcopy__(self, memo):
+        return self.__class__(
+            operator=deepcopy(self.operator, memo),
+            partition=deepcopy(self.partition, memo),
+            graph=deepcopy(self.graph, memo),
+            exotics=deepcopy(self.exotics, memo),
+            terms=deepcopy(self.terms, memo),
+        )
 
     @property
     def lagrangian(self):

@@ -75,7 +75,8 @@ def get_topology_data(n_scalars, n_fermions):
 
         topology["partition"] = partition_string
         topology["graph"] = graph_string
-        # datum["diagram"] = img
+        # topology["diagram"] = img
+        topology["partition_file"] = p
         out.append(topology)
 
     return out

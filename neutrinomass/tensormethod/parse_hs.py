@@ -10,6 +10,7 @@ import sympy
 
 import neutrinomass.tensormethod.hs as hs
 import neutrinomass.tensormethod.sm as sm
+import neutrinomass.tensormethod.core as tm
 from neutrinomass.tensormethod.contract import invariants
 from neutrinomass.tensormethod.hs import X
 
@@ -156,7 +157,7 @@ def deriv_possibilities(field, order):
             new_dynkin = str(u) + str(d)
             dynkin_options.append(new_dynkin)
 
-    result = [deriv_possibilities(sm.D(field, d), order - 1) for d in dynkin_options]
+    result = [deriv_possibilities(tm.D(field, d), order - 1) for d in dynkin_options]
     return sympy.flatten(result)
 
 

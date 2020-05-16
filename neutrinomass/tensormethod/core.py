@@ -22,6 +22,7 @@ from neutrinomass.tensormethod.utils import (
     to_tex,
     TEX_GREEK_LOWERCASE,
     DOTTED_TEX_GREEK_LOWERCASE,
+    strip_parens,
 )
 
 FERMI, BOSE = "fermi", "bose"
@@ -327,6 +328,7 @@ class Field:
             # multiplicity=self.multiplicity,
             comm=self.comm,
             latex=self.latex,
+            nf=self.nf,
         )
 
     @property
@@ -373,6 +375,10 @@ class Field:
         return self.lorentz_irrep == (0, 0)
 
     @property
+    def is_boson(self):
+        return sum(self.lorentz_irrep) % 2 == 0
+
+    @property
     def is_left_fermion(self):
         return self.lorentz_irrep == (1, 0)
 
@@ -382,7 +388,7 @@ class Field:
 
     @property
     def is_fermion(self):
-        return self.is_left_fermion or self.is_right_fermion
+        return not self.is_boson
 
     @property
     def is_vector(self):
@@ -393,7 +399,7 @@ class Field:
         return self.dynkin == "00000" and self.y == 0
 
     @property
-    def is_sm_singet(self):
+    def is_sm_singlet(self):
         return self.sm_irrep == (0, 0, 0) and self.y == 0
 
     @property
@@ -477,6 +483,7 @@ class Field:
             multiplicity=self.multiplicity,
             comm=self.comm,
             latex=self.latex,
+            nf=self.nf,
         )
 
     def walked(self) -> Prod:
@@ -512,6 +519,7 @@ class Field:
             symmetry=self.symmetry,
             comm=self.comm,
             latex=self.latex,
+            nf=self.nf,
         )
 
     def get_latex(self):
@@ -957,6 +965,12 @@ class Operator(tensor.TensMul):
     def latex(self, ignore=None):
         # ordering of fields within the oeprator and style of indices
         field_ordering = ["L", "e", "Q", "u", "d", "H", "B", "W", "G"]
+        for field in self.indexed_fields:
+            f, fc = field, field.conj
+            if hasattr(f, "label") and not f.label in field_ordering:
+                field_ordering.append(f.label)
+                field_ordering.append(fc.label)
+
         # indices i, j, ... q used for isospin
         isospin_indices = list(ascii_lowercase[8:])
         isospin_indices.remove("o")  # remove o because it's unsightly
@@ -1016,6 +1030,9 @@ class Operator(tensor.TensMul):
         latex_strings += [r" \cdot "] + sorted(latex_epsilons)
 
         return " ".join(latex_strings)
+
+    def __deepcopy__(self, memo):
+        return self.__class__(tensors=deepcopy(self.tensors, memo))
 
 
 def assert_consistent_indices(
@@ -1154,3 +1171,39 @@ def normalise_operator_input(*args):
             new_product.append(fac)
 
     return sorted(new_product, key=type)
+
+
+def D(field, dynkin):
+    """A derivative.
+
+    Returns a new field with additional dotted and undotted indices.
+
+    Example:
+       >>> D(L, "01")
+       DL(01001)(-1/2)
+
+       >>> D(L, "21")
+       DL(21001)(-1/2)
+
+    """
+    undotted_delta = int(dynkin[0]) - field.dynkin_ints[0]
+    dotted_delta = int(dynkin[1]) - field.dynkin_ints[1]
+
+    # derivative can only change one dotted and one undotted index
+    assert abs(undotted_delta) == 1
+    assert abs(dotted_delta) == 1
+
+    # other info to construct field instance
+    deriv_symbol = "D"
+    symbol = deriv_symbol + field.label
+    new_field_dynkin = dynkin + field.dynkin[2:]
+    rest = {
+        "charges": field.charges,
+        "comm": field.comm,
+        "is_conj": field.is_conj,
+        "nf": field.nf,
+    }
+
+    new_field = Field(symbol, dynkin=new_field_dynkin, **rest)
+    new_field.latex = f"(D{strip_parens(field.get_latex())})"
+    return new_field

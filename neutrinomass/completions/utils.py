@@ -53,19 +53,19 @@ def remove_equivalent(l: List[T], eq_func: Callable[[T, T], bool]) -> List[T]:
     `eq_func`. Returns a copy of `l` with duplicates removed.
 
     """
-    list_copy = deepcopy(l)
+    # list_copy = deepcopy(l)
 
     i = 0
-    while i < len(list_copy) - 1:
+    while i < len(l) - 1:
         j = i + 1
-        while j <= len(list_copy) - 1:
-            if eq_func(list_copy[i], list_copy[j]):
-                list_copy.pop(j)
+        while j <= len(l) - 1:
+            if eq_func(l[i], l[j]):
+                l.pop(j)
             else:
                 j += 1
         i += 1
 
-    return list_copy
+    # return l
 
 
 def multiple_replace(mapping: dict, text: str) -> str:

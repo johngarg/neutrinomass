@@ -49,7 +49,7 @@ setup(
         "pytest>=3.8.0",
         "basisgen>=1.0.1",
         "networkx>=2.2",
-        "sympy>=1.2,<1.4",
+        "sympy==1.2",
     ],
     classifiers=[
         "Programming Language :: Python :: 3",

@@ -3,7 +3,7 @@
 import pickle
 
 from neutrinomass.tensormethod.contract import invariants
-from neutrinomass.tensormethod.parse_hs import parse, H9_LNV_NF3, H11_LNV_NF3
+from neutrinomass.tensormethod.parse_hs import parse, H9_LNV_NF3, H7_LNV_NF3
 from neutrinomass.tensormethod.utils import is_linear_in_deriv, is_fieldstrength_in
 
 from string import ascii_lowercase
@@ -11,17 +11,14 @@ from string import ascii_lowercase
 # write out data as pickled dictionary of string label to Operator
 save_data = True
 
-parsed_hs = parse(H9_LNV_NF3)
-# parsed_hs = parse(H11_LNV_NF3)
+parsed_hs = parse(H7_LNV_NF3)
+parsed_hs += parse(H9_LNV_NF3)
 
 out_dict = {}
 counter = 1
 for fields in parsed_hs:
-    # if not is_linear_in_deriv(fields):
-    # print("Not linear")
-    # continue
-    # if counter == 46:
-    #     breakpoint()
+    if not is_linear_in_deriv(fields):
+        continue
     if is_fieldstrength_in(fields):
         continue
 

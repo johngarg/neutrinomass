@@ -17,6 +17,7 @@ from neutrinomass.tensormethod.contract import (
     invariants,
     contract_su2,
 )
+
 from neutrinomass.tensormethod.utils import safe_nocoeff
 from neutrinomass.completions.utils import (
     flatten,
@@ -35,6 +36,7 @@ from neutrinomass.completions.core import (
     MajoranaFermion,
     ComplexScalar,
 )
+
 from neutrinomass.completions.topologies import get_topology_data, Leaf
 
 from typing import Tuple, List, Dict, Union
@@ -48,6 +50,9 @@ from sympy import prime
 
 from functools import lru_cache, reduce
 import re
+
+
+from neutrinomass.completions.operators import DERIV_EFF_OPERATORS, EFF_OPERATORS
 
 
 @lru_cache(maxsize=None)
@@ -87,7 +92,7 @@ def replace_fields(fields, partition):
 
     """
     for field in fields:
-        char = "S" if field.is_scalar else "F"
+        char = "S" if (field.is_scalar or field.is_vector) else "F"
         partition, _ = replace(data=partition, to_replace=char, replace_with=field)
 
     return partition
@@ -204,7 +209,7 @@ def remove_isomorphic(partitions: List[dict]) -> List[dict]:
     isomorphic graphs to reduce double-ups of completions.
 
     """
-    return remove_equivalent(partitions, are_equivalent_partitions)
+    remove_equivalent(partitions, are_equivalent_partitions)
 
 
 def _fix_su2_indices(free_indices: List[Index]) -> Tuple[list, list]:
@@ -271,8 +276,8 @@ def contract(
     epsilons: list,
     field_dict: Dict[tuple, str],
 ) -> Tuple[FieldType, List[Tensor], List[Operator]]:
-    """Takes two or three indexed fields and the epsilons and returns a new indexed field
-    transforming in the same way as x \otimes y.
+    """Takes two or three indexed fields and the epsilons and returns a new indexed
+    field transforming in the same way as $x \otimes y$.
 
     Returns a possibly empty tuple.
 
@@ -306,12 +311,33 @@ def contract(
 
     # sort out lorentz epsilons from contraction
     scalar = len(undotted) == 0 and len(dotted) == 0
-    two_undotted = len(undotted) == 2 and len(dotted) == 0
-    two_dotted = len(dotted) == 2 and len(undotted) == 0
+    two_undotted = len(undotted) == 2 and len(dotted) < 2
+    two_dotted = len(dotted) == 2 and len(undotted) < 2
     one_undotted = len(undotted) == 1 and len(dotted) == 0
     one_dotted = len(dotted) == 1 and len(undotted) == 0
 
-    if not (scalar or two_undotted or two_dotted or one_undotted or one_dotted):
+    # derivative cases
+    two_undotted_one_dotted = len(undotted) == 2 and len(dotted) == 1
+    two_dotted_one_undotted = len(dotted) == 2 and len(undotted) == 1
+
+    if not (
+        scalar
+        or two_undotted
+        or two_dotted
+        or one_undotted
+        or one_dotted
+        or two_undotted_one_dotted
+        or two_dotted_one_undotted
+    ):
+        return None
+
+    is_deriv_coupling = False
+    for f in fields:
+        if str(f).startswith("D"):
+            is_deriv_coupling = True
+            break
+
+    if is_deriv_coupling and (scalar or two_undotted or two_dotted):
         return None
 
     # construct new (lorentz) epsilons for scalar contractions (currently not
@@ -407,6 +433,13 @@ def contract(
         *contracted_epsilons,
         *lorentz_contraction_epsilons,
     ]
+
+    # TODO correct term for derivative here
+    # if is_deriv_coupling:
+    #     no_deriv_fields = map(strip_derivatives, fields)
+    #     prod_fields = reduce(lambda a, b: a * b, no_deriv_fields)
+    #     partner = partner.conj
+
     term = reduce(lambda a, b: a * b, new_epsilons, prod_fields)
     term *= partner
 
@@ -497,8 +530,6 @@ def build_term(
         return Leaf(None, None)
 
     exotic_field, term, epsilons, new_epsilons = try_contract
-    # if len(exotic_field.charges) == 1:
-    #     breakpoint()
     lorentz_epsilons += new_epsilons
 
     exotic_edge = get_connecting_edge(graph, nodes)
@@ -582,11 +613,11 @@ def cons_completion(
     free_indices = prod.get_free_indices()
     undotted, dotted, colour, isospin, _ = Index.indices_by_type(free_indices).values()
 
-    if len(undotted) == 2 and len(dotted) == 0:
+    if len(undotted) == 2 and len(dotted) < 2:
         eps_indices = " ".join(str(-i) for i in undotted)
         lorentz_epsilons.append(eps(eps_indices))
         prod *= eps(eps_indices)
-    elif len(undotted) == 0 and len(dotted) == 2:
+    elif len(undotted) < 2 and len(dotted) == 2:
         eps_indices = " ".join(str(-i) for i in dotted)
         lorentz_epsilons.append(eps(eps_indices))
         prod *= eps(eps_indices)
@@ -715,7 +746,7 @@ def remove_equivalent_completions(comps: List[Completion]) -> List[Completion]:
     returns copied list.
 
     """
-    return remove_equivalent(comps, are_equivalent_completions)
+    remove_equivalent(comps, are_equivalent_completions)
 
 
 def collect_completions(
@@ -737,9 +768,9 @@ def collect_completions(
     for k, g in groupby(completions, key=func):
         g_list = list(g)
         # TODO calling this here will be a bottleneck
-        g_clean = remove_equivalent_completions(g_list)
+        remove_equivalent_completions(g_list)
         k = tuple(sorted(set(k)))
-        out[k] = g_clean
+        out[k] = g_list
 
     return out
 
