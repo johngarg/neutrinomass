@@ -1,9 +1,9 @@
+#!/usr/bin/env python3
+
 """Script to output derivative operators as pickled file. Prints latex form of
 operators as well.
 
 """
-
-#!/usr/bin/env python3
 
 import pickle
 from string import ascii_lowercase
@@ -11,15 +11,18 @@ from string import ascii_lowercase
 from neutrinomass.tensormethod.contract import invariants
 from neutrinomass.tensormethod.parse_hs import parse, H9_LNV_NF3, H7_LNV_NF3
 from neutrinomass.tensormethod.utils import is_linear_in_deriv, is_fieldstrength_in
+from neutrinomass.completions.core import EffectiveOperator
 
 # write out data as pickled dictionary of string label to Operator
 SAVE_DATA = True
+TRACK_TOPO_TYPES = True
 
-PARSED_HS = parse(H7_LNV_NF3)
-PARSED_HS += parse(H9_LNV_NF3)
+# PARSED_HS = parse(H7_LNV_NF3)
+PARSED_HS = parse(H9_LNV_NF3)
 
 out_dict = {}
 counter = 1
+topology_types = set()
 for fields in PARSED_HS:
     if not is_linear_in_deriv(fields):
         continue
@@ -35,12 +38,20 @@ for fields in PARSED_HS:
     for i, inv in enumerate(invs):
         label = str(counter) + (ascii_lowercase[i] if len(invs) > 1 else "")
         print(f"${label}$ & ${inv.latex(ignore=['c', 'u', 'd'])}$ \\\\")
+
+        if TRACK_TOPO_TYPES:
+            EFF_OP = EffectiveOperator(label, inv)
+            type_ = f"{EFF_OP.topology_type['n_scalars']}s{EFF_OP.topology_type['n_fermions']}f"
+            print(type_)
+            topology_types.add(type_)
+
         if SAVE_DATA:
             out_dict[label] = inv.pickle_form()
 
     print("\n")
     counter += 1
 
+print(topology_types)
 if SAVE_DATA:
     # pickle data
     FILENAME = "deriv_operators.p"
