@@ -1,22 +1,26 @@
+"""Script to output derivative operators as pickled file. Prints latex form of
+operators as well.
+
+"""
+
 #!/usr/bin/env python3
 
 import pickle
+from string import ascii_lowercase
 
 from neutrinomass.tensormethod.contract import invariants
 from neutrinomass.tensormethod.parse_hs import parse, H9_LNV_NF3, H7_LNV_NF3
 from neutrinomass.tensormethod.utils import is_linear_in_deriv, is_fieldstrength_in
 
-from string import ascii_lowercase
-
 # write out data as pickled dictionary of string label to Operator
-save_data = True
+SAVE_DATA = True
 
-parsed_hs = parse(H7_LNV_NF3)
-parsed_hs += parse(H9_LNV_NF3)
+PARSED_HS = parse(H7_LNV_NF3)
+PARSED_HS += parse(H9_LNV_NF3)
 
 out_dict = {}
 counter = 1
-for fields in parsed_hs:
+for fields in PARSED_HS:
     if not is_linear_in_deriv(fields):
         continue
     if is_fieldstrength_in(fields):
@@ -31,14 +35,14 @@ for fields in parsed_hs:
     for i, inv in enumerate(invs):
         label = str(counter) + (ascii_lowercase[i] if len(invs) > 1 else "")
         print(f"${label}$ & ${inv.latex(ignore=['c', 'u', 'd'])}$ \\\\")
-        if save_data:
+        if SAVE_DATA:
             out_dict[label] = inv.pickle_form()
 
     print("\n")
     counter += 1
 
-if save_data:
+if SAVE_DATA:
     # pickle data
-    filename = "deriv_operators.p"
-    with open(filename, "wb+") as out:
+    FILENAME = "deriv_operators.p"
+    with open(FILENAME, "wb+") as out:
         pickle.dump(out_dict, out)
