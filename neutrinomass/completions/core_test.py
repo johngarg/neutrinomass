@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
 from neutrinomass.completions.core import *
-from neutrinomass.completions.operators import EFF_OPERATORS
-from neutrinomass.tensormethod.core import BOSE, FERMI
+from neutrinomass.completions.operators import EFF_OPERATORS, DERIV_EFF_OPERATORS
+from neutrinomass.tensormethod.core import BOSE, FERMI, D
 from neutrinomass.tensormethod.contract import invariants
+from neutrinomass.tensormethod.sm import L, H
 
 
 def test_complex_scalar():
@@ -52,3 +53,12 @@ def test_effective_operator():
 
     assert EFF_OPERATORS["1"].indexed_fields
     assert EFF_OPERATORS["11a"].fields
+
+
+def test_topology_type():
+    """(DL)^{i} L^{j} (DH)^{k} (DDH)^{l}"""
+    eff_ops = [
+        EffectiveOperator("", op)
+        for op in invariants(D(L, "01"), L, D(H, "11"), D(D(H, "11"), "22"))
+    ]
+    assert eff_ops[0].topology_type == {"n_scalars": 2, "n_fermions": 2}

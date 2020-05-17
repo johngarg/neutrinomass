@@ -287,7 +287,7 @@ class EffectiveOperator:
 
         n_scalars, n_fermions = 0, 0
         for f in self.fields:
-            if f.is_scalar or f.is_vector:
+            if f.is_boson:
                 n_scalars += 1
             elif f.is_fermion:
                 n_fermions += 1

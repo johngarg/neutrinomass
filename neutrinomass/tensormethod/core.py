@@ -392,7 +392,7 @@ class Field:
 
     @property
     def is_vector(self):
-        return self.lorentz_irrep == (1, 1)
+        return self.lorentz_irrep == (2, 2)
 
     @property
     def is_singlet(self):
