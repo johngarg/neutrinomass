@@ -36,7 +36,6 @@ from neutrinomass.completions.core import (
     MajoranaFermion,
     ComplexScalar,
 )
-
 from neutrinomass.completions.topologies import get_topology_data, Leaf
 
 from typing import Tuple, List, Dict, Union
@@ -92,7 +91,7 @@ def replace_fields(fields, partition):
 
     """
     for field in fields:
-        char = "S" if (field.is_scalar or field.is_vector) else "F"
+        char = "S" if field.is_boson else "F"
         partition, _ = replace(data=partition, to_replace=char, replace_with=field)
 
     return partition
@@ -270,6 +269,44 @@ def is_contracted_epsilon(eps, indices):
         return False
 
 
+def scalar_contraction_epsilons(
+    undotted,
+    dotted,
+    two_undotted,
+    two_dotted,
+    two_undotted_one_dotted,
+    two_dotted_one_undotted,
+    even_undotted_even_dotted,
+    free_indices,
+):
+    lorentz_contraction_epsilons = []
+    if two_undotted or two_undotted_one_dotted:
+        eps_indices = " ".join(str(-i) for i in undotted)
+        lorentz_eps = eps(eps_indices)
+        lorentz_contraction_epsilons.append(lorentz_eps)
+        to_remove = undotted
+    elif two_dotted or two_dotted_one_undotted:
+        eps_indices = " ".join(str(-i) for i in dotted)
+        lorentz_eps = eps(eps_indices)
+        lorentz_contraction_epsilons.append(lorentz_eps)
+        to_remove = dotted
+    elif even_undotted_even_dotted:
+        for i, j in chunks(dotted, 2):
+            lorentz_contraction_epsilons.append(eps(f"-{i} -{j}"))
+        for i, j in chunks(undotted, 2):
+            lorentz_contraction_epsilons.append(eps(f"-{i} -{j}"))
+        to_remove = dotted + undotted
+    else:
+        return []
+
+    # remove newly contracted indices
+    if free_indices:
+        for i in to_remove:
+            free_indices.remove(i)
+
+    return lorentz_contraction_epsilons
+
+
 def contract(
     fields: Tuple[IndexedField],
     symbols: Dict[str, List[str]],
@@ -310,16 +347,34 @@ def contract(
     undotted, dotted, colour, isospin, _ = Index.indices_by_type(free_indices).values()
 
     # sort out lorentz epsilons from contraction
+    # contractions between scalars
     scalar = len(undotted) == 0 and len(dotted) == 0
-    two_undotted = len(undotted) == 2 and len(dotted) < 2
-    two_dotted = len(dotted) == 2 and len(undotted) < 2
+    # contractions between undotted fermions (or undotted and one-deriv dotted)
+    two_undotted = len(undotted) == 2 and len(dotted) == 0
+    # contractions between dotted fermions (or dotted and one-deriv undotted)
+    two_dotted = len(dotted) == 2 and len(undotted) == 0
+    # contraction between scalar and undotted fermion (or one-deriv dotted)
     one_undotted = len(undotted) == 1 and len(dotted) == 0
+    # contraction between scalar and dotted fermion (or one-deriv undotted fermion)
     one_dotted = len(dotted) == 1 and len(undotted) == 0
 
-    # derivative cases
+    # fermion derivative cases
+    # derivative acting on scalar into an undotted fermion (or one-deriv dotted)
     two_undotted_one_dotted = len(undotted) == 2 and len(dotted) == 1
+    # derivative acting on scalar into a dotted fermion (or one-deriv undotted)
     two_dotted_one_undotted = len(dotted) == 2 and len(undotted) == 1
 
+    # Case that always simplifies two derivatives on scalar down. Corresponds to
+    # the case of D...D(scalar) contracted with D...D(scalar). Completion should
+    # behave the same as `scalar`
+    even_undotted_even_dotted = (
+        len(dotted) != 0
+        and len(undotted) != 0
+        and len(undotted) % 2 == 0
+        and len(dotted) % 2 == 0
+    )
+
+    # if not an allowed contraction, return none
     if not (
         scalar
         or two_undotted
@@ -328,35 +383,35 @@ def contract(
         or one_dotted
         or two_undotted_one_dotted
         or two_dotted_one_undotted
+        or even_undotted_even_dotted
     ):
         return None
 
-    is_deriv_coupling = False
+    n_derivs = 0
     for f in fields:
         if str(f).startswith("D"):
-            is_deriv_coupling = True
-            break
+            n_derivs += 1
 
-    if is_deriv_coupling and (scalar or two_undotted or two_dotted):
+    # Trying to avoid cases like (DH)^du Dψ^d etc.
+    if (two_undotted_one_dotted or two_dotted_one_undotted) and n_derivs > 1:
+        return None
+
+    # Trying to avoid cases like eb.conj^d D(eb)^d
+    if (two_dotted or two_undotted) and n_derivs:
         return None
 
     # construct new (lorentz) epsilons for scalar contractions (currently not
     # allowing vector contractions)
-    lorentz_contraction_epsilons = []
-    if two_undotted:
-        eps_indices = " ".join(str(-i) for i in undotted)
-        lorentz_eps = eps(eps_indices)
-        lorentz_contraction_epsilons.append(lorentz_eps)
-        # remove newly contracted indices
-        for i in undotted:
-            free_indices.remove(i)
-    elif two_dotted:
-        eps_indices = " ".join(str(-i) for i in dotted)
-        lorentz_eps = eps(eps_indices)
-        lorentz_contraction_epsilons.append(lorentz_eps)
-        # remove newly contracted indices
-        for i in dotted:
-            free_indices.remove(i)
+    lorentz_contraction_epsilons = scalar_contraction_epsilons(
+        undotted=undotted,
+        dotted=dotted,
+        two_undotted=two_undotted,
+        two_dotted=two_dotted,
+        two_undotted_one_dotted=two_undotted_one_dotted,
+        two_dotted_one_undotted=two_dotted_one_undotted,
+        even_undotted_even_dotted=even_undotted_even_dotted,
+        free_indices=free_indices,
+    )
 
     # construct exotic field
     # deal with charges
@@ -613,16 +668,37 @@ def cons_completion(
     free_indices = prod.get_free_indices()
     undotted, dotted, colour, isospin, _ = Index.indices_by_type(free_indices).values()
 
-    if len(undotted) == 2 and len(dotted) < 2:
-        eps_indices = " ".join(str(-i) for i in undotted)
-        lorentz_epsilons.append(eps(eps_indices))
-        prod *= eps(eps_indices)
-    elif len(undotted) < 2 and len(dotted) == 2:
-        eps_indices = " ".join(str(-i) for i in dotted)
-        lorentz_epsilons.append(eps(eps_indices))
-        prod *= eps(eps_indices)
-    elif not (len(undotted) == 0 and len(dotted) == 0):
-        return None
+    # contractions between undotted fermions (or undotted and one-deriv dotted)
+    two_undotted = len(undotted) == 2 and len(dotted) == 0
+    # contractions between dotted fermions (or dotted and one-deriv undotted)
+    two_dotted = len(dotted) == 2 and len(undotted) == 0
+    # fermion derivative cases
+    # derivative acting on scalar into an undotted fermion (or one-deriv dotted)
+    two_undotted_one_dotted = len(undotted) == 2 and len(dotted) == 1
+    # derivative acting on scalar into a dotted fermion (or one-deriv undotted)
+    two_dotted_one_undotted = len(dotted) == 2 and len(undotted) == 1
+    # Case that always simplifies two derivatives on scalar down. Corresponds to
+    # the case of D...D(scalar) contracted with D...D(scalar). Completion should
+    # behave the same as `scalar`
+    even_undotted_even_dotted = (
+        len(dotted) != 0
+        and len(undotted) != 0
+        and len(undotted) % 2 == 0
+        and len(dotted) % 2 == 0
+    )
+
+    lorentz_contraction_epsilons = scalar_contraction_epsilons(
+        undotted=undotted,
+        dotted=dotted,
+        two_undotted=two_undotted,
+        two_dotted=two_dotted,
+        two_undotted_one_dotted=two_undotted_one_dotted,
+        two_dotted_one_undotted=two_dotted_one_undotted,
+        even_undotted_even_dotted=even_undotted_even_dotted,
+        free_indices=[],
+    )
+    for e in lorentz_contraction_epsilons:
+        prod *= e
 
     free_indices = prod.free_indices
     contracted_epsilons, spectator_epsilons = [], []
@@ -666,7 +742,7 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
     )
 
 
-def operator_completions(operator) -> List[Completion]:
+def operator_completions(operator: EffectiveOperator) -> List[Completion]:
     # print(f"Finding completions of {operator.name}...")
     parts = partitions(operator)
     completions = [partition_completion(p) for p in parts]
