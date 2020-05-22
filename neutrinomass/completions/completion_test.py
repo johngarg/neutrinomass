@@ -101,3 +101,64 @@ def test_derivs_nlo_completions():
 
     assert len(comps) == 3
     assert not filter_completions(comps, SIEVE)
+
+
+def test_ophibox_ophiD():
+    """Example from section 2.2 in the paper."""
+
+    from neutrinomass.tensormethod.sm import H
+    from neutrinomass.tensormethod.core import D
+
+    ohhdd1 = EffectiveOperator(
+        "OHHDD1",
+        H.conj("i0")
+        * H.conj("i1")
+        * D(H, "11")("u0 d0 i2")
+        * D(H, "11")("u1 d1 i3")
+        * eps("-i0 -i2")
+        * eps("-i1 -i3"),
+    )
+
+    ohhdd2 = EffectiveOperator(
+        "OHHDD2",
+        H.conj("i0")
+        * H("i1")
+        * D(H.conj, "11")("u0 d0 i2")
+        * D(H, "11")("u1 d1 i3")
+        * eps("-i0 -i1")
+        * eps("-i2 -i3"),
+    )
+
+    ohhdd3 = EffectiveOperator(
+        "OHHDD3",
+        H.conj("i0")
+        * H("i1")
+        * D(H.conj, "11")("u0 d0 i2")
+        * D(H, "11")("u1 d1 i3")
+        * eps("-i0 -i2")
+        * eps("-i1 -i3"),
+    )
+
+    ohhdd4 = EffectiveOperator(
+        "OHHDD4",
+        H.conj("i0")
+        * H("i1")
+        * D(H.conj, "11")("u0 d0 i2")
+        * D(H, "11")("u1 d1 i3")
+        * eps("-i0 -i3")
+        * eps("-i1 -i2"),
+    )
+
+    comps = {}
+    for op in [ohhdd1, ohhdd2, ohhdd3, ohhdd4]:
+        comps[op.name] = list(collect_completions(operator_completions(op)))
+
+    assert len(comps["OHHDD1"]) == 1
+    assert len(comps["OHHDD2"]) == 1
+    assert len(comps["OHHDD3"]) == 1
+    assert len(comps["OHHDD4"]) == 1
+
+    assert comps["OHHDD1"][0] == (("S", 0, 0, 2, ("3b", 0), ("y", 1)),)
+    assert comps["OHHDD2"][0] == (("S", 0, 0, 0, ("3b", 0), ("y", 0)),)
+    assert comps["OHHDD3"][0] == (("S", 0, 0, 2, ("3b", 0), ("y", 0)),)
+    assert comps["OHHDD4"][0] == (("S", 0, 0, 2, ("3b", 0), ("y", 0)),)
