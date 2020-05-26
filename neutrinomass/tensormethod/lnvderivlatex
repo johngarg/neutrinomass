@@ -6,15 +6,21 @@ operators as well.
 """
 
 import pickle
+from pprint import pprint
+from collections import defaultdict
 from string import ascii_lowercase
 
 from neutrinomass.tensormethod.contract import invariants
 from neutrinomass.tensormethod.parse_hs import parse, H9_LNV_NF3, H7_LNV_NF3
-from neutrinomass.tensormethod.utils import is_linear_in_deriv, is_fieldstrength_in
+from neutrinomass.tensormethod.utils import (
+    is_deriv_in,
+    is_linear_in_deriv,
+    is_fieldstrength_in,
+)
 from neutrinomass.completions.core import EffectiveOperator
 
 # write out data as pickled dictionary of string label to Operator
-SAVE_DATA = True
+SAVE_DATA = False
 TRACK_TOPO_TYPES = True
 
 # PARSED_HS = parse(H7_LNV_NF3)
@@ -22,10 +28,13 @@ PARSED_HS = parse(H9_LNV_NF3)
 
 out_dict = {}
 counter = 1
-topology_types = set()
+topology_types = defaultdict(list)
 for fields in PARSED_HS:
-    if not is_linear_in_deriv(fields):
+    # if not is_linear_in_deriv(fields):
+    #     continue
+    if not is_deriv_in(fields):
         continue
+
     if is_fieldstrength_in(fields):
         continue
 
@@ -43,7 +52,7 @@ for fields in PARSED_HS:
             EFF_OP = EffectiveOperator(label, inv)
             type_ = f"{EFF_OP.topology_type['n_scalars']}s{EFF_OP.topology_type['n_fermions']}f"
             print(type_)
-            topology_types.add(type_)
+            topology_types[type_].append(label)
 
         if SAVE_DATA:
             out_dict[label] = inv.pickle_form()
@@ -51,7 +60,7 @@ for fields in PARSED_HS:
     print("\n")
     counter += 1
 
-print(topology_types)
+pprint(topology_types)
 if SAVE_DATA:
     # pickle data
     FILENAME = "deriv_operators.p"

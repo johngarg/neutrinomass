@@ -241,6 +241,8 @@ class Field:
         multiplicity=1,  # number of possibilities
         latex=None,  # base latex representation
         nf=1,  # number of generations (currently 1 or 3)
+        derivs=0,  # number of derivatives acting on field
+        stripped=None,  # field stripped of a derivative
         **kwargs,
     ):
         """A representation of a tensor transforming under Lorentz x SM with charges and
@@ -297,6 +299,8 @@ class Field:
         self.is_conj = is_conj
         self.latex = latex
         self.nf = nf
+        self.derivs = derivs
+        self.stripped = stripped
 
     def __call__(self, indices: str) -> "IndexedField":
         """Returns an IndexedField object.
@@ -329,6 +333,8 @@ class Field:
             comm=self.comm,
             latex=self.latex,
             nf=self.nf,
+            derivs=self.derivs,
+            stripped=self.stripped,
         )
 
     @property
@@ -421,6 +427,7 @@ class Field:
             "is_conj": self.is_conj,
             "comm": self.comm,
             "symmetry": self.symmetry,
+            "nf": self.nf,
             # "history": self.history,
             # "latex": self.latex,
         }
@@ -484,6 +491,8 @@ class Field:
             comm=self.comm,
             latex=self.latex,
             nf=self.nf,
+            derivs=self.derivs,
+            stripped=self.stripped,
         )
 
     def walked(self) -> Prod:
@@ -520,6 +529,8 @@ class Field:
             comm=self.comm,
             latex=self.latex,
             nf=self.nf,
+            derivs=self.derivs,
+            stripped=self.stripped,
         )
 
     def get_latex(self):
@@ -543,6 +554,16 @@ class Field:
         raise Exception(
             f"Unknown mass dimension for lorentz irrep {self.lorentz_irrep}"
         )
+
+    @classmethod
+    def dynkin_difference(cls, dynkin_1: str, dynkin_2: str):
+        """dynkin_2 - dynkin_1"""
+        import numpy as np
+
+        dyn_array_1 = np.array(list(map(int, dynkin_1)))
+        dyn_array_2 = np.array(list(map(int, dynkin_2)))
+
+        return list(dyn_array_2 - dyn_array_1)
 
 
 class IndexedField(tensor.Tensor, Field):
@@ -576,6 +597,8 @@ class IndexedField(tensor.Tensor, Field):
         comm=0,
         latex=None,
         nf=1,
+        derivs=0,
+        stripped=None,
         **kwargs,
     ):
         """Initialises IndexedField object.
@@ -609,6 +632,8 @@ class IndexedField(tensor.Tensor, Field):
             comm=comm,
             latex=latex,
             nf=nf,
+            derivs=derivs,
+            stripped=stripped,
         )
 
         # self.comm = FERMI if self.is_fermion else BOSE
@@ -625,6 +650,8 @@ class IndexedField(tensor.Tensor, Field):
             comm=self.comm,
             latex=self.latex,
             nf=self.nf,
+            derivs=self.derivs,
+            stripped=self.stripped,
         )
 
     def substitute_indices(self, *indices):
@@ -653,6 +680,8 @@ class IndexedField(tensor.Tensor, Field):
             comm=self.comm,
             latex=self.latex,
             nf=self.nf,
+            derivs=self.derivs,
+            stripped=self.stripped,
         )
 
     @property
@@ -674,6 +703,8 @@ class IndexedField(tensor.Tensor, Field):
             latex=self.latex,
             comm=self.comm,
             nf=self.nf,
+            derivs=self.derivs,
+            stripped=self.stripped,
         )
 
     @property
@@ -707,6 +738,23 @@ class IndexedField(tensor.Tensor, Field):
             "latex": self.latex,
             "nf": self.nf,
         }
+
+    @property
+    def pmatch_data(self):
+        """A simple representation of the field for use with pattern matching.
+
+        >>> pmatch_data(L("u0 i0"))
+        ('L', ('u0', 'i0'), (('y', -1/2), ('3b', 0)))
+
+        """
+        return (
+            self._dict["label"],
+            tuple(self.indices_by_type.items()),
+            tuple(sorted(self._dict["charges"].items(), key=lambda x: x[0])),
+            self._dict["comm"],
+            self.derivs,
+            self.is_conj,
+        )
 
     def __hash__(self):
         charges_tuple = tuple(self.charges.items())
@@ -778,6 +826,18 @@ class IndexedField(tensor.Tensor, Field):
             return self.get_latex()
 
         return rf"{self.get_latex()}^{{{' '.join(indices)}}}"
+
+    def strip_derivs(self):
+        if self.stripped is None:
+            return self
+
+        other = {"is_conj": self.is_conj, "comm": self.comm, "nf": self.nf, "derivs": 0}
+
+        return Field(**self.stripped, **other)
+
+    @property
+    def gauge_indices(self):
+        return [i for i in self.indices if i.index_type not in ("Dotted", "Undotted")]
 
 
 class Operator(tensor.TensMul):
@@ -1206,4 +1266,14 @@ def D(field, dynkin):
 
     new_field = Field(symbol, dynkin=new_field_dynkin, **rest)
     new_field.latex = f"(D{strip_parens(field.get_latex())})"
+    new_field.derivs = field.derivs + 1
+    # only add this information for the first derivative
+    if new_field.stripped is None:
+        new_field.stripped = {
+            "label": field.label,
+            "dynkin": field.dynkin,
+            "symmetry": field.symmetry,
+            "charges": field.charges,
+            "latex": field.latex,
+        }
     return new_field

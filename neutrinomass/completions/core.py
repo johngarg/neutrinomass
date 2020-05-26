@@ -19,11 +19,13 @@ class FieldType(IndexedField):
     def __new__(cls, *args, **kwargs):
         return super(FieldType, cls).__new__(cls, *args, **kwargs)
 
-    def lower_su2(self):
+    def lower_su2(self, skip=[]):
         undotted, dotted, _, isospin, _ = self.indices_by_type.values()
         epsilons = []
         partner = self
         for idx in [*undotted, *dotted, *isospin]:
+            if idx.index_type in skip:
+                continue
             lower = str(idx) + "^"
             partner = partner.substituted_indices((idx, lower))
             epsilon = eps("-" + lower + " -" + str(idx))

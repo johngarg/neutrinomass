@@ -196,7 +196,16 @@ def contract_su2(left: Contractable, right: Contractable, out: str, ignore=[]):
     return [left * right * u * d * i for u, d, i in itertools.product(*epsilons)]
 
 
-def construct_operators(expr_tree: Prod, _stack=[], ignore=[]):
+def term_lorentz_singlet(term: Operator) -> List[Operator]:
+    """Take a term and contract dotted and undotted indices with epsilons
+
+    """
+    fst, *rst = term.tensors
+    prod = reduce(lambda x, y: x * y, rst)
+    return contract_su2(left=fst, right=prod, out=0, ignore=["i"])
+
+
+def construct_operators(expr_tree: Prod, _stack=[], ignore=[]) -> List[Operator]:
     """Constructs Operator objects from product tree. There will be more than one
     since there will be many ways to contract the indices at each step.
 
@@ -226,10 +235,10 @@ def construct_operators(expr_tree: Prod, _stack=[], ignore=[]):
     return results
 
 
-def unsimplified_invariants(*fields, ignore=[]):
-    """Generates invariant operators containing ``fields`` and ignoring the
-    structures in ``ignore``. The structures are not filtered, simplified or
-    processed at all.
+def unsimplified_invariants(*fields, ignore=[]) -> List[Operator]:
+    """Generates invariant operators containing ``fields`` ignoring the structures
+    in ``ignore``. The structures are not filtered, simplified or processed at
+    all.
 
     """
     prod = decompose_product(*fields)
@@ -250,7 +259,7 @@ def unsimplified_invariants(*fields, ignore=[]):
     return result
 
 
-def extract_relabellings(x, y):
+def extract_relabellings(x, y) -> List[List[Tuple[Index, Index]]]:
     """Takes two structures of the same index type and returns a list of lists of
     tuples representing index substitutions on x that would make it equal to y.
 
