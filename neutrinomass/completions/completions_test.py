@@ -286,7 +286,8 @@ def test_1204_5986_completions():
         * eps("-i1 -i3"),
     )
 
-    # models from table 5 in 1204.5986
+    # models from table 5 in 1204.5986 (the ones implying vanishing vertices
+    # have been left out)
     o9_models_from_paper = {
         # first topology
         frozenset([phi_0_2, phi_12_32, phi_1_1]),
@@ -295,10 +296,16 @@ def test_1204_5986_completions():
         frozenset([psi_12_12, psi_0_0]),
         frozenset([psi_12_12, psi_1_0]),
         frozenset([phi_1_1, psi_1_0]),
-        # frozenset([phi_1_1, psi_0_0]), (I think this is a mistake)
         # second topology
         frozenset([phi_0_2, phi_1_1]),
         frozenset([psi_12_12, phi_1_1]),
+    }
+
+    o7_models_from_paper = {
+        frozenset([psi_1_0, phi_1_1]),
+        frozenset([psi_12_12, phi_1_1]),
+        frozenset([psi_12_12, psi_0_0]),
+        frozenset([psi_12_12, psi_1_0]),
     }
 
     o7 = EffectiveOperator(
@@ -312,14 +319,18 @@ def test_1204_5986_completions():
         * eps("-i1 -i3"),
     )
 
-    # o7_comps = collect_completions(operator_completions(o7))
+    o7_comps = collect_completions(operator_completions(o7))
     o9_comps = collect_completions(operator_completions(o9))
-    for k, v in o9_comps.items():
-        if frozenset(k) not in o9_models_from_paper:
-            assert False
+    for comps, models in [
+        (o7_comps, o7_models_from_paper),
+        (o9_comps, o9_models_from_paper),
+    ]:
+        for k, v in comps.items():
+            if frozenset(k) not in models:
+                assert False
 
-    for model in o9_models_from_paper:
-        if model not in set(map(frozenset, o9_comps.keys())):
-            assert False
+        for model in models:
+            if model not in set(map(frozenset, comps.keys())):
+                assert False
 
     assert True
