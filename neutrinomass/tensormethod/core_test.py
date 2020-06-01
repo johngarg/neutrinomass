@@ -5,7 +5,7 @@ from neutrinomass.tensormethod.core import *
 A = Field("A", dynkin="10011", charges={"y": 1})
 B = IndexedField("B", indices="i0 i1")
 C = IndexedField("C", indices="c0 c1")
-D = IndexedField("D", indices="-c0 c2", charges={"y": 2, "3b": 1})
+dd = IndexedField("D", indices="-c0 c2", charges={"y": 2, "3b": 1})
 
 
 def test_get_dynkin():
@@ -37,7 +37,7 @@ def test_mul():
 
 
 def test_op():
-    prod = C * D
+    prod = C * dd
     assert len(prod.free_indices) == 2
     assert prod.dynkin == "00200"
 
@@ -99,15 +99,17 @@ def test_indexed_field_conj():
     assert not C.is_conj
     assert C.conj.is_conj
 
-    assert D.conj.conj == D
-    assert not D.is_conj
-    assert D.conj.is_conj
-    assert D.conj.y == -2
+    assert dd.conj.conj == dd
+    assert not dd.is_conj
+    assert dd.conj.is_conj
+    assert dd.conj.y == -2
 
 
 def test_strip_derivs():
     from neutrinomass.tensormethod.sm import Q, H
+    from neutrinomass.tensormethod.core import D
 
+    return D(D(Q, "01"), "10")("u0 c0 i0").strip_derivs_with_indices()
     assert D(D(Q, "01"), "10")("u0 c0 i0").strip_derivs_with_indices() == Q("u0 c0 i0")
     assert D(D(H, "11"), "00")("i0").strip_derivs_with_indices() == H("i0")
 
