@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from neutrinomass.completions.operators import EFF_OPERATORS
-from neutrinomass.completions.completion import (
+from neutrinomass.completions.completions import (
     operator_completions,
     collect_completions,
     filter_completions,

@@ -208,7 +208,7 @@ def remove_isomorphic(partitions: List[dict]) -> List[dict]:
 
     """
     remove_equivalent(partitions, are_equivalent_partitions)
-    return
+    return None
 
 
 def is_contracted_epsilon(eps, indices):
@@ -224,7 +224,6 @@ def is_contracted_epsilon(eps, indices):
         return False
 
     # su3 epsilon has three indices
-    counter = 0
     to_remove, free = [], []
     for idx in eps.indices:
         if -idx in indices:
@@ -250,70 +249,130 @@ def is_contracted_epsilon(eps, indices):
     return False
 
 
-def lorentz_pairs_maybe_remove(
-    left: IndexedField, right: IndexedField, free_indices: List[Index]
+def scalar_contraction_epsilons(
+    undotted, dotted, two_undotted, two_dotted, free_indices
 ):
-    """Returns a list of epsilons of paired dotted and undotted indices, and removes
-    these from free_indices by side-effect if free_indices is not empty.
+    lorentz_contraction_epsilons = []
+    if two_undotted:
+        eps_indices = " ".join(str(-i) for i in undotted)
+        lorentz_eps = eps(eps_indices)
+        lorentz_contraction_epsilons.append(lorentz_eps)
+        to_remove = undotted
+    elif two_dotted:
+        eps_indices = " ".join(str(-i) for i in dotted)
+        lorentz_eps = eps(eps_indices)
+        lorentz_contraction_epsilons.append(lorentz_eps)
+        to_remove = dotted
+    else:
+        return []
 
-    """
-
-    lu, ld, _, _, _ = left.indices_by_type.values()
-    ru, rd, _, _, _ = right.indices_by_type.values()
-
-    out = []
-    index_pairs = list(zip(lu, ru)) + list(zip(ld, rd))
-    for i, j in index_pairs:
-        epsilon = eps(f"-{i} -{j}")
-        out.append(epsilon)
-        if free_indices:
+    # remove newly contracted indices
+    if free_indices:
+        for i in to_remove:
             free_indices.remove(i)
-            free_indices.remove(j)
 
-    return out
-
-
-# def scalar_contraction_epsilons(
-#     undotted, dotted, two_undotted, two_dotted, free_indices
-# ):
-#     lorentz_contraction_epsilons = []
-#     to_remove = []
-#     if two_undotted:
-#         eps_indices = " ".join(str(-i) for i in undotted)
-#         lorentz_eps = eps(eps_indices)
-#         lorentz_contraction_epsilons.append(lorentz_eps)
-#         to_remove += undotted
-
-#     if two_dotted:
-#         eps_indices = " ".join(str(-i) for i in dotted)
-#         lorentz_eps = eps(eps_indices)
-#         lorentz_contraction_epsilons.append(lorentz_eps)
-#         to_remove += dotted
-
-#     if not (two_undotted or two_dotted):
-#         return []
-
-#     if free_indices:
-#         for i in to_remove:
-#             free_indices.remove(i)
-
-#     return lorentz_contraction_epsilons
+    return lorentz_contraction_epsilons
 
 
-def get_coupling_field(
+def contract(
     fields: Tuple[IndexedField],
     symbols: Dict[str, List[str]],
+    epsilons: list,
     field_dict: Dict[tuple, str],
-    n_derivs: int,
-    free_indices: List[Index],
-) -> Tuple[FieldType, FieldType]:
-    """Return the new exotic field that couples to `fields` along with its partner
-    that features in the Lagrangian term.
+) -> Tuple[FieldType, Operator, List[Tensor], List[Tensor]]:
+    """Takes two or three indexed fields and the epsilons and returns a new indexed
+    field transforming in the same way as $x \otimes y$.
 
-    free_indices passed in separately because it has been mutated to remove the
-    contracted Lorentz indices.
+    Returns a possibly empty tuple.
+
+    Example:
+        >>> field, term, epsilons, new_epsilons = contract((H('i0'), H('i1')), {"fermion": [], "boson": ["S"]}, [], {})
+        >>> field
+        S(i0, i1)
+        >>> field.y
+        1
 
     """
+    if len(fields) != 2 and len(fields) != 3:
+        raise Exception("Too many fields passed to contract.")
+
+    # product of fields
+    prod_fields = reduce(lambda a, b: a * b, fields)
+    free_indices = prod_fields.get_free_indices()
+
+    # remove contracted isospin epsilons and remove indices from free_indices by
+    # side effect
+    contracted_epsilons, spectator_epsilons = [], []
+    # contracted epsilons are those all of whose indices are contracted on the
+    # set of fields passed in. Spectator epsilons are all of the others
+    for e in epsilons:
+        if is_contracted_epsilon(e, free_indices):
+            contracted_epsilons.append(e)
+        else:
+            spectator_epsilons.append(e)
+
+    undotted, dotted, colour, isospin, _ = Index.indices_by_type(free_indices).values()
+
+    # sort out lorentz epsilons from contraction
+    # contractions between scalars
+    scalar = len(undotted) == 0 and len(dotted) == 0
+    # contractions between undotted fermions (or undotted and one-deriv dotted)
+    two_undotted = len(undotted) == 2 and len(dotted) == 0
+    # contractions between dotted fermions (or dotted and one-deriv undotted)
+    two_dotted = len(dotted) == 2 and len(undotted) == 0
+    # contraction between scalar and undotted fermion (or one-deriv dotted)
+    one_undotted = len(undotted) == 1 and len(dotted) == 0
+    # contraction between scalar and dotted fermion (or one-deriv undotted fermion)
+    one_dotted = len(dotted) == 1 and len(undotted) == 0
+    # fermion derivative cases
+    # derivative acting on scalar into an undotted fermion (or one-deriv dotted)
+    two_undotted_one_dotted = len(undotted) == 2 and len(dotted) == 1
+    # derivative acting on scalar into a dotted fermion (or one-deriv undotted)
+    two_dotted_one_undotted = len(dotted) == 2 and len(undotted) == 1
+
+    # Case that always simplifies two derivatives on scalar down. Corresponds to
+    # the case of D...D(scalar) contracted with D...D(scalar). Completion should
+    # behave the same as `scalar`
+    even_undotted_even_dotted = (
+        len(dotted) != 0
+        and len(undotted) != 0
+        and len(undotted) % 2 == 0
+        and len(dotted) % 2 == 0
+    )
+
+    # if not an allowed contraction, return none
+    if not (
+        scalar
+        or two_undotted
+        or two_dotted
+        or one_undotted
+        or one_dotted
+        or even_undotted_even_dotted
+    ):
+        return None
+
+    n_derivs = 0
+    for f in fields:
+        if str(f).startswith("D"):
+            n_derivs += 1
+
+    # Trying to avoid cases like (DH)^du Dψ^d etc.
+    if (two_undotted_one_dotted or two_dotted_one_undotted) and n_derivs > 1:
+        return None
+
+    # Trying to avoid cases like eb.conj^d D(eb)^d
+    if (two_dotted or two_undotted) and n_derivs:
+        return None
+
+    # construct new (lorentz) epsilons for scalar contractions (currently not
+    # allowing vector contractions)
+    lorentz_contraction_epsilons = scalar_contraction_epsilons(
+        undotted=undotted,
+        dotted=dotted,
+        two_undotted=two_undotted,
+        two_dotted=two_dotted,
+        free_indices=free_indices,
+    )
 
     # construct exotic field
     # deal with charges
@@ -343,18 +402,18 @@ def get_coupling_field(
 
     # establish fermion or boson for symbols
     lorentz_dynkin = get_dynkin(exotic_indices)[:2]
-    if lorentz_dynkin in ("10", "01"):
+    if lorentz_dynkin == "10" or lorentz_dynkin == "01":
         symbols_to_use = symbols["fermion"]
     else:
         symbols_to_use = symbols["boson"]
 
-    field_labels = sorted([f.field for f in fields], key=lambda x: x.label_with_dagger)
-    field_labels = tuple(field_labels)
-    if field_labels in field_dict.keys():
-        symbol = field_dict[field_labels]
+    fs = sorted([f.field for f in fields], key=lambda x: x.label_with_dagger)
+    fs = tuple(fs)
+    if fs in field_dict.keys():
+        symbol = field_dict[fs]
     else:
         symbol = symbols_to_use.pop(0)
-        field_dict[field_labels] = symbol
+        field_dict[fs] = symbol
 
     # for Dirac and Majorana fermions, always keep plain symbol left handed
     to_conj = False
@@ -371,244 +430,183 @@ def get_coupling_field(
     exotic_field = cons_completion_field(exotic_field)
     exotic_field = exotic_field.conj if to_conj else exotic_field
 
+    partner = exotic_field
     if isinstance(exotic_field, VectorLikeDiracFermion):
         partner = exotic_field.dirac_partner() if not n_derivs else exotic_field.conj
     elif isinstance(exotic_field, ComplexScalar):
         partner = exotic_field.conj
     elif isinstance(exotic_field, MajoranaFermion):
         partner = exotic_field.majorana_partner()
-    else:
-        raise Exception(f"Unrecognised exotic field type: {type(exotic_field)}")
 
-    return exotic_field, partner
-
-
-def is_allowed_lorentz_structure(
-    dotted: List[Index], undotted: List[Index], n_derivs: int
-) -> Tuple[bool, bool, bool]:
-    # sort out lorentz epsilons from contraction
-    # contractions between scalars
-    scalar = len(undotted) == 0 and len(dotted) == 0
-    # contractions between undotted fermions (or undotted and one-deriv dotted)
-    two_undotted = len(undotted) == 2 and len(dotted) < 2
-    # contractions between dotted fermions (or dotted and one-deriv undotted)
-    two_dotted = len(dotted) == 2 and len(undotted) < 2
-    # contraction between scalar and undotted fermion (or one-deriv dotted)
-    one_undotted = len(undotted) == 1 and len(dotted) == 0
-    # contraction between scalar and dotted fermion (or one-deriv undotted fermion)
-    one_dotted = len(dotted) == 1 and len(undotted) == 0
-    # fermion derivative cases
-    # derivative acting on scalar into an undotted fermion (or one-deriv dotted)
-    # two_undotted_one_dotted = len(undotted) == 2 and len(dotted) == 1
-    # derivative acting on scalar into a dotted fermion (or one-deriv undotted)
-    # two_dotted_one_undotted = len(dotted) == 2 and len(undotted) == 1
-
-    # Case that always simplifies two derivatives on scalar down. Corresponds to
-    # the case of D...D(scalar) contracted with D...D(scalar). Completion should
-    # behave the same as `scalar`
-    # even_undotted_even_dotted = (
-    #     len(dotted) != 0
-    #     and len(undotted) != 0
-    #     and len(undotted) % 2 == 0
-    #     and len(dotted) % 2 == 0
-    # )
-
-    # if not an allowed contraction, return none
-    if (
-        scalar
-        or two_undotted
-        or two_dotted
-        or one_undotted
-        or one_dotted
-        # or two_undotted_one_dotted
-        # or two_dotted_one_undotted
-        # or even_undotted_even_dotted
-    ):
-        return True, two_undotted, two_dotted
-
-    return False, two_undotted, two_dotted
-
-
-def get_deriv_term(
-    fields: List[IndexedField],
-    epsilons: List[Tensor],
-    n_derivs: int,
-    extra_indices: List[Index],
-) -> Operator:
-    """Takes a list of fields with free Lorentz indices and constructs Lagrangian
-    term from which the derivative contraction may have arisen. (This should be
-    unique.)
-
-    """
-
-    if len(extra_indices) == 2:
-        epsilons.append(eps(" ".join(str(-i) for i in extra_indices)))
-
-    # Corresponds to cases (DF)(DS) and (DS)(DS), (DF)(DF)
-    no_deriv_fields = []
-    for f in fields:
-        # if field doesn't have a derivative, just add it to the list
-        if f.stripped is None:
-            no_deriv_fields.append(f)
-            continue
-
-        head = f.strip_derivs()
-        gauge_indices = f.gauge_indices
-
-        if f.is_fermion:
-            fermion_index = extra_indices.pop(0)
-            if n_derivs == 1:
-                fermion_index = fermion_index.conj
-            indices = [fermion_index, *gauge_indices]
-        else:
-            indices = gauge_indices
-
-        no_deriv_indexed_field = head(" ".join(str(i) for i in indices))
-        no_deriv_fields.append(no_deriv_indexed_field)
-
+    # Corresponds to cases (DS)(DS) and (DF)(DF)
     if n_derivs == 2:
-        return no_deriv_term(no_deriv_fields, epsilons)
+        breakpoint()
 
+    to_skip = []
     # Corresponds to cases (DS)f, (Df)S
-    # breakpoint()
+    if n_derivs == 1:
+        assert not lorentz_contraction_epsilons
+
+        pmatch_fields = [f.pmatch_data for f in fields]
+
+        # sort fields so that boson comes before fermion
+        fields = sorted(fields, key=lambda f: f.comm)
+
+        # Note: two boson or two fermions are not allowed lorentz structures in
+        # a contraction with one derivative
+
+        # match on (DS)f case
+        ds_f = pmatch(
+            [
+                (
+                    "?ss",
+                    (
+                        ("Undotted", "?us"),
+                        ("Dotted", "?ds"),
+                        ("Colour", "?cs"),
+                        ("Isospin", "?is"),
+                        ("Generation", "?gs"),
+                    ),
+                    (("3b", "?3bs"), ("y", "?ys")),
+                    "bose",
+                    1,
+                    "?conjs",
+                ),
+                (
+                    "?sf",
+                    (
+                        ("Undotted", "?uf"),
+                        ("Dotted", "?df"),
+                        ("Colour", "?cf"),
+                        ("Isospin", "?if"),
+                        ("Generation", "?gf"),
+                    ),
+                    (("3b", "?3bf"), ("y", "?yf")),
+                    "fermi",
+                    0,
+                    "?conjf",
+                ),
+            ],
+            pmatch_fields,
+        )
+
+        # match on f(DS) case
+        s_df = pmatch(
+            [
+                (
+                    "?ss",
+                    (
+                        ("Undotted", "?us"),
+                        ("Dotted", "?ds"),
+                        ("Colour", "?cs"),
+                        ("Isospin", "?is"),
+                        ("Generation", "?gs"),
+                    ),
+                    (("3b", "?3bs"), ("y", "?ys")),
+                    "bose",
+                    0,
+                    "?conjs",
+                ),
+                (
+                    "?sf",
+                    (
+                        ("Undotted", "?uf"),
+                        ("Dotted", "?df"),
+                        ("Colour", "?cf"),
+                        ("Isospin", "?if"),
+                        ("Generation", "?gf"),
+                    ),
+                    (("3b", "?3bf"), ("y", "?yf")),
+                    "fermi",
+                    1,
+                    "?conjf",
+                ),
+            ],
+            pmatch_fields,
+        )
+
+        # sanity
+        assert not (ds_f and s_df)
+
+        if ds_f:
+            to_skip = ["Dotted", "Undotted"]
+            if not ds_f["?conjf"]:
+                fermion_index = str(ds_f["?uf"][0])
+                partner_index = str(partner.indices_by_type["Undotted"][0])
+            else:
+                fermion_index = str(ds_f["?df"][0])
+                partner_index = str(partner.indices_by_type["Dotted"][0])
+
+            no_deriv_scalar = fields[0].strip_derivs()
+            scalar_gauge_indices = " ".join(str(i) for i in ds_f["?cs"] + ds_f["?is"])
+            fields[0] = no_deriv_scalar(scalar_gauge_indices)
+            lorentz_contraction_epsilons.append(
+                eps(f"-{fermion_index} -{partner_index}")
+            )
+
+        elif s_df:
+            if not s_df["?conjf"]:
+                partner_index = str(partner.indices_by_type["Undotted"][0])
+            else:
+                partner_index = str(partner.indices_by_type["Dotted"][0])
+
+            no_deriv_fermion = fields[1].strip_derivs()
+            fermion_gauge_indices = " ".join(str(i) for i in s_df["?cf"] + s_df["?if"])
+            fields[1] = no_deriv_fermion(partner_index + " " + fermion_gauge_indices)
+
+        prod_fields = reduce(lambda a, b: a * b, fields)
+
+        # to_skip = ["Undotted", "Dotted"]
+        # # (DH)f and (Df)S cases work differently, since in the latter case you
+        # # need to get the lorentz index from the partner field
+        # is_fermion_deriv = not "DH" in field_labels
+        # new_fields = []
+        # for f in fields:
+        #     stripped = f.strip_derivs()
+        #     if not hasattr(stripped, "indices"):
+        #         indices_dict = f.indices_by_type
+        #         # pass on all gauge indices only for now
+        #         indices_to_pass = (
+        #             indices_dict["Colour"]
+        #             + indices_dict["Isospin"]
+        #             + indices_dict["Generation"]
+        #         )
+
+    #         if is_fermion_deriv:
+    #             to_skip = []
+    #             # If the derivative is acting on a fermion field, get index from partner
+    #             (_, u), (_, d), *rst = partner.indices_by_type.items()
+    #             indices_to_pass = u + d + indices_to_pass
+
+    #         new_fields.append(stripped(" ".join(str(i) for i in indices_to_pass)))
+    #     else:
+    #         new_fields.append(f)
+
+    # prod_fields = reduce(lambda a, b: a * b, new_fields)
+
+    # Need additional su2 epsilons to fix su2 indices (since not working with
+    # lowered indices at all). Won't need to do this if removing a derivative in
+    # the process
+    partner, fix_su2_epsilons = partner.lower_su2(skip=to_skip)
 
     # construct term
-    new_epsilons = [*contracted_epsilons, *lorentz_contraction_epsilons]
+    new_epsilons = [
+        *fix_su2_epsilons,
+        *contracted_epsilons,
+        *lorentz_contraction_epsilons,
+    ]
 
     term = reduce(lambda a, b: a * b, new_epsilons, prod_fields)
     term *= partner
 
     for free in term.free_indices:
-        assert free.index_type == "Generation"
+        try:
+            assert free.index_type == "Generation"
+        except:
+            # TODO something is very wrong here, need to understand and fix!
+            breakpoint()
 
-    return term, spectator_epsilons, lorentz_contraction_epsilons
-
-
-def no_deriv_term(fields, epsilons):
-    # construct term
-    prod_fields = reduce(lambda x, y: x * y, fields)
-    term = reduce(lambda a, b: a * b, epsilons, prod_fields)
-    return term
-
-
-def contract(
-    fields: Tuple[IndexedField],
-    symbols: Dict[str, List[str]],
-    epsilons: List[Tensor],
-    field_dict: Dict[tuple, str],
-) -> Tuple[FieldType, Operator, List[Tensor], List[Tensor]]:
-    """Takes two or three indexed fields and the epsilons and returns (amongst other
-    things) a new indexed field transforming in the same way as $x otimes y$.
-
-    Returns a possibly empty tuple of: the new field, the Lagrangian term, the
-    epsilons passed around (and possibly removed), new epsilons from contraction
-    of Lorentz indices.
-
-    Example:
-        >>> field, term, epsilons, new_epsilons = contract((H('i0'), H('i1')), {"fermion": [], "boson": ["S"]}, [], {})
-        >>> field
-        S(i0, i1)
-        >>> field.y
-        1
-
-    """
-    if len(fields) != 2 and len(fields) != 3:
-        raise Exception("Too many fields passed to contract.")
-
-    # product of fields
-    prod_fields = reduce(lambda a, b: a * b, fields)
-    free_indices = prod_fields.get_free_indices()
-
-    contracted_epsilons, spectator_epsilons = [], []
-    # contracted epsilons are those all of whose indices are contracted on the
-    # set of fields passed in. Spectator epsilons are all of the others
-    for epsilon in epsilons:
-        if is_contracted_epsilon(epsilon, free_indices):
-            contracted_epsilons.append(epsilon)
-        else:
-            spectator_epsilons.append(epsilon)
-
-    n_derivs = 0
-    for f in fields:
-        if str(f).startswith("D"):
-            n_derivs += 1
-
-    # scalar_contraction_epsilons removes pairs of dotted or undotted indices
-    # from free_indices so that the exotic field can be found
-    #
-    # When only dealing with two derivatives, there are at most only two fields
-    # that carry Lorentz indices, call left and right
-    nontrivial_lorentz = [f for f in fields if f.lorentz_irrep != (0, 0)]
-    assert len(nontrivial_lorentz) < 3
-    if len(nontrivial_lorentz) < 1:
-        lorentz_contraction_epsilons = []
-    elif len(nontrivial_lorentz) == 1:
-        # need to contract on same term, e.g. D(F) S
-        for k, g in groupby(free_indices, key=lambda i: i.index_type):
-            grp = list(g)
-            if len(grp) == 2:
-                lorentz_contraction_epsilons = [eps(f"-{grp[0]} -{grp[1]}")]
-                free_indices.remove(grp[0])
-                free_indices.remove(grp[1])
-    elif len(nontrivial_lorentz) == 2:
-        left, right = nontrivial_lorentz
-        lorentz_contraction_epsilons = lorentz_pairs_maybe_remove(
-            left, right, free_indices
-        )
-    else:
-        raise Exception(
-            "Don't currently support more than 2 derivatives in an operator."
-        )
-
-    undotted, dotted, _, _, _ = Index.indices_by_type(free_indices).values()
-    is_allowed = is_allowed_lorentz_structure(dotted, undotted, n_derivs)
-    if not is_allowed:
-        return None
-
-    exotic_field, partner = get_coupling_field(
-        fields, symbols, field_dict, n_derivs, free_indices
-    )
-
-    # Need additional su2 epsilons to fix su2 indices (since not working with
-    # lowered indices at all). Won't need to do this if removing a derivative in
-    # the process
-
-    # if n_derivs == 2 and exotic_field.is_fermion:
-    # if there is an odd number of derivatives acting on a fermion
-    partner, fix_su2_epsilons = exotic_field.lower_su2()
-    # elif n_derivs == 1:
-    #     partner, fix_su2_epsilons = partner.lower_su2()
-
-    # In D(f)D(f) case, extra indices are the indices of the fermions.
-    # Specialising to the case of only two derivatives in the operator, these
-    # indices come from the second element of the lorentz_contraction_epsilons
-    # if n_derivs:
-    #     if exotic_field.is_fermion:
-    #         extra_indices = [
-    #             i for i in free_indices if i.index_type in ("Dotted", "Undotted")
-    #         ]
-    #     else:
-    #         extra_indices = [-i for i in lorentz_contraction_epsilons[1].indices]
-
-    #     term = get_deriv_term(
-    #         fields + (partner,),
-    #         [*lorentz_contraction_epsilons, *contracted_epsilons, *fix_su2_epsilons],
-    #         n_derivs,
-    #         extra_indices,
-    #     )
-    # else:
-    new_epsilons = [
-        *contracted_epsilons,
-        *fix_su2_epsilons,
-        *lorentz_contraction_epsilons,
-    ]
-    # breakpoint()
-    term = no_deriv_term(fields + (partner,), new_epsilons)
-
-    for free in term.free_indices:
-        assert free.index_type == "Generation"
-
-    return term, spectator_epsilons, lorentz_contraction_epsilons
+    return exotic_field, term, spectator_epsilons, lorentz_contraction_epsilons
 
 
 def get_connecting_edge(graph: nx.Graph, nodes: List[int]) -> Tuple[int, int]:
@@ -772,6 +770,7 @@ def cons_completion(
         # else:
         #     prod *= f
 
+    # breakpoint()
     free_indices = prod.get_free_indices()
     undotted, dotted, colour, isospin, _ = Index.indices_by_type(free_indices).values()
 
@@ -1006,114 +1005,3 @@ def filter_completions(
             unique[k] = completions[k]
 
     return unique
-
-    # pmatch_fields = [f.pmatch_data for f in fields]
-
-    # # sort fields so that boson comes before fermion
-    # fields = sorted(fields, key=lambda f: f.comm)
-
-    # # Note: two boson or two fermions are not allowed lorentz structures in
-    # # a contraction with one derivative
-
-    # # match on (DS)f case
-    # ds_f = pmatch(
-    #     [
-    #         (
-    #             "?ss",
-    #             (
-    #                 ("Undotted", "?us"),
-    #                 ("Dotted", "?ds"),
-    #                 ("Colour", "?cs"),
-    #                 ("Isospin", "?is"),
-    #                 ("Generation", "?gs"),
-    #             ),
-    #             (("3b", "?3bs"), ("y", "?ys")),
-    #             "bose",
-    #             1,
-    #             "?conjs",
-    #         ),
-    #         (
-    #             "?sf",
-    #             (
-    #                 ("Undotted", "?uf"),
-    #                 ("Dotted", "?df"),
-    #                 ("Colour", "?cf"),
-    #                 ("Isospin", "?if"),
-    #                 ("Generation", "?gf"),
-    #             ),
-    #             (("3b", "?3bf"), ("y", "?yf")),
-    #             "fermi",
-    #             0,
-    #             "?conjf",
-    #         ),
-    #     ],
-    #     pmatch_fields,
-    # )
-
-    # # match on f(DS) case
-    # s_df = pmatch(
-    #     [
-    #         (
-    #             "?ss",
-    #             (
-    #                 ("Undotted", "?us"),
-    #                 ("Dotted", "?ds"),
-    #                 ("Colour", "?cs"),
-    #                 ("Isospin", "?is"),
-    #                 ("Generation", "?gs"),
-    #             ),
-    #             (("3b", "?3bs"), ("y", "?ys")),
-    #             "bose",
-    #             0,
-    #             "?conjs",
-    #         ),
-    #         (
-    #             "?sf",
-    #             (
-    #                 ("Undotted", "?uf"),
-    #                 ("Dotted", "?df"),
-    #                 ("Colour", "?cf"),
-    #                 ("Isospin", "?if"),
-    #                 ("Generation", "?gf"),
-    #             ),
-    #             (("3b", "?3bf"), ("y", "?yf")),
-    #             "fermi",
-    #             1,
-    #             "?conjf",
-    #         ),
-    #     ],
-    #     pmatch_fields,
-    # )
-
-    # # sanity
-    # assert not (ds_f and s_df)
-
-    # if ds_f:
-    #     to_skip = ["Dotted", "Undotted"]
-    #     if not ds_f["?conjf"]:
-    #         breakpoint()
-    #         fermion_index = str(ds_f["?uf"][0])
-    #         partner_index = str(partner.indices_by_type["Undotted"][0])
-    #     else:
-    #         fermion_index = str(ds_f["?df"][0])
-    #         partner_index = str(partner.indices_by_type["Dotted"][0])
-
-    #     no_deriv_scalar = fields[0].strip_derivs()
-    #     scalar_gauge_indices = " ".join(str(i) for i in ds_f["?cs"] + ds_f["?is"])
-    #     fields[0] = no_deriv_scalar(scalar_gauge_indices)
-    #     lorentz_contraction_epsilons.append(
-    #         eps(f"-{fermion_index} -{partner_index}")
-    #     )
-
-    # elif s_df:
-    #     if not s_df["?conjf"]:
-    #         partner_index = str(partner.indices_by_type["Undotted"][0])
-    #     else:
-    #         partner_index = str(partner.indices_by_type["Dotted"][0])
-
-    #     no_deriv_fermion = fields[1].strip_derivs()
-    #     fermion_gauge_indices = " ".join(str(i) for i in s_df["?cf"] + s_df["?if"])
-    #     fields[1] = no_deriv_fermion(partner_index + " " + fermion_gauge_indices)
-    #     breakpoint()
-
-    # prod_fields = reduce(lambda a, b: a * b, fields)

@@ -4,7 +4,7 @@
 
 import os
 
-from neutrinomass.completions.completion import operator_completions
+from neutrinomass.completions.completions import operator_completions
 from neutrinomass.completions.core import (
     FieldType,
     ComplexScalar,

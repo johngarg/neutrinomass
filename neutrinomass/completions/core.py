@@ -407,12 +407,14 @@ class Completion:
     def exotic_fields(self):
         return set([e.field for e in self.exotics])
 
-    def export(self, path: str):
-        # currently gives you circular import
 
-        # export graph tex file
-        # tikz_export(g=self.graph, path=path)
-        pass
+# class Model:
+#     def __init__(self, completions):
+#         self.completions = completions
+
+#     @property
+#     def exotics(self):
+#         pass
 
 
 def cons_completion_field(indexed_field: IndexedField, is_unbarred=None) -> FieldType:
