@@ -456,10 +456,7 @@ def exotic_field_and_term(
     # need to construct term again because sympy is annoying
     term = reduce(lambda x, y: x * y, fix_su2_epsilons, op * partner)
 
-    try:
-        check_singlet(term)
-    except:
-        breakpoint()
+    check_singlet(term)
 
     return exotic_field, partner, term
 
@@ -777,10 +774,7 @@ def construct_completion(partition, gauge_epsilons, graph):
         return f"Vanishing coupling at {proc_term} after derivative processing."
 
     # make sure the term is a singlet
-    try:
-        check_singlet(proc_term)
-    except:
-        breakpoint()
+    check_singlet(proc_term)
 
     # append the processed term to terms
     terms.append(proc_term)
