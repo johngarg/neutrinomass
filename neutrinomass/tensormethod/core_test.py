@@ -103,3 +103,12 @@ def test_indexed_field_conj():
     assert not D.is_conj
     assert D.conj.is_conj
     assert D.conj.y == -2
+
+
+def test_strip_derivs():
+    from neutrinomass.tensormethod.sm import Q, H
+
+    assert D(D(Q, "01"), "10")("u0 c0 i0").strip_derivs_with_indices() == Q("u0 c0 i0")
+    assert D(D(H, "11"), "00")("i0").strip_derivs_with_indices() == H("i0")
+
+    assert D(Q, "01").strip_derivs_with_indices().derivs == 0

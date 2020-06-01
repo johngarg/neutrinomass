@@ -828,16 +828,47 @@ class IndexedField(tensor.Tensor, Field):
         return rf"{self.get_latex()}^{{{' '.join(indices)}}}"
 
     def strip_derivs(self):
-        if self.stripped is None:
+        if self.derivs == 0:
             return self
 
-        other = {"is_conj": self.is_conj, "comm": self.comm, "nf": self.nf, "derivs": 0}
+        other = {
+            "is_conj": self.is_conj,
+            "comm": self.comm,
+            "nf": self.nf,
+            "derivs": 0,
+            "charges": {k: v for k, v in self.charges.items()},
+            "stripped": self.stripped,
+        }
 
-        return Field(**self.stripped, **other)
+        kwargs = {**self.stripped, **other}
+        return Field(**kwargs)
 
     @property
     def gauge_indices(self):
         return [i for i in self.indices if i.index_type not in ("Dotted", "Undotted")]
+
+    def strip_derivs_with_indices(self):
+        """Remove the derivatives from a field and call on indices. New indices have a
+        partial derivative symbol appended to the name.
+
+        """
+        if self.derivs == 0:
+            return self
+
+        field = self.strip_derivs()
+        undotted, dotted, colour, isospin, _ = self.indices_by_type.values()
+        indices = " ".join(str(i) for i in colour + isospin)
+        lorentz = undotted + dotted
+        if field.is_fermion and self.derivs % 2 == 0:
+            lorentz = lorentz[0]
+            indices = str(lorentz) + " " + indices
+        elif field.is_fermion:
+            lorentz = lorentz[0].conj
+            # add partial symbol to index name to show that it came from derivative
+            lorentz = str(lorentz) + "∂"
+            indices = str(lorentz) + " " + indices
+
+        return field(indices)
 
 
 class Operator(tensor.TensMul):
@@ -1262,6 +1293,7 @@ def D(field, dynkin):
         "comm": field.comm,
         "is_conj": field.is_conj,
         "nf": field.nf,
+        "stripped": field.stripped,
     }
 
     new_field = Field(symbol, dynkin=new_field_dynkin, **rest)

@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 
-from neutrinomass.completions.completion import *
+from neutrinomass.completions.completions import *
+from neutrinomass.tensormethod.sm import L, Q, H
+from neutrinomass.tensormethod.core import D
+
 from neutrinomass.completions.operators import EFF_OPERATORS, DERIV_EFF_OPERATORS
+
 from sympy import Rational
 
 import pytest
@@ -12,6 +16,105 @@ def lnv_completions(op):
 
 
 SIEVE = collect_completions(lnv_completions("1"))
+
+
+def test_get_lorentz_epsilons():
+    passes, epsilons = get_lorentz_epsilons((D(D(H, "11"), "00")("i0"), H("i1")))
+    assert passes
+    assert not epsilons
+
+    passes, epsilons = get_lorentz_epsilons(
+        (D(H, "11")("u0 d0 i0"), D(H, "11")("u1 d1 i1"))
+    )
+    assert passes
+    assert epsilons == [eps("-u0 -u1"), eps("-d0 -d1")]
+
+    passes, epsilons = get_lorentz_epsilons((Q("u0 c0 i0"), L("u1 i1")))
+    assert passes
+    assert epsilons == [eps("-u0 -u1")]
+
+    passes, epsilons = get_lorentz_epsilons((Q("u0 c0 i0"), L.conj("d1 i1")))
+    assert not passes
+    assert not epsilons
+
+    passes, epsilons = get_lorentz_epsilons(
+        (D(L, "01")("d0 i0"), D(H, "11")("u0 d1 i1"))
+    )
+    assert passes
+    assert epsilons == [eps("-d0 -d1")]
+
+    passes, epsilons = get_lorentz_epsilons(
+        (D(Q, "01")("d0 c0 i0"), D(L, "01")("d1 i1"))
+    )
+    assert passes
+    assert epsilons == [eps("-d0 -d1")]
+
+
+def test_process_derivative_term():
+    n = 10
+    symbols = {
+        "fermion": list(map(lambda i: "F" + str(i), range(n))),
+        "boson": list(map(lambda i: "F" + str(i), range(n))),
+    }
+    exotic_dict = {}
+
+    # Dirac fermion, deriv on fermion
+    _, _, term = exotic_field_and_term(
+        H("i1") * D(Q, "01")("d0 c0 i0"), symbols, exotic_dict
+    )
+    assert process_derivative_term(term)
+
+    # Dirac fermion, deriv on scalar
+    _, _, term = exotic_field_and_term(
+        D(H, "11")("u0 d0 i1") * Q("u1 c0 i0") * eps("-u0 -u1"), symbols, exotic_dict
+    )
+    assert process_derivative_term(term)
+
+    # Majorana fermion
+    _, _, term = exotic_field_and_term(
+        D(H, "11")("u0 d0 i1") * L("u1 i0") * eps("-u0 -u1"), symbols, exotic_dict
+    )
+    assert process_derivative_term(term)
+
+    # Two derivatives, scalar case
+    _, _, term = exotic_field_and_term(
+        D(H, "11")("u0 d0 i1")
+        * D(H, "11")("u1 d1 i0")
+        * eps("-u0 -u1")
+        * eps("-d0 -d1"),
+        symbols,
+        exotic_dict,
+    )
+    assert process_derivative_term(term)
+
+    # Two derivatives, scalar case, four point
+    _, _, term = exotic_field_and_term(
+        D(H, "11")("u0 d0 i1")
+        * D(H, "11")("u1 d1 i0")
+        * H("i2")
+        * eps("-u0 -u1")
+        * eps("-d0 -d1"),
+        symbols,
+        exotic_dict,
+    )
+    assert process_derivative_term(term)
+
+    # Two derivatives, fermion case
+    _, _, term = exotic_field_and_term(
+        D(L, "01")("d0 i1") * D(L, "01")("d1 i0") * eps("-d0 -d1"), symbols, exotic_dict
+    )
+    assert process_derivative_term(term)
+
+    # Regular fermion case, for comparison above (and check on exotic_dict)
+    _, _, term = exotic_field_and_term(
+        L("u0 i1") * L("u1 i0") * eps("-u0 -u1"), symbols, exotic_dict
+    )
+    assert process_derivative_term(term)
+
+
+def test_construct_completion():
+    data = partitions(EFF_OPERATORS["2"])[0]
+    assert construct_completion(data["partition"], data["epsilons"], data["graph"])
 
 
 def test_completions():
@@ -34,12 +137,11 @@ def test_completions():
     assert len(o2_comps) == 2
     assert len(o3a_comps) == 6
     assert len(o3b_comps) == 5
-    assert len(o4a_comps) == 0
+    assert not o4a_comps
     assert len(o4b_comps) == 3
     assert len(o8_comps) == 4
 
 
-@pytest.mark.xfail
 def test_deriv_completions():
     # operators from the dimension-6 SMEFT
     from neutrinomass.tensormethod.sm import H, eb
@@ -64,32 +166,7 @@ def test_deriv_completions():
     assert models["OphieD1"] == models["OphieD3"]
     assert models["OphieD1"] == models["OphieD4"]
 
-    return Ophie_D1
 
-
-@pytest.mark.xfail
-def test_deriv_lnv_completions():
-    # Derivative operator examples:
-    from neutrinomass.tensormethod.sm import L, db, H
-    from neutrinomass.tensormethod.core import D
-
-    od2 = EffectiveOperator(
-        "OD2",
-        L("u0 i0")
-        * L("u1 i1")
-        * H("i2")
-        * D(H, "11")("u2 d0 i3")
-        * db.conj("d3 c0")
-        * db("u4 -c1")
-        * eps("-i0 -i1")
-        * eps("-i2 -i3"),
-    )
-
-    comps = collect_completions(operator_completions(od2))
-    assert len(comps) == 22
-
-
-@pytest.mark.xfail
 def test_derivs_nlo_completions():
     # Derivative operator examples:
     from neutrinomass.tensormethod.sm import L, H
@@ -111,7 +188,6 @@ def test_derivs_nlo_completions():
     assert not filter_completions(comps, SIEVE)
 
 
-@pytest.mark.xfail
 def test_ophibox_ophiD():
     """Example from section 2.2 in the paper."""
 
@@ -173,7 +249,6 @@ def test_ophibox_ophiD():
     assert comps["OHHDD4"][0] == (("S", 0, 0, 2, ("3b", 0), ("y", 0)),)
 
 
-@pytest.mark.xfail
 def test_1204_5986_completions():
     """Paper 1204.5986 lists UV completions of some derivative operators. Check
     output of program against these results.
@@ -184,12 +259,20 @@ def test_1204_5986_completions():
     from neutrinomass.tensormethod.core import D
 
     # fields
-    k = ("S", 0, 0, 0, ("3b", 0), ("y", 0))
+    k = ("S", 0, 0, 0, ("3b", 0), ("y", 2))
     xi1 = ("S", 0, 0, 2, ("3b", 0), ("y", 1))
     sigma = ("F", 0, 0, 2, ("3b", 0), ("y", 0))
     ltilde = ("F", 0, 0, 1, ("3b", 0), ("y", Rational("1/2")))
     z = ("S", 0, 0, 1, ("3b", 0), ("y", Rational("3/2")))
     nur = ("F", 0, 0, 0, ("3b", 0), ("y", 0))
+
+    # their notation
+    phi_0_2 = ("S", 0, 0, 0, ("3b", 0), ("y", 2))
+    phi_12_32 = ("S", 0, 0, 1, ("3b", 0), ("y", Rational("3/2")))
+    phi_1_1 = ("S", 0, 0, 2, ("3b", 0), ("y", 1))
+    psi_1_0 = ("F", 0, 0, 2, ("3b", 0), ("y", 0))
+    psi_12_12 = ("F", 0, 0, 1, ("3b", 0), ("y", Rational("1/2")))
+    psi_0_0 = ("F", 0, 0, 0, ("3b", 0), ("y", 0))
 
     o9 = EffectiveOperator(
         "O9",
@@ -205,14 +288,17 @@ def test_1204_5986_completions():
 
     # models from table 5 in 1204.5986
     o9_models_from_paper = {
-        frozenset([k, z, xi1]),
-        frozenset([ltilde, z, xi1]),
-        frozenset([ltilde, sigma, xi1]),
-        frozenset([ltilde, nur, xi1]),
-        frozenset([ltilde, nur]),
-        frozenset([ltilde, sigma]),
-        frozenset([xi1, sigma]),
-        frozenset([xi1, nur]),
+        # first topology
+        frozenset([phi_0_2, phi_12_32, phi_1_1]),
+        frozenset([psi_12_12, phi_12_32, phi_1_1]),
+        frozenset([psi_12_12, psi_1_0, phi_1_1]),
+        frozenset([psi_12_12, psi_0_0]),
+        frozenset([psi_12_12, psi_1_0]),
+        frozenset([phi_1_1, psi_1_0]),
+        # frozenset([phi_1_1, psi_0_0]), (I think this is a mistake)
+        # second topology
+        frozenset([phi_0_2, phi_1_1]),
+        frozenset([psi_12_12, phi_1_1]),
     }
 
     o7 = EffectiveOperator(
@@ -228,5 +314,12 @@ def test_1204_5986_completions():
 
     # o7_comps = collect_completions(operator_completions(o7))
     o9_comps = collect_completions(operator_completions(o9))
-    # return set(map(frozenset, o7_comps))
-    pass
+    for k, v in o9_comps.items():
+        if frozenset(k) not in o9_models_from_paper:
+            assert False
+
+    for model in o9_models_from_paper:
+        if model not in set(map(frozenset, o9_comps.keys())):
+            assert False
+
+    assert True

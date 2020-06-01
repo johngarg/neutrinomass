@@ -31,7 +31,12 @@ class FieldType(IndexedField):
             epsilon = eps("-" + lower + " -" + str(idx))
             epsilons.append(epsilon)
 
-        return cons_completion_field(partner), epsilons
+        # For VectorLikeDiracFermion, keep track of (un)barred boolean
+        is_unbarred = None
+        if hasattr(self, "is_unbarred"):
+            is_unbarred = self.is_unbarred
+
+        return cons_completion_field(partner, is_unbarred=is_unbarred), epsilons
 
     @property
     def indexed_field(self):
@@ -171,6 +176,10 @@ class MajoranaFermion(FieldType):
             charges=None,
         )
 
+    @property
+    def conj_indices(self):
+        return self.conj
+
 
 class VectorLikeDiracFermion(FieldType):
     """Stands in for two fermion fields distinguished here only by dotted and
@@ -231,9 +240,28 @@ class VectorLikeDiracFermion(FieldType):
             indices=" ".join(i.conj.label for i in self.indices),
             charges={k: -v for k, v in self.charges.items()},
             is_conj=(not is_conj),
+            is_unbarred=self.is_unbarred,
             symmetry=self.symmetry,
             comm=self.comm,
+        )
+
+    @property
+    def conj_indices(self):
+        """Returns a copy of self conjugated but leaves charges alone."""
+        is_conj = self.is_conj
+        if is_conj:
+            label = self.label.replace("†", "")
+        else:
+            label = self.label + "†"
+
+        return self.__class__(
+            label=label,
+            indices=" ".join(i.conj.label for i in self.indices),
+            charges=self.charges,
+            is_conj=(not is_conj),
             is_unbarred=self.is_unbarred,
+            symmetry=self.symmetry,
+            comm=self.comm,
         )
 
     def dirac_partner(self):
@@ -387,22 +415,37 @@ class Completion:
         pass
 
 
-def cons_completion_field(indexed_field: IndexedField) -> FieldType:
+def cons_completion_field(indexed_field: IndexedField, is_unbarred=None) -> FieldType:
     label = indexed_field.label
     indices = indexed_field.indices
     charges = indexed_field.charges
     latex = indexed_field.latex
+    is_conj = indexed_field.is_conj
 
     if indexed_field.is_fermion:
         if indexed_field.is_real_sm_irrep:
-            return MajoranaFermion(label, indices, charges=charges, latex=latex)
+            return MajoranaFermion(
+                label, indices, charges=charges, latex=latex, is_conj=is_conj
+            )
 
-        return VectorLikeDiracFermion(label, indices, charges=charges, latex=latex)
+        if is_unbarred is None:
+            is_unbarred = True
+
+        return VectorLikeDiracFermion(
+            label,
+            indices,
+            charges=charges,
+            latex=latex,
+            is_unbarred=is_unbarred,
+            is_conj=is_conj,
+        )
 
     if indexed_field.is_scalar:
         if indexed_field.is_real_sm_irrep:
             return RealScalar(label, indices, charges=charges, latex=latex)
 
-        return ComplexScalar(label, indices, charges=charges, latex=latex)
+        return ComplexScalar(
+            label, indices, charges=charges, latex=latex, is_conj=is_conj
+        )
 
     raise Exception("Unrecognised Lorentz structure in field.")
