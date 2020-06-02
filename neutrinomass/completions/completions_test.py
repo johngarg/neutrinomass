@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from neutrinomass.completions.completions import *
-from neutrinomass.tensormethod.sm import L, Q, H
+from neutrinomass.tensormethod.sm import L, Q, H, eb, ub, db
 from neutrinomass.tensormethod.core import D
 
 from neutrinomass.completions.operators import EFF_OPERATORS, DERIV_EFF_OPERATORS
@@ -140,6 +140,10 @@ def test_completions():
     assert not o4a_comps
     assert len(o4b_comps) == 3
     assert len(o8_comps) == 4
+
+
+def test_o9_completions():
+    assert operator_completions(EFF_OPERATORS["9"])
 
 
 def test_deriv_completions():
@@ -321,16 +325,111 @@ def test_1204_5986_completions():
 
     o7_comps = collect_completions(operator_completions(o7))
     o9_comps = collect_completions(operator_completions(o9))
+    out = []
     for comps, models in [
         (o7_comps, o7_models_from_paper),
         (o9_comps, o9_models_from_paper),
     ]:
         for k, v in comps.items():
+            # we have, they don't have
             if frozenset(k) not in models:
-                assert False
+                print("They don't have:")
+                print((k, v))
+                out.append((k, v))
 
         for model in models:
+            # they have, we don't have
             if model not in set(map(frozenset, comps.keys())):
-                assert False
+                print("We don't have:")
+                print((k, v))
+                out.append((k, v))
 
-    assert True
+    assert not out
+    # return out
+
+
+def test_ibp():
+    from itertools import combinations
+    from collections import defaultdict
+
+    od12_1 = EffectiveOperator(
+        "OD12_1",
+        D(L, "01")("d3 i0 g0")
+        * Q("u1 c1 i1 g1")
+        * eb.conj("d0 g2")
+        * db("u2 -c2")
+        * H("i2")
+        * H("i3")
+        * eps("-i0 -i2")
+        * eps("-i1 -i3"),
+    )
+    od12_2 = EffectiveOperator(
+        "OD12_2",
+        L("u0 i0 g0")
+        * D(Q, "01")("d3 c1 i1 g1")
+        * eb.conj("d0 g2")
+        * db("u2 -c2")
+        * H("i2")
+        * H("i3")
+        * eps("-i0 -i2")
+        * eps("-i1 -i3"),
+    )
+    od12_3 = EffectiveOperator(
+        "OD12_3",
+        L("u0 i0 g0")
+        * Q("u1 c1 i1 g1")
+        * D(eb.conj, "10")("u5 g2")
+        * db("u2 -c2")
+        * H("i2")
+        * H("i3")
+        * eps("-i0 -i2")
+        * eps("-i1 -i3"),
+    )
+    od12_4 = EffectiveOperator(
+        "OD12_4",
+        L("u0 i0 g0")
+        * Q("u1 c1 i1 g1")
+        * eb.conj("d0 g2")
+        * D(db, "01")("d5 -c2")
+        * H("i2")
+        * H("i3")
+        * eps("-i0 -i2")
+        * eps("-i1 -i3"),
+    )
+    od12_5 = EffectiveOperator(
+        "OD12_5",
+        L("u0 i0 g0")
+        * Q("u1 c1 i1 g1")
+        * eb.conj("d0 g2")
+        * db("u2 -c2")
+        * D(H, "11")("u3 d1 i2")
+        * H("i3")
+        * eps("-i0 -i2")
+        * eps("-i1 -i3"),
+    )
+    od12_6 = EffectiveOperator(
+        "OD12_6",
+        L("u0 i0 g0")
+        * Q("u1 c1 i1 g1")
+        * eb.conj("d0 g2")
+        * db("u2 -c2")
+        * H("i2")
+        * D(H, "11")("u3 d1 i3")
+        * eps("-i0 -i2")
+        * eps("-i1 -i3"),
+    )
+
+    models = {
+        op.name: sorted(collect_completions(operator_completions(op)))
+        for op in [od12_1, od12_2, od12_3, od12_4, od12_5, od12_6]
+    }
+
+    model_names = list(map(lambda i: "OD12_" + str(i), range(1, 7)))
+    model_dict = defaultdict(set)
+    for a, b in combinations(model_names, 2):
+        for model in models[a]:
+            if model in models[b]:
+                model_dict[model].add(a)
+                model_dict[model].add(b)
+
+    return model_dict

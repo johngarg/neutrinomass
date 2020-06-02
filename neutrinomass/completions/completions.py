@@ -770,7 +770,8 @@ def construct_completion(partition, gauge_epsilons, graph):
     if isinstance(proc_term, str):
         return proc_term
 
-    if proc_term.canon_bp() == 0:
+    # canon_bp only works for operators with indices, so check that first
+    if proc_term.get_indices() and proc_term.canon_bp() == 0:
         return f"Vanishing coupling at {proc_term} after derivative processing."
 
     # make sure the term is a singlet
