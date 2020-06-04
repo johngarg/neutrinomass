@@ -35,6 +35,7 @@ from neutrinomass.completions.core import (
     VectorLikeDiracFermion,
     MajoranaFermion,
     ComplexScalar,
+    RealScalar,
 )
 from neutrinomass.completions.topologies import get_topology_data, Leaf
 from neutrinomass.utils import pmatch
@@ -436,10 +437,12 @@ def exotic_field_and_term(
     exotic_field = exotic_field.conj_indices if to_conj else exotic_field
 
     partner = exotic_field
-    if isinstance(exotic_field, VectorLikeDiracFermion):
-        partner = exotic_field.dirac_partner()
-    elif isinstance(exotic_field, ComplexScalar):
+    if isinstance(exotic_field, ComplexScalar):
         partner = exotic_field.conj
+    elif isinstance(exotic_field, RealScalar):
+        partner = exotic_field.swap_colour_indices()
+    elif isinstance(exotic_field, VectorLikeDiracFermion):
+        partner = exotic_field.dirac_partner()
     elif isinstance(exotic_field, MajoranaFermion):
         partner = exotic_field.majorana_partner()
 

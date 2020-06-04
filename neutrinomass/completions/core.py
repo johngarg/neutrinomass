@@ -135,6 +135,27 @@ class RealScalar(FieldType):
         assert self.is_scalar
         assert_real_rep(indices, charges)
 
+    def swap_colour_indices(self):
+        """New copy of field with colour indices flipped.
+
+        # TODO Refactor this out with majorana_partner to FieldType
+        """
+        undotted, dotted, colour, isospin, _ = Index.indices_by_type(
+            self.indices
+        ).values()
+        colour = tuple(i.conj for i in colour)
+        indices = undotted + dotted + colour + isospin
+
+        return RealScalar(
+            self.label,
+            indices,
+            latex=self.latex,
+            is_conj=self.is_conj,
+            symmetry=self.symmetry,
+            comm=BOSE,
+            charges=None,
+        )
+
 
 class MajoranaFermion(FieldType):
     def __init__(
