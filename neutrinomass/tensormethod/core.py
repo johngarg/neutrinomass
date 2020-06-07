@@ -571,13 +571,17 @@ class IndexedField(tensor.Tensor, Field):
         if isinstance(indices, str):
             indices = indices.split()
 
-        if symmetry is None:
-            symmetry = [[1] * len(indices)] if indices else []
-
         # classify index types and indices by name
         # e.g. 'i0' -> isospin, 'c0' -> colour, etc.
         tensor_indices = [Index(i) for i in indices]
         index_types = [i.tensor_index_type for i in tensor_indices]
+
+        if symmetry is None:
+            n_gauge_indices = (
+                len(indices) if GENERATION not in index_types else len(indices) - 1
+            )
+            symmetry = [[1] * n_gauge_indices] if indices else []
+
         if isinstance(label, tensor.TensorHead):
             tensor_head = label
             label = str(label.args[0])
@@ -1039,8 +1043,9 @@ class Operator(tensor.TensMul):
         return Index.indices_by_type(indices=self.free_indices)
 
     @property
-    # Will only return something meaninful if no extra epsilons or deltas around.
-    # TODO Extend to ignore uncontracted epsilons and deltas
+    # Will only return something meaninful if no extra epsilons or deltas
+    # around. TODO Extend to ignore uncontracted epsilons and deltas (from
+    # is_contracted_epsilon in completions.completions)
     def dynkin(self):
         return get_dynkin(" ".join(str(i) for i in self.free_indices))
 
@@ -1118,9 +1123,13 @@ class Operator(tensor.TensMul):
             latex_epsilons.append(eps_latex)
 
         # add on epsilons
-        latex_strings += [r" \cdot "] + sorted(latex_epsilons)
+        if latex_epsilons:
+            latex_strings += [r" \cdot "] + sorted(latex_epsilons)
 
         return " ".join(latex_strings)
+
+    def _repr_html_(self):
+        return f"${self.latex()}$"
 
     def __deepcopy__(self, memo):
         return self.__class__(tensors=deepcopy(self.tensors, memo))
