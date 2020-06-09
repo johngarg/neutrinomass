@@ -114,7 +114,6 @@ dmypy.json
 Makefile
 .DS_Store
 data/
-*.dat
 *.cprof
 *.p
 upload.sh
