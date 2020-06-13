@@ -1000,6 +1000,10 @@ class Operator(tensor.TensMul):
         return self.nocoeff if not isinstance(self, Zero) else 0
 
     def simplify(self, fill=False):
+        # deal with no index case (e.g. for φ*φ*η)
+        if not self.get_indices():
+            return self
+
         if fill:
             simple = self.fill_free_indices().sorted_components().canon_bp()
         else:
