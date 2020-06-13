@@ -46,9 +46,12 @@ def distribute_derivatives(expr):
     """Returns a new Hilbert Series with the derivatives distributed across each
     term.
 
+    For a single term, pass it in wrapped in a list.
+
     """
     new_terms = []
-    for term in expr.args:
+    f = lambda x: x.args if not isinstance(expr, list) else x
+    for term in f(expr):
         # derivatives will never be outside of Mul
         if not isinstance(term, sympy.Mul):
             new_terms.append(term)
