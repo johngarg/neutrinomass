@@ -71,3 +71,26 @@ def remove_equivalent(l: List[T], eq_func: Callable[[T, T], bool]) -> List[T]:
 def multiple_replace(mapping: dict, text: str) -> str:
     regex = re.compile("|".join(map(re.escape, mapping.keys())))
     return regex.sub(lambda mo: mapping[mo.group(0)], text)
+
+
+def allowed_lor_dyn(f) -> str:
+    if f.is_boson:
+        return "11"
+
+    if f.is_left_fermion:
+        return "01"
+
+    return "10"
+
+
+def multiset_equality(x, y):
+    multiset_1 = Counter()
+    multiset_2 = Counter()
+
+    for i in x:
+        multiset_1.update({i: 1})
+
+    for i in y:
+        multiset_2.update({i: 1})
+
+    return multiset_1 == multiset_2
