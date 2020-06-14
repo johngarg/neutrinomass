@@ -1001,8 +1001,9 @@ class Operator(tensor.TensMul):
 
     def simplify(self, fill=False):
         # deal with no index case (e.g. for φ*φ*η)
-        if not self.get_indices():
-            return self
+        for f in self.tensors:
+            if not f.get_indices():
+                return self
 
         if fill:
             simple = self.fill_free_indices().sorted_components().canon_bp()
