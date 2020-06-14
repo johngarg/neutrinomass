@@ -341,8 +341,7 @@ def test_1204_5986_completions():
             # they have, we don't have
             if model not in set(map(frozenset, comps.keys())):
                 print("We don't have:")
-                print((k, v))
-                out.append((k, v))
+                print(model)
 
     assert not out
     # return out
