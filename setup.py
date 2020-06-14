@@ -50,6 +50,7 @@ setup(
         "basisgen>=1.0.1",
         "networkx>=2.2",
         "sympy==1.2",
+        "alive_progress>=1.5.1",
     ],
     classifiers=[
         "Programming Language :: Python :: 3",

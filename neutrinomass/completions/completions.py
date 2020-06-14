@@ -4,12 +4,14 @@
 
 from neutrinomass.tensormethod.core import (
     Index,
+    Field,
     IndexedField,
     eps,
     delta,
     is_invariant_symbol,
     Operator,
     get_dynkin,
+    D,
 )
 from neutrinomass.tensormethod.contract import (
     lorentz_singlets,
@@ -18,6 +20,7 @@ from neutrinomass.tensormethod.contract import (
     contract_su2,
 )
 
+from neutrinomass.utils import timeit
 from neutrinomass.tensormethod.utils import safe_nocoeff
 from neutrinomass.completions.utils import (
     flatten,
@@ -25,6 +28,7 @@ from neutrinomass.completions.utils import (
     factors,
     remove_equivalent,
     multiple_replace,
+    allowed_lor_dyn,
 )
 from neutrinomass.completions.core import (
     Completion,
@@ -43,7 +47,9 @@ from neutrinomass.utils import pmatch
 from typing import Tuple, List, Dict, Union
 import networkx as nx
 from copy import copy, deepcopy
+from alive_progress import alive_bar
 
+from collections import Counter
 from itertools import permutations, groupby
 from sympy.tensor.tensor import Tensor
 from sympy import prime
@@ -52,7 +58,7 @@ from functools import lru_cache, reduce
 import re
 
 
-@lru_cache(maxsize=None)
+# @lru_cache(maxsize=None)
 def replace(data, to_replace, replace_with, found=False) -> Tuple[tuple, bool]:
     """Replace first occurance of ``to_replace`` with ``replace_with`` in
     ``data``.
@@ -148,7 +154,7 @@ def set_external_fields(partition, graph):
     return g
 
 
-def partitions(operator: EffectiveOperator) -> List[dict]:
+def partitions(operator: EffectiveOperator, verbose=False) -> List[dict]:
     """Returns a list of operator partitions, epsilons and graphs of the form:
 
     {"fields": ((L(u0, I_0), 18), ...)
@@ -164,14 +170,22 @@ def partitions(operator: EffectiveOperator) -> List[dict]:
     colour_ops = colour_singlets([operator.operator], overcomplete=True)
     colour_ops = [EffectiveOperator(operator.name, op) for op in colour_ops]
 
+    if verbose:
+        print(
+            f"Finding partitions of {operator.name}. "
+            + f"There are {len(colour_ops)} colour structures and "
+            + f"{len(topology_data_list)} relevant topologies."
+        )
+
     out = []
     counter = 1
     for topology_data in topology_data_list:
-        # print(f"Furnishing topology {counter}...")
+        if verbose:
+            print(f"Furnishing topology {counter}...")
+        fields = operator.operator.indexed_fields
+        perms = distribute_fields(fields, topology_data["partition"])
         for op in colour_ops:
-            fields = op.indexed_fields
             epsilons = op.operator.epsilons
-            perms = distribute_fields(fields, topology_data["partition"])
 
             for perm in perms:
                 g = topology_data["graph"]
@@ -453,7 +467,7 @@ def exotic_field_and_term(
     term = reduce(lambda x, y: x * y, fix_su2_epsilons, op * partner)
 
     # construct term and check to see if vanishes
-    if term.canon_bp() == 0:
+    if term.simplify() == 0:
         return exotic_field, partner, f"Vanishing coupling at {term}"
 
     # need to construct term again because sympy is annoying
@@ -598,7 +612,7 @@ def contract(
     if isinstance(no_deriv_maybe_term, str):
         return no_deriv_maybe_term
 
-    if no_deriv_maybe_term.canon_bp() == 0:
+    if no_deriv_maybe_term.simplify() == 0:
         return f"Vanishing coupling at {maybe_term} after derivative processing."
 
     return exotic, no_deriv_maybe_term, spectator_gauge_eps, lorentz_epsilons
@@ -773,8 +787,7 @@ def construct_completion(partition, gauge_epsilons, graph):
     if isinstance(proc_term, str):
         return proc_term
 
-    # canon_bp only works for operators with indices, so check that first
-    if proc_term.get_indices() and proc_term.canon_bp() == 0:
+    if proc_term.simplify() == 0:
         return f"Vanishing coupling at {proc_term} after derivative processing."
 
     # make sure the term is a singlet
@@ -811,10 +824,22 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
     )
 
 
-def operator_completions(operator: EffectiveOperator) -> List[Completion]:
-    # print(f"Finding completions of {operator.name}...")
-    parts = partitions(operator)
-    completions = [partition_completion(p) for p in parts]
+def operator_completions(
+    operator: EffectiveOperator, verbose=False
+) -> List[Completion]:
+
+    parts = partitions(operator, verbose=verbose)
+
+    if verbose:
+        print(f"Finding completions of {len(parts)} partitions...")
+        completions = []
+        with alive_bar(len(parts)) as bar:
+            for p in parts:
+                completions.append(partition_completion(p))
+                bar()
+    else:
+        completions = [partition_completion(p) for p in parts]
+
     good_completions = [c for c in completions if not isinstance(c, FailedCompletion)]
     return good_completions
 
@@ -973,3 +998,80 @@ def filter_completions(
             unique[k] = completions[k]
 
     return unique
+
+
+def operator_strip_derivs(op: Operator) -> List[Operator]:
+    """Removes the derivatives from the operator and returns a dictionary of the
+    fields, epsilons and number of derivatives. The fields output is an
+    association list between Field and list of guage indices (including
+    generational indices) for the field in the operator.
+
+    """
+    tensors = op.tensors
+    new_fields = []
+    epsilons = []
+    n_derivs = 0
+    for field in tensors:
+        if isinstance(field, Field):
+            if field.derivs:
+                assert field.derivs == 1
+                n_derivs += 1
+                data = field.stripped
+                new_field = Field(**data, is_conj=field.is_conj)
+                indices = field.gauge_indices
+                new_fields.append((new_field, " ".join(str(i) for i in indices)))
+                # new_fields.append((new_field, indices))
+            else:
+                indices = field.gauge_indices
+                new_fields.append((field.field, " ".join(str(i) for i in indices)))
+                # new_fields.append((field.field, indices))
+        else:
+            epsilons.append(field)
+
+    return {"fields": new_fields, "epsilons": epsilons, "n_derivs": n_derivs}
+
+
+def construct_operator(
+    fields: List[Tuple[Field, str]], epsilons: List[Tensor]
+) -> Operator:
+    tensors = []
+    for field, index_string in fields:
+        u, d, _, _, _ = field.fresh_indices().indices_by_type.values()
+        lor_idx_str = " ".join(str(i) for i in u + d)
+        tensors.append(field(lor_idx_str + " " + index_string))
+
+    return reduce(lambda x, y: x * y, tensors + epsilons)
+
+
+def derivative_combinations(op: Operator) -> List[Operator]:
+    """Takes an operator with derivatives and returns a list of operators with
+    equivalent SU2 structure with the derivative acted in all possible ways.
+
+    Function expects a specific kind of input: no double derivatives on a single
+    field.
+
+    """
+    fields, epsilons, n_derivs = operator_strip_derivs(op).values()
+    deriv_id_func = lambda x: x
+    act_deriv = lambda f: D(f, allowed_lor_dyn(f))
+
+    deriv_tuple = [act_deriv for _ in range(n_derivs)] + [
+        deriv_id_func for _ in range(len(fields) - n_derivs)
+    ]
+
+    structs, out = [], []
+    for perm in permutations(deriv_tuple):
+        new_structure = []
+        for field, func in zip(fields, perm):
+            new_structure.append((func(field[0]), field[1]))
+
+        structs.append(new_structure)
+
+    remove_equivalent(structs, eq_func=lambda x, y: x == y)
+
+    for struct in structs:
+        new_op = construct_operator(struct, epsilons)
+        if new_op.simplify():
+            out.append(new_op)
+
+    return out
