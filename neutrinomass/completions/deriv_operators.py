@@ -111,7 +111,9 @@ def keep_longest_invariants(fieldstrings: List[Field]) -> List[Operator]:
     return longest
 
 
-def deriv_invariants(
+# returns the invariant that we will put in the paper's table of derivative
+# operators
+def longest_deriv_invariants(
     operator_dict: Dict[str, sympy.mul.Mul]
 ) -> Dict[str, List[Operator]]:
     """Take pattern of derivatives acting on fields that maximizes non-vanishing
@@ -119,7 +121,8 @@ def deriv_invariants(
 
     """
     out = {}
-    for k, v in deriv_operator_names.items():
-        out[k] = keep_longest_invariants(parse([v]))
+    for k, v in operator_dict.items():
+        fieldstrings = remove_unwanted_deriv_structures(parse([v]))
+        out[k] = keep_longest_invariants(fieldstrings)
 
     return out
