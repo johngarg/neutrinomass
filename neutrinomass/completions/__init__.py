@@ -4,6 +4,7 @@ from .completions import (
     operator_completions,
     collect_completions,
     filter_completions,
-    derivative_combinations,
+    deriv_operator_completions,
 )
+
 from .operators import EFF_OPERATORS, DERIV_EFF_OPERATORS
