@@ -51,10 +51,10 @@ o71 = EFF_OPERATORS["71"].operator.tensors
 o76 = [
     eb.conj("d0"),
     eb.conj("d1"),
-    ub("u0 -c0"),
-    ub("u1 -c1"),
-    db.conj("d2 c2"),
-    db.conj("d3 c3"),
+    ub.conj("d2 -c0"),
+    ub.conj("d3 -c1"),
+    db("u0 c2"),
+    db("u1 c3"),
 ]
 o82 = [
     L("u0 i0"),
@@ -69,7 +69,7 @@ o82 = [
     eps("-i1 -i3"),
 ]
 oyec = [L.conj("d3 i6"), eb.conj("d4"), H("i7"), eps("-i6 -i7")]
-oydc = [Q.conj("d3 -c0 i6"), db.conj("d4 c1"), H.conj("i7"), eps("-i6 -i7")]
+oydc = [Q.conj("d3 -c0 i6"), db.conj("d4 c1"), H("i7"), eps("-i6 -i7")]
 prime = [H("i4"), H.conj("i5"), eps("-i4 -i5")]
 prime_prime = [
     H("i4"),
