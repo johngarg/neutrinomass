@@ -467,7 +467,7 @@ def exotic_field_and_term(
     term = reduce(lambda x, y: x * y, fix_su2_epsilons, op * partner)
 
     # construct term and check to see if vanishes
-    if term.simplify() == 0:
+    if term.safe_simplify() == 0:
         return exotic_field, partner, f"Vanishing coupling at {term}"
 
     # need to construct term again because sympy is annoying
@@ -494,6 +494,7 @@ def process_derivative_term(op: Operator) -> Union[Operator, str]:
     # 3. (DH)ψF -> in all but this case, affected fields are clear
     # 4. S(Dψ)F
     # 5. (Dψ)(Dψ)S
+    # 6. S(Dψ)ψ
     scalars, fermions, exotic_fermions, epsilons = [], [], [], []
     for t in op.tensors:
         if isinstance(t, IndexedField) and t.derivs > 0 and t.is_boson:
@@ -522,8 +523,11 @@ def process_derivative_term(op: Operator) -> Union[Operator, str]:
     # cases 1 and 2
     if len(scalars) > 2:
         return reduce(lambda x, y: x * y, scalars + epsilons)
+    # case 6
+    if len(fermions) == 2 and n_derivs == 1:
+        return "Not allowed contraction"
     # case 5
-    if len(fermions) == 2:
+    if len(fermions) == 2 and n_derivs == 2:
         left, right = fermions
     # cases 3 and 4
     if len(exotic_fermions) == 1:
@@ -612,7 +616,7 @@ def contract(
     if isinstance(no_deriv_maybe_term, str):
         return no_deriv_maybe_term
 
-    if no_deriv_maybe_term.simplify() == 0:
+    if no_deriv_maybe_term.safe_simplify() == 0:
         return f"Vanishing coupling at {maybe_term} after derivative processing."
 
     return exotic, no_deriv_maybe_term, spectator_gauge_eps, lorentz_epsilons
@@ -741,7 +745,12 @@ def reduced_row(row, func):
 
 def construct_completion(partition, gauge_epsilons, graph):
     lorentz_epsilons, terms, edge_dict, field_dict = [], [], {}, {}
-    symbols = {"fermion": ["ψ", "ξ", "χ", "ζ", "f"], "boson": ["φ", "η", "ω", "ρ", "S"]}
+    more_fermion_symbols = ["f" + str(i) for i in range(10)]
+    more_scalar_symbols = ["S" + str(i) for i in range(10)]
+    symbols = {
+        "fermion": ["ψ", "ξ", "χ", "ζ", "θ"] + more_fermion_symbols,
+        "boson": ["φ", "η", "ω", "ρ", "σ"] + more_scalar_symbols,
+    }
 
     func = lambda leaves: replace_and_mutate(
         leaves=leaves,
@@ -787,7 +796,7 @@ def construct_completion(partition, gauge_epsilons, graph):
     if isinstance(proc_term, str):
         return proc_term
 
-    if proc_term.simplify() == 0:
+    if proc_term.safe_simplify() == 0:
         return f"Vanishing coupling at {proc_term} after derivative processing."
 
     # make sure the term is a singlet
@@ -873,7 +882,7 @@ def compare_terms(comp1: Completion, comp2: Completion) -> Dict[str, str]:
     new_terms = set()
     for term in comp1.terms:
         for k, v in remapping.items():
-            simple = term.simplify()
+            simple = term.safe_simplify()
             s = str(safe_nocoeff(simple))
             s = multiple_replace(remapping, s)
             # remove generation indices in comparison
@@ -885,7 +894,7 @@ def compare_terms(comp1: Completion, comp2: Completion) -> Dict[str, str]:
 
     comp2_strs = []
     for term in comp2.terms:
-        simple = term.simplify()
+        simple = term.safe_simplify()
         s = str(safe_nocoeff(simple))
         comp2_strs.append(s)
 
@@ -1043,7 +1052,9 @@ def construct_operator(
     return reduce(lambda x, y: x * y, tensors + epsilons)
 
 
-def derivative_combinations(op: Operator) -> List[Operator]:
+def derivative_combinations(
+    op: Union[Operator, EffectiveOperator]
+) -> Union[List[Operator], List[EffectiveOperator]]:
     """Takes an operator with derivatives and returns a list of operators with
     equivalent SU2 structure with the derivative acted in all possible ways.
 
@@ -1051,6 +1062,11 @@ def derivative_combinations(op: Operator) -> List[Operator]:
     field.
 
     """
+    eff_op = None
+    if isinstance(op, EffectiveOperator):
+        eff_op = op
+        op = op.operator
+
     fields, epsilons, n_derivs = operator_strip_derivs(op).values()
     deriv_id_func = lambda x: x
     act_deriv = lambda f: D(f, allowed_lor_dyn(f))
@@ -1071,7 +1087,22 @@ def derivative_combinations(op: Operator) -> List[Operator]:
 
     for struct in structs:
         new_op = construct_operator(struct, epsilons)
-        if new_op.simplify():
+        if new_op.safe_simplify():
             out.append(new_op)
 
-    return out
+    return [EffectiveOperator(eff_op.name, i) for i in out] if eff_op else out
+
+
+def deriv_operator_completions(
+    operator: EffectiveOperator, verbose=False
+) -> List[Completion]:
+    deriv_combos = derivative_combinations(operator)
+
+    if verbose:
+        print(f"Finding completions of {len(deriv_combos)} IBP-related operators...")
+
+    comps = []
+    for combo in deriv_combos:
+        comps += operator_completions(combo, verbose=verbose)
+
+    return comps

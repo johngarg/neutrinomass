@@ -428,19 +428,22 @@ class Field:
             "comm": self.comm,
             "symmetry": self.symmetry,
             "nf": self.nf,
+            "derivs": self.derivs,
+            "stripped": self.stripped,
             # "history": self.history,
             # "latex": self.latex,
         }
 
     def __hash__(self):
-        unhashable = "charges", "symmetry"
+        unhashable = "charges", "symmetry", "stripped"
         values = [v for k, v in self._dict.items() if not k in unhashable]
 
         # constructe hashable structures for each unhashable
         symmetry_tuple = tuple(map(tuple, self._dict["symmetry"]))
         charges_tuple = tuple(self.charges.items())
 
-        return hash(tuple(values) + (symmetry_tuple,) + (charges_tuple,))
+        data = tuple(values) + (symmetry_tuple,) + (charges_tuple,)
+        return hash(data)
 
     def __eq__(self, other):
         if not isinstance(other, self.__class__):
@@ -741,6 +744,8 @@ class IndexedField(tensor.Tensor, Field):
             "comm": self.comm,
             "latex": self.latex,
             "nf": self.nf,
+            "derivs": self.derivs,
+            "stripped": self.stripped,
         }
 
     @property
@@ -1000,11 +1005,6 @@ class Operator(tensor.TensMul):
         return self.nocoeff if not isinstance(self, Zero) else 0
 
     def simplify(self, fill=False):
-        # deal with no index case (e.g. for φ*φ*η)
-        for f in self.tensors:
-            if not f.get_indices():
-                return self
-
         if fill:
             simple = self.fill_free_indices().sorted_components().canon_bp()
         else:
@@ -1018,6 +1018,25 @@ class Operator(tensor.TensMul):
                     simple = simple.contract_metric(tensor_index_type.metric)
 
         return simple.canon_bp()
+
+    def safe_simplify(self):
+        try:
+            return self.simplify()
+        except IndexError:
+            # deal with no index case (sometimes throws an error)
+            # collect fields with indices and only use canon_bp on those
+            unindexed, indexed = [], []
+            for f in self.tensors:
+                if f.get_indices():
+                    indexed.append(f)
+                else:
+                    unindexed.append(f)
+
+            if not indexed:
+                return self
+
+            indexed_op = reduce(lambda x, y: x * y, indexed)
+            return reduce(lambda x, y: x * y, unindexed, indexed_op.simplify())
 
     def is_equivalent_to(self, other: "Operator"):
         """Returns true if operators equal up to numerical constant or free index
@@ -1069,8 +1088,8 @@ class Operator(tensor.TensMul):
         for field in self.indexed_fields:
             f, fc = field, field.conj
             if hasattr(f, "label") and not f.label in field_ordering:
-                field_ordering.append(f.label)
-                field_ordering.append(fc.label)
+                field_ordering.append(f.label.replace("~", ""))
+                field_ordering.append(fc.label.replace("~", ""))
 
         # indices i, j, ... q used for isospin
         isospin_indices = list(ascii_lowercase[8:])
