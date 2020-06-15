@@ -4,6 +4,7 @@ import sympy
 
 from typing import List, Dict
 from itertools import groupby
+from string import ascii_lowercase
 from sympy import Function
 from sympy import symbols
 from sympy.abc import X
@@ -11,6 +12,7 @@ from sympy.abc import X
 from neutrinomass.tensormethod.core import Field, Operator
 from neutrinomass.tensormethod.contract import invariants
 from neutrinomass.tensormethod.parse_hs import parse
+
 
 D = symbols("D")
 
@@ -125,4 +127,21 @@ def longest_deriv_invariants(
         fieldstrings = remove_unwanted_deriv_structures(parse([v]))
         out[k] = keep_longest_invariants(fieldstrings)
 
+    return out
+
+
+def label_operators(
+    operator_dict: Dict[str, List[Operator]]
+) -> Dict[str, List[Operator]]:
+    """Returns a flattened dictionary mapping indexed operator labels to operators.
+
+    Example:
+       >>> label_operators(longest_deriv_invariants(deriv_operator_names))
+
+    """
+    out = {}
+    for k, v in operator_dict.items():
+        for i, op in enumerate(v):
+            label = k + ascii_lowercase[i] if len(v) > 1 else k
+            out[label] = op
     return out

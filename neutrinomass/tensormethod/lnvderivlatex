@@ -8,54 +8,38 @@ operators as well.
 import pickle
 from pprint import pprint
 from collections import defaultdict
-from string import ascii_lowercase
 
-from neutrinomass.tensormethod.contract import invariants
-from neutrinomass.tensormethod.parse_hs import parse, H9_LNV_NF3, H7_LNV_NF3
-from neutrinomass.tensormethod.utils import (
-    is_deriv_in,
-    is_linear_in_deriv,
-    is_fieldstrength_in,
-)
 from neutrinomass.completions.core import EffectiveOperator
+from neutrinomass.tensormethod.deriv_operators import (
+    label_operators,
+    longest_deriv_invariants,
+    deriv_operator_names,
+)
 
 # write out data as pickled dictionary of string label to Operator
 SAVE_DATA = False
-TRACK_TOPO_TYPES = True
+TRACK_TOPO_TYPES = False
 
-# PARSED_HS = parse(H7_LNV_NF3)
-PARSED_HS = parse(H9_LNV_NF3)
-
-out_dict = {}
 counter = 1
 topology_types = defaultdict(list)
-for fields in PARSED_HS:
-    # if not is_linear_in_deriv(fields):
-    #     continue
-    if not is_deriv_in(fields):
-        continue
-
-    if is_fieldstrength_in(fields):
-        continue
-
-    invs = invariants(*fields)
-    if not invs:
-        # print("No invariants")
-        continue
-
+out_dict = {}
+operator_dict_items = label_operators(
+    longest_deriv_invariants(deriv_operator_names)
+).items()
+for name, op in operator_dict_items:
     print(f"Invariants for operator {counter}:")
-    for i, inv in enumerate(invs):
-        label = str(counter) + (ascii_lowercase[i] if len(invs) > 1 else "")
-        print(f"${label}$ & ${inv.latex(ignore=['c', 'u', 'd'])}$ \\\\")
+    print(f"${name}$ & ${op.latex(ignore=['c', 'u', 'd'])}$ \\\\")
 
-        if TRACK_TOPO_TYPES:
-            EFF_OP = EffectiveOperator(label, inv)
-            type_ = f"{EFF_OP.topology_type['n_scalars']}s{EFF_OP.topology_type['n_fermions']}f"
-            print(type_)
-            topology_types[type_].append(label)
+    if TRACK_TOPO_TYPES:
+        EFF_OP = EffectiveOperator(name, op)
+        type_ = (
+            f"{EFF_OP.topology_type['n_scalars']}s{EFF_OP.topology_type['n_fermions']}f"
+        )
+        print(type_)
+        topology_types[type_].append(name)
 
-        if SAVE_DATA:
-            out_dict[label] = inv.pickle_form()
+    if SAVE_DATA:
+        out_dict["D" + name] = op.pickle_form()
 
     print("\n")
     counter += 1
