@@ -51,10 +51,10 @@ o71 = EFF_OPERATORS["71"].operator.tensors
 o76 = [
     eb.conj("d0"),
     eb.conj("d1"),
-    ub.conj("d2 -c0"),
-    ub.conj("d3 -c1"),
-    db("u0 c2"),
-    db("u1 c3"),
+    ub.conj("d2 c0"),
+    ub.conj("d3 c1"),
+    db("u0 -c2"),
+    db("u1 -c3"),
 ]
 o82 = [
     L("u0 i0"),
