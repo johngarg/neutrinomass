@@ -45,10 +45,22 @@ def colour_singlets(operators: List[Operator], overcomplete=False):
                 downs.append(i)
 
         # can only contract into singlet with deltas if equal number of raised
-        # and lowered colour indices. Otherwise need to contract with epsilons
-        # ΔL = 2 EFT only contains 2 and 4 quark operators up to dim 11, so no
-        # need to implement contraction with epsilons yet
-        if len(ups) != len(downs):
+        # and lowered colour indices. Otherwise need to contract with epsilons ΔL
+        # = 2 EFT only contains 2 and 4 quark operators up to dim 11, so no need
+        # to implement contraction with epsilons yet. Make exception for simple
+        # contraction with epsilon
+
+        if len(ups) == 3 and not downs:
+            result.append(op * eps(" ".join(str(-i) for i in ups)))
+        elif len(downs) == 3 and not ups:
+            result.append(op * eps(" ".join(str(-i) for i in downs)))
+        elif len(downs) == 3 and len(ups) == 3:
+            result.append(
+                op
+                * eps(" ".join(str(-i) for i in ups))
+                * eps(" ".join(str(-i) for i in downs))
+            )
+        elif len(ups) != len(downs):
             raise ValueError("Cannot contract colour indices into a singlet.")
 
         delta_index_combos = [tuple(zip(perm, downs)) for perm in permutations(ups)]
