@@ -91,7 +91,7 @@ prime_prime_prime = [
     eps("-i4 -i5"),
 ]
 
-# new operators from table 4 in paper
+# new operators from table in paper
 EFF_OPERATORS["77"] = EffectiveOperator("77", prod(o1 + oyec))
 EFF_OPERATORS["78"] = EffectiveOperator("78", prod(o1 + oydc))
 EFF_OPERATORS["1p"] = EffectiveOperator("1p", prod(o1 + prime))

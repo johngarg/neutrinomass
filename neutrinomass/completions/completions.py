@@ -522,7 +522,10 @@ def process_derivative_term(op: Operator) -> Union[Operator, str]:
 
     # cases 1 and 2
     if len(scalars) > 2:
-        return reduce(lambda x, y: x * y, scalars + epsilons)
+        term = reduce(lambda x, y: x * y, scalars + epsilons)
+        if term.safe_simplify() == 0:
+            return "Vanishing structure"
+        return term
     # case 6
     if len(fermions) == 2 and n_derivs == 1:
         return "Not allowed contraction"
@@ -1103,6 +1106,8 @@ def deriv_operator_completions(
 
     comps = []
     for combo in deriv_combos:
+        if combo.operator.simplify() == 0:
+            continue
         comps += operator_completions(combo, verbose=verbose)
 
     return comps
