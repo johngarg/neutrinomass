@@ -7,7 +7,13 @@ finding.
 
 from itertools import combinations_with_replacement
 from neutrinomass.tensormethod.contract import invariants
-from neutrinomass.tensormethod.core import Operator, GENERATION, Index
+from alive_progress import alive_bar
+from neutrinomass.tensormethod.core import (
+    Operator,
+    GENERATION,
+    Index,
+    decompose_product,
+)
 
 from sympy.tensor.tensor import tensorhead
 
@@ -26,12 +32,31 @@ def is_good_term(term: Operator):
     pass
 
 
+def npoint_fieldstrings(n, fields=[L, eb, Q, db, ub, H], derivs=True):
+    if derivs:
+        T = Field("D", "11000")
+        fields += [T]
+
+    conjs = [f.conj for f in fields]
+    combos = list(combinations_with_replacement(fields + conjs, n))
+    terms = []
+    with alive_bar(len(combos)) as bar:
+        for combo in combos:
+            prods = decompose_product(*combo)
+            singlets = [i for i in prods if i.is_singlet]
+            if singlets:
+                terms.append(singlets[0])
+            bar()
+
+    return terms
+
+
 def npoint_terms(n, fields, nf=3):
     conjs = [f.conj for f in fields]
     combos = combinations_with_replacement(fields + conjs, n)
     terms = []
     for combo in combos:
-        invs = invariants(*combo, ignore=[])
+        invs = invariants(*combo, ignore=["c", "u", "d"])
         terms += invs
 
     return terms

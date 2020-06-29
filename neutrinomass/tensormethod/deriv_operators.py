@@ -27,6 +27,8 @@ od1 = D * L(X) * ebd(X) * H(X) ** 3
 # [L, D(L, "01"), H, D(H, "11")]
 od2 = D ** 2 * L(X) ** 2 * H(X) ** 2
 
+od2point5 = D * L(X) * L(X) * ubd(X) * H(X) ** 3
+
 # Dimension 9
 # [L, L, H, H, H, H.conj, "D", "D"]
 od3 = D ** 2 * L(X) * L(X) * H(X) ** 3 * Hd(X)
