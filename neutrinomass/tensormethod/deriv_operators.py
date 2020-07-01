@@ -20,67 +20,57 @@ H, Hd, L, Ld, Q, Qd = symbols("H Hd L Ld Q Qd", cls=Function)
 eb, ebd, ub, ubd, db, dbd = symbols("eb ebd ub ubd db dbd", cls=Function)
 G, Gb, W, Wb, B, Bb = symbols("G Gb W Wb B Bb", cls=Function)
 
-# Dimension 7
-# [L, eb.conj, H, H, D(H, "11")]
-od1 = D * L(X) * ebd(X) * H(X) ** 3
-
-# [L, D(L, "01"), H, D(H, "11")]
-od2 = D ** 2 * L(X) ** 2 * H(X) ** 2
-
-od2point5 = D * L(X) * L(X) * ubd(X) * H(X) ** 3
-
-# Dimension 9
-# [L, L, H, H, H, H.conj, "D", "D"]
-od3 = D ** 2 * L(X) * L(X) * H(X) ** 3 * Hd(X)
-
-# [L, L, L, L.conj, H, H, "D"]
-od4 = D * L(X) ** 3 * Ld(X) * H(X) ** 2
-
-# [L, eb.conj, D(H, "11"), H, H, H, H.conj]
-od5 = D * L(X) * ebd(X) * H(X) ** 4 * Hd(X)
-
-# [L, L, eb.conj, eb, H, H, "D"]
-od6 = D * L(X) ** 2 * ebd(X) * eb(X) * H(X) ** 2
-
-# [eb.conj, eb.conj, D(H, "11"), D(H, "11"), H, H]
-od7 = D ** 2 * ebd(X) ** 2 * H(X) ** 4
-
-# [L, L, H, H, Q, Q.conj, "D"]
-od8 = D * Q(X) * Qd(X) * L(X) ** 2 * H(X) ** 2
-
-# [L, L, H, H, ub, ub.conj, "D"]
-od9 = D * L(X) ** 2 * H(X) ** 2 * ub(X) * ubd(X)
-
-# [L, L, H, H, db, db.conj, "D"]
-od10 = D * L(X) ** 2 * H(X) ** 2 * db(X) * dbd(X)
-
-# [L, eb.conj, Q.conj, ub.conj, H, H, "D"]
-od11 = D * L(X) * ebd(X) * Qd(X) * ubd(X) * H(X) ** 2
-
-# [L, Q, eb.conj, db, H, H, "D"]
-od12 = D * L(X) * Q(X) * ebd(X) * db(X) * H(X) ** 2
-
-# [eb.conj, eb.conj, db, ub.conj, H, D(H, "11")]
-od13 = D * ebd(X) * ebd(X) * db(X) * ubd(X) * H(X) ** 2
-
-# [L, L, db, ub.conj, H, H.conj, "D"]
-od14 = D * L(X) ** 2 * db(X) * ubd(X) * H(X) * Hd(X)
-
+# From
+# >>> npoint_fieldstrings(
+#         n,
+#         func=lambda c: sum(f.charges["l"] for f in c) == 2,
+#         derivs=True
+#     )
 deriv_operator_names = {
-    "1": od1,
-    "2": od2,
-    "3": od3,
-    "4": od4,
-    "5": od5,
-    "6": od6,
-    "7": od7,
-    "8": od8,
-    "9": od9,
-    "10": od10,
-    "11": od11,
-    "12": od12,
-    "13": od13,
-    "14": od14,
+    # LLdbDub†(00000)(0)
+    "1": D * L(X) ** 2 * db(X) * ubd(X),
+    # LLHHDD(00000)(0)
+    "2": D ** 2 * L(X) ** 2 * H(X) ** 2,
+    # LHHHDeb†(00000)(0)
+    "3": D * L(X) * ebd(X) * H(X) ** 3,
+    # LLLebHDD(00000)(0)
+    "4": D ** 2 * L(X) ** 3 * eb(X) * H(X),
+    # LLLHHDL†(00000)(0)
+    "5": D * L(X) ** 3 * H(X) ** 2 * Ld(X),
+    # LLebHHDeb†(00000)(0)
+    "6": D * L(X) ** 2 * H(X) ** 2 * eb(X) * ebd(X),
+    # LLQdbHDD(00000)(0)
+    "7": D ** 2 * L(X) ** 2 * Q(X) * db(X) * H(X),
+    # LLQHHDQ†(00000)(0)
+    "8": D * L(X) ** 2 * Q(X) * H(X) ** 2 * Qd(X),
+    # LLdbHHDdb†(00000)(0)
+    "9": D * L(X) ** 2 * db(X) * H(X) ** 2 * dbd(X),
+    # LLdbHDub†H†(00000)(0)
+    "10": D * L(X) ** 2 * db(X) * H(X) * ubd(X) * Hd(X),
+    # LLdbDDDub†(00000)(0)
+    "11": D ** 3 * L(X) ** 2 * db(X) * ubd(X),
+    # LLubHHDub†(00000)(0)
+    "12": D * L(X) ** 2 * ub(X) * H(X) ** 2 * ubd(X),
+    # LLHDDQ†ub†(00000)(0)
+    "13": D ** 2 * L(X) ** 2 * H(X) * Qd(X) * ubd(X),
+    # LQdbHHDeb†(00000)(0)
+    "14": D * L(X) * Q(X) * db(X) * H(X) ** 2 * ebd(X),
+    # LdbHDDeb†ub†(00000)(0)
+    "15": D ** 2 * L(X) * db(X) * H(X) * ebd(X) * ubd(X),
+    # LHHDeb†Q†ub†(00000)(0)
+    "16": D * L(X) * H(X) ** 2 * ebd(X) * Qd(X) * ubd(X),
+    # dbHHDeb†eb†ub†(00000)(0)
+    "17": D * db(X) * H(X) ** 2 * ebd(X) ** 2 * ubd(X),
+    # LLHHHDDH†(00000)(0),
+    "18": D ** 2 * L(X) ** 2 * H(X) ** 3 * Hd(X),
+    # LLHHDDDD(00000)(0),
+    "19": D ** 4 * L(X) ** 2 * H(X) ** 2,
+    # LHHHHDeb†H†(00000)(0),
+    "20": D * L(X) * ebd(X) * Hd(X) * H(X) ** 4,
+    # LHHHDDDeb†(00000)(0),
+    "21": D ** 3 * L(X) * H(X) ** 3 * ebd(X),
+    # HHHHDDeb†eb†(00000)(0)
+    "22": D ** 2 * ebd(X) ** 2 * H(X) ** 4,
 }
 
 # need to remove operators with unwanted derivative structures

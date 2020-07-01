@@ -17,7 +17,7 @@ from neutrinomass.tensormethod.deriv_operators import (
 )
 
 # write out data as pickled dictionary of string label to Operator
-SAVE_DATA = False
+SAVE_DATA = True
 TRACK_TOPO_TYPES = False
 
 counter = 1
@@ -27,8 +27,8 @@ operator_dict_items = label_operators(
     longest_deriv_invariants(deriv_operator_names)
 ).items()
 for name, op in operator_dict_items:
-    print(f"Invariants for operator {counter}:")
-    print(f"${name}$ & ${op.latex(ignore=['c', 'u', 'd'])}$ \\\\")
+    # print(f"Invariants for operator {counter}:")
+    print(f"${name}$ & ${op.latex(ignore=['c', 'u', 'd'])}$ & & & & \\\\")
 
     if TRACK_TOPO_TYPES:
         EFF_OP = EffectiveOperator(name, op)
