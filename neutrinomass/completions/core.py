@@ -429,13 +429,47 @@ class Completion:
         return set([e.field for e in self.exotics])
 
 
-# class Model:
-#     def __init__(self, completions):
-#         self.completions = completions
+def collect(comps):
+    collected = collect_completions(comps)
+    return [Model(cs) for _, cs in list(collected.items())]
 
-#     @property
-#     def exotics(self):
-#         pass
+
+class Model:
+    def __init__(self, completions):
+        self.completions = completions
+
+    @property
+    def exotic_numbers(self):
+        return sorted(
+            format_quantum_numbers(i)
+            for i in self.completions[0].exotic_info().values()
+        )
+
+    @property
+    def exotics(self):
+        pass
+
+    def __repr__(self):
+        return "Model(" + " + ".join(i for i in self.exotic_numbers) + ")"
+
+
+def format_quantum_numbers(info: tuple):
+    """Takes an expression like
+
+    ('S', 1, 0, 2, ('3b', 1), ('y', 2/3))
+
+    and returns a string like
+
+    S(3, 3, 2/3)(3b: 1)
+
+    """
+    lorentz, su3_up, su3_down, su2, *charges = info
+    su3_dim = lambda m, n: 0.5 * (m + 1) * (n + 1) * (m + n + 2)
+    # For now just add the bar for more lowered than raised indices, but for
+    # larger reps this will be problematic
+    su3_dim_format = lambda m, n: str(int(su3_dim(m, n))) + ("b" if n > m else "")
+    charges_dict = dict(charges)
+    return f"{lorentz}({su3_dim_format(int(su3_up), int(su3_down))}, {str(int(su2) + 1)}, {charges_dict['y']})({charges_dict['3b']})"
 
 
 def cons_completion_field(indexed_field: IndexedField, is_unbarred=None) -> FieldType:
