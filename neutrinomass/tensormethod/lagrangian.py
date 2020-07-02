@@ -6,26 +6,26 @@ finding.
 """
 
 from itertools import combinations_with_replacement
-from neutrinomass.tensormethod.contract import invariants, unsimplified_invariants
-from neutrinomass.completions.core import FieldType
 from alive_progress import alive_bar
 from multiset import Multiset
+from sympy import Matrix
+from sympy.tensor.tensor import tensorhead
+from collections import Counter
 import numpy as np
+from typing import List
+
+from neutrinomass.tensormethod.contract import invariants, unsimplified_invariants
+from neutrinomass.completions.utils import remove_equivalent
 from neutrinomass.tensormethod.core import (
     Operator,
     GENERATION,
     Index,
     decompose_product,
     Prod,
+    Field,
 )
 
-from sympy import Matrix
-from sympy.tensor.tensor import tensorhead
-
-# for now
-from neutrinomass.tensormethod.sm import *
-
-SM_MATTER = (H, Q, ub, db, L, eb)
+from neutrinomass.tensormethod.sm import L, Q, db, H, ub, eb
 
 
 def make_coupling(symbol: str, indices: str, sym=None):
@@ -65,8 +65,8 @@ def npoint_fieldstrings(n, fields=(L, eb, Q, db, ub, H), derivs=False, func=None
                 terms += [singlets[0]]
             bar()
 
-    # for f in fields:
-    #     del f.charges["l"]
+    for f in fields:
+        del f.charges["l"]
 
     return terms
 
@@ -116,39 +116,75 @@ class Lagrangian:
         self.terms = terms
 
     def u1_symmetries(self):
-        exotics = list(self.exotics)
+        exotics = [f.field for f in self.exotics]
         extra_0s = [0 for _ in range(len(exotics))]
 
         #            H  Q  ub db L eb
         yukawas = [[1, 1, 1, 0, 0, 0], [-1, 1, 0, 1, 0, 0], [-1, 0, 0, 0, 1, 1]]
         new_yukawas = [list(yuk) + extra_0s for yuk in yukawas]
 
-        exotic_indices = {k: v for k, v in zip(exotics, range(0, len(exotics)))}
+        exotic_indices_nonconj = {k: v for k, v in zip(exotics, range(0, len(exotics)))}
+        exotic_indices_conj = {
+            k: v for k, v in zip([f.conj for f in exotics], range(0, len(exotics)))
+        }
+        exotic_indices = {**exotic_indices_conj, **exotic_indices_nonconj}
 
         matrix = []
         for term in self.terms:
-            matrix += [term_to_row(term, self.exotics, exotic_indices)]
+            if contains(term, exotics):
+                matrix += [term_to_row(term, exotics, exotic_indices)]
 
         matrix += new_yukawas
         X = Matrix(matrix)
         return X.nullspace()
 
-    def is_conserving(self, symmetry):
-        pass
+    def num_u1_symmetries(self):
+        return len(self.u1_symmetries())
 
     def generate_full(self):
-        pass
+        terms = generate_uv_terms(self.exotics)
+        return Lagrangian(self.exotics, terms)
 
 
 def term_to_row(term, exotics, exotic_indices):
-    # {H: 0, Q: 1, ub: 2, db: 3, L: 4, lb: 5}
-    index_dict = dict(zip(SM_MATTER, range(6)))
+    sm_matter = (H, Q, ub, db, L, eb)
+    sm_matter_conj = [f.conj for f in sm_matter]
+    index_dict_nonconj = dict(zip(sm_matter, range(6)))
+    index_dict_conj = dict(zip(sm_matter_conj, range(6)))
+    index_dict = {**index_dict_conj, **index_dict_nonconj}
     n_fields = len(exotics) + 6
     row = np.zeros(n_fields)
     for field, mult in Counter(term.fields).items():
-        if not isinstance(field, FieldType):
+        if field in [*sm_matter, *sm_matter_conj]:
             row[index_dict[field]] += mult if not field.is_conj else -mult
         else:
             row[6 + exotic_indices[field]] += mult if not field.is_conj else -mult
 
     return [int(i) for i in row]
+
+
+def generate_uv_terms(fields: set):
+    sm_matter = [H, Q, ub, db, L, eb]
+    all_fields = sm_matter + [f.field for f in fields]
+
+    cubic_terms = npoint_terms(3, all_fields)
+    quartic_terms = npoint_terms(4, all_fields)
+
+    out = []
+    for term in [*cubic_terms, *quartic_terms]:
+        if term.mass_dim <= 4:
+            out.append(term)
+
+    eq = lambda x, y: x.nocoeff.simplify() == y.nocoeff.simplify()
+    remove_equivalent(out, eq_func=eq)
+    # only keep terms that contain exotic fields
+    return [i for i in out if i != 0 and contains(i, [f.field for f in fields])]
+
+
+def contains(term: Operator, fields: List[Field]):
+    term_fields = term.fields
+    for f in fields:
+        if f in term_fields or f.conj in term_fields:
+            return True
+
+    return False

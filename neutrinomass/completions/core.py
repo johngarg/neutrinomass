@@ -429,7 +429,7 @@ class Completion:
         return set([e.field for e in self.exotics])
 
 
-def collect(comps):
+def collect_models(comps):
     collected = collect_completions(comps)
     return [Model(cs) for _, cs in list(collected.items())]
 

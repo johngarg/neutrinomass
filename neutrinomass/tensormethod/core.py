@@ -1158,6 +1158,10 @@ class Operator(tensor.TensMul):
     def __deepcopy__(self, memo):
         return self.__class__(tensors=deepcopy(self.tensors, memo))
 
+    @property
+    def mass_dim(self):
+        return sum(f.mass_dim for f in self.fields)
+
 
 def assert_consistent_indices(
     indices: List[str],
