@@ -15,7 +15,7 @@ import numpy as np
 from typing import List
 
 from neutrinomass.tensormethod.contract import invariants, unsimplified_invariants
-from neutrinomass.completions.utils import remove_equivalent
+from neutrinomass.utils import remove_equivalent
 from neutrinomass.tensormethod.core import (
     Operator,
     GENERATION,
@@ -111,12 +111,29 @@ def npoint_terms(n, fields, nf=3):
 
 
 class Lagrangian:
-    def __init__(self, exotics, terms):
+    def __init__(self, exotics: set, interaction_terms: list):
+        """Exotics is a set containing only one Dirac partner for a Dirac fermion."""
         self.exotics = exotics
-        self.terms = terms
+        self.interaction_terms = interaction_terms
+
+    @property
+    def fields(self):
+        """Returns fields with Dirac partners separated"""
+        out = []
+        for f in self.exotics:
+            out.append(f)
+            if f.is_fermion and f.y != 0:
+                out.append(f.dirac_partner())
+
+        return sorted(out)
+
+    @property
+    def terms(self):
+        exotic_mass_terms = [f.mass_term for f in self.fields]
+        return self.interaction_terms + exotic_mass_terms
 
     def u1_symmetries(self):
-        exotics = [f.field for f in self.exotics]
+        exotics = [f.field for f in self.fields]
         extra_0s = [0 for _ in range(len(exotics))]
 
         #            H  Q  ub db L eb
@@ -142,8 +159,9 @@ class Lagrangian:
         return len(self.u1_symmetries())
 
     def generate_full(self):
-        terms = generate_uv_terms(self.exotics)
-        return Lagrangian(self.exotics, terms)
+        interaction_terms = generate_uv_terms(self.fields)
+        exotic_mass_terms = [f.mass_term for f in self.fields]
+        return Lagrangian(self.exotics, interaction_terms + exotic_mass_terms)
 
 
 def term_to_row(term, exotics, exotic_indices):
@@ -175,7 +193,7 @@ def generate_uv_terms(fields: set):
         if term.mass_dim <= 4:
             out.append(term)
 
-    eq = lambda x, y: x.nocoeff.simplify() == y.nocoeff.simplify()
+    eq = lambda x, y: x.nocoeff.safe_simplify() == y.nocoeff.safe_simplify()
     remove_equivalent(out, eq_func=eq)
     # only keep terms that contain exotic fields
     return [i for i in out if i != 0 and contains(i, [f.field for f in fields])]

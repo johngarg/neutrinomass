@@ -4,6 +4,7 @@ from neutrinomass.tensormethod.lagrangian import *
 
 from neutrinomass.tensormethod import eps
 from neutrinomass.completions import EFF_OPERATORS, operator_completions
+from neutrinomass.completions.core import cons_completion_field
 from sympy import Rational
 
 TEST_COMP = operator_completions(EFF_OPERATORS["1"])[0]
@@ -22,12 +23,17 @@ def test_u1_symmetries():
 
 
 def test_generate_uv_terms():
-    S1 = Field("S1", "00010", charges={"y": Rational(1, 3)})
+    S1 = Field("S1", "00010", charges={"y": Rational(1, 3)})("-c0")
+    s1_complex_scalar = cons_completion_field(S1)
     lag = Lagrangian(
-        {S1("-c0")},
+        {s1_complex_scalar},
         [
-            S1("-c0") * Q("u0 c0 i0") * L("u1 i1") * eps("-u0 -u1") * eps("-i0 -i1"),
-            S1.conj("c0") * ub("u0 -c0") * eb("u1") * eps("-u0 -u1"),
+            s1_complex_scalar
+            * Q("u0 c0 i0")
+            * L("u1 i1")
+            * eps("-u0 -u1")
+            * eps("-i0 -i1"),
+            s1_complex_scalar * ub.conj("d0 c0") * eb.conj("d1") * eps("-d0 -d1"),
         ],
     )
     full_lag = lag.generate_full()

@@ -432,3 +432,14 @@ def test_ibp():
                 model_dict[model].add(b)
 
     return model_dict
+
+
+def test_symmetries():
+    o2_models = collect_models(lnv_completions("2"))
+    o3a_models = collect_models(lnv_completions("3a"))
+    o3b_models = collect_models(lnv_completions("3b"))
+    o8_models = collect_models(lnv_completions("8"))
+
+    for m in [*o2_models, *o3a_models, *o3b_models, *o8_models]:
+        for c in m.completions:
+            assert c.lagrangian.num_u1_symmetries() == 2

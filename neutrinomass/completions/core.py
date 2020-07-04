@@ -7,8 +7,15 @@ from copy import deepcopy
 
 from functools import reduce
 
-from neutrinomass.tensormethod import IndexedField
-from neutrinomass.tensormethod.core import BOSE, FERMI, Index, eps, get_dynkin
+from neutrinomass.tensormethod.core import (
+    BOSE,
+    FERMI,
+    Index,
+    IndexedField,
+    eps,
+    get_dynkin,
+)
+from neutrinomass.tensormethod.lagrangian import Lagrangian
 
 # from neutrinomass.completions.tikzfeynman import tikz_export
 
@@ -102,6 +109,23 @@ class ComplexScalar(FieldType):
 
         assert self.is_scalar
 
+    @property
+    def mass_term(self):
+        lower, epsilons = self.conj.lower_su2()
+        return reduce(lambda x, y: x * y, epsilons, lower * self)
+
+    # @property
+    # def kinetic_term(self):
+    #     """I think this will mess with U(1) symmetries algorithm as currently
+    #     implemented"""
+    #     lower, epsilons = self.conj.lower_su2()
+    #     all_og_indices = "u0 d0 " + " ".join(str(i) for i in self.indices)
+    #     all_lower_indices = "u1 d1 " + " ".join(str(i) for i in lower.indices)
+    #     deriv_og = D(lower, "11")(all_og_indices)
+    #     deriv_lower = D(lower, "11")(all_lower_indices)
+    #     term = deriv_og * deriv_lower
+    #     return reduce(lambda x, y: x * y, epsilons, term)
+
 
 def assert_real_rep(indices: str, charges) -> None:
     if charges and "y" in charges:
@@ -156,6 +180,11 @@ class RealScalar(FieldType):
             charges=None,
         )
 
+    @property
+    def mass_term(self):
+        lower, epsilons = self.swap_colour_indices().lower_su2()
+        return reduce(lambda x, y: x * y, epsilons, lower * self)
+
 
 class MajoranaFermion(FieldType):
     def __init__(
@@ -200,6 +229,11 @@ class MajoranaFermion(FieldType):
     @property
     def conj_indices(self):
         return self.conj
+
+    @property
+    def mass_term(self):
+        lower, epsilons = self.majorana_partner().lower_su2()
+        return reduce(lambda x, y: x * y, epsilons, lower * self)
 
 
 class VectorLikeDiracFermion(FieldType):
@@ -311,6 +345,11 @@ class VectorLikeDiracFermion(FieldType):
             comm=FERMI,
         )
 
+    @property
+    def mass_term(self):
+        lower, epsilons = self.dirac_partner().lower_su2()
+        return reduce(lambda x, y: x * y, epsilons, lower * self)
+
 
 class EffectiveOperator:
     def __init__(self, name, operator):
@@ -385,7 +424,7 @@ class Completion:
 
     @property
     def lagrangian(self):
-        return Lagrangian(terms=self.terms)
+        return Lagrangian(exotics=self.exotics, interaction_terms=self.terms)
 
     def draw_diagram(self):
         import matplotlib.pyplot as plt
@@ -427,11 +466,6 @@ class Completion:
 
     def exotic_fields(self):
         return set([e.field for e in self.exotics])
-
-
-def collect_models(comps):
-    collected = collect_completions(comps)
-    return [Model(cs) for _, cs in list(collected.items())]
 
 
 class Model:
