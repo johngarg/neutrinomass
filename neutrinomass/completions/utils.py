@@ -6,8 +6,6 @@ from copy import deepcopy
 
 from functools import reduce
 
-T = TypeVar("T")
-
 
 def flatten(container):
     for i in container:
@@ -46,26 +44,6 @@ def factors(n):
             ([i, n // i] for i in range(1, int(n ** 0.5) + 1) if n % i == 0),
         )
     )
-
-
-def remove_equivalent(l: List[T], eq_func: Callable[[T, T], bool]) -> List[T]:
-    """Iterates through the list `l` and removes duplicate items according to
-    `eq_func`. Returns a copy of `l` with duplicates removed.
-
-    """
-    # list_copy = deepcopy(l)
-
-    i = 0
-    while i < len(l) - 1:
-        j = i + 1
-        while j <= len(l) - 1:
-            if eq_func(l[i], l[j]):
-                l.pop(j)
-            else:
-                j += 1
-        i += 1
-
-    # return l
 
 
 def multiple_replace(mapping: dict, text: str) -> str:

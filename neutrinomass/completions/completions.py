@@ -26,12 +26,13 @@ from neutrinomass.completions.utils import (
     flatten,
     chunks,
     factors,
-    remove_equivalent,
     multiple_replace,
     allowed_lor_dyn,
 )
+from neutrinomass.utils import remove_equivalent
 from neutrinomass.completions.core import (
     Completion,
+    Model,
     FailedCompletion,
     EffectiveOperator,
     cons_completion_field,
@@ -931,7 +932,6 @@ def remove_equivalent_completions(comps: List[Completion]) -> List[Completion]:
     remove_equivalent(comps, are_equivalent_completions)
 
 
-# TODO change_to_collect_models
 def collect_completions(
     completions: List[Completion], key=None
 ) -> Dict[tuple, Completion]:
@@ -1111,3 +1111,8 @@ def deriv_operator_completions(
         comps += operator_completions(combo, verbose=verbose)
 
     return comps
+
+
+def collect_models(comps):
+    collected = collect_completions(comps)
+    return [Model(cs) for _, cs in list(collected.items())]
