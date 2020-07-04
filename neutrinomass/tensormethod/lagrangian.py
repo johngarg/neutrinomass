@@ -7,7 +7,6 @@ finding.
 
 from itertools import combinations_with_replacement
 from alive_progress import alive_bar
-from multiset import Multiset
 from sympy import Matrix
 from sympy.tensor.tensor import tensorhead
 from collections import Counter
