@@ -13,7 +13,7 @@ from typing import Union
 
 import sympy.tensor.tensor as tensor
 from basisgen import irrep
-from sympy import flatten
+from sympy import flatten, Rational
 from sympy.core.numbers import Zero
 
 from neutrinomass.tensormethod.lnv import BL_LIST
@@ -272,6 +272,12 @@ class Field:
 
         # make sure charges contains hypercharge
         assert "y" in charges.keys()
+
+        # allow charges to be passed in as strings
+        proc_charges = {}
+        for k, v in charges.items():
+            proc_charges[k] = Rational(v)
+        charges = proc_charges
 
         # for SU(2) and SU(3), indices will always be symmetric
         if symmetry is None:
