@@ -4,5 +4,5 @@ from neutrinomass.completions.operators import EFF_OPERATORS, DERIV_EFF_OPERATOR
 
 
 def test_pickle():
-    op = DERIV_EFF_OPERATORS["D1"]
+    op = DERIV_EFF_OPERATORS["D3"]
     assert sum(f.derivs for f in op.operator.fields)
