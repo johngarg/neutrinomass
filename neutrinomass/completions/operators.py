@@ -31,6 +31,9 @@ DERIV_EFF_OPERATORS = {}
 for k, op in pickle_form_deriv_ops.items():
     if k in ("D1", "D11"):  # non-explosive
         continue
+    if k.startswith("D19"):  # four-deriv
+        continue
+
     DERIV_EFF_OPERATORS[k] = EffectiveOperator(k, Operator.from_pickle_form(op))
 
 # add additional operators not in BL/dGJ list
