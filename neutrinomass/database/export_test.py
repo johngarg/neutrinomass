@@ -44,7 +44,7 @@ def test_export_operator():
 
 def test_export_completion():
     for _, op in list(EFF_OPERATORS.items())[:5]:
-        comp = operator_completions(op)[0]
+        comp = list(operator_completions(op))[0]
         new_str, old = export_completion(comp), comp
         new = eval(new_str)
 

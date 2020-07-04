@@ -7,7 +7,7 @@ from neutrinomass.completions import EFF_OPERATORS, operator_completions
 from neutrinomass.completions.core import cons_completion_field
 from sympy import Rational
 
-TEST_COMP = operator_completions(EFF_OPERATORS["1"])[0]
+TEST_COMP = list(operator_completions(EFF_OPERATORS["1"]))[0]
 LAG = Lagrangian(TEST_COMP.exotics, TEST_COMP.terms)
 
 

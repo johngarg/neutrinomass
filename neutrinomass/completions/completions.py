@@ -845,16 +845,23 @@ def operator_completions(
 
     if verbose:
         print(f"Finding completions of {len(parts)} partitions...")
-        completions = []
         with alive_bar(len(parts)) as bar:
             for p in parts:
-                completions.append(partition_completion(p))
+                # completions.append(partition_completion(p))
+                comp = partition_completion(p)
+                if not isinstance(comp, FailedCompletion):
+                    yield comp
                 bar()
     else:
-        completions = [partition_completion(p) for p in parts]
+        for p in parts:
+            comp = partition_completion(p)
+            if not isinstance(comp, FailedCompletion):
+                yield comp
 
-    good_completions = [c for c in completions if not isinstance(c, FailedCompletion)]
-    return good_completions
+        # completions = [partition_completion(p) for p in parts]
+
+    # good_completions = [c for c in completions if not isinstance(c, FailedCompletion)]
+    # return good_completions
 
 
 def compare_terms(comp1: Completion, comp2: Completion) -> Dict[str, str]:
@@ -1108,7 +1115,7 @@ def deriv_operator_completions(
     for combo in deriv_combos:
         if combo.operator.simplify() == 0:
             continue
-        comps += operator_completions(combo, verbose=verbose)
+        comps += list(operator_completions(combo, verbose=verbose))
 
     return comps
 
