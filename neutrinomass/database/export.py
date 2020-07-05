@@ -100,7 +100,7 @@ def export_exotics(exotics: set):
     return str(set([export_tensor(f) for f in exotics])).replace('"', "")
 
 
-def export_completion(c: Completion):
+def export_completion(c: Completion, lazy=True):
 
     name = c.operator.name
     op = export_operator(c.operator.operator)
@@ -111,6 +111,16 @@ def export_completion(c: Completion):
     terms = export_terms(c.terms)
     exotics = export_exotics(c.exotics)
 
-    export_string = f"Completion(operator={eff_op}, partition={part}, graph={graph}, exotics={exotics}, terms={terms})"
+    quantum_numbers = []
+    # lorentz irrep (string), colour dynkins, isospin dynkin, 3 * B, hypercharge
+    for l, cu, cd, i, (bl, b), (yl, y) in c.exotic_info().values():
+        quantum_numbers.append((l, (cu, cd), i, (bl, b), (yl, str(y))))
 
-    return export_string
+    head = "{'operator_name': '%s', 'quantum_numbers': %s}" % (
+        name,
+        str(quantum_numbers),
+    )
+    completion_string = f"Completion(operator={eff_op}, partition={part}, graph={graph}, exotics={exotics}, terms={terms})"
+    export_string = f"""LazyCompletion(head={head}, tail="{completion_string}")"""
+
+    return export_string if lazy else completion_string
