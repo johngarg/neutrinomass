@@ -10,6 +10,7 @@ from typing import List
 from typing import NamedTuple
 from typing import Tuple
 from typing import Union
+from functools import reduce
 
 import sympy.tensor.tensor as tensor
 from basisgen import irrep
