@@ -60,7 +60,7 @@ def test_export_completion():
 def test_lazy_completion():
     op = EFF_OPERATORS["3b"]
     comp = list(operator_completions(op))[0]
-    lazy_comp = export_completion(comp, lazy=True)
+    lazy_comp = eval(export_completion(comp, lazy=True))
 
     assert isinstance(lazy_comp.head, dict)
     assert isinstance(lazy_comp.tail, str)
