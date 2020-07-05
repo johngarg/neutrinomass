@@ -50,7 +50,7 @@ def export_tensor(tensor):
         label = tensor.field.label + (".conj" if tensor.is_conj else "")
         return f"{label}('{indices}')"
 
-    if str(tensor).startswith("metric"):
+    if str(tensor).startswith("metric") or str(tensor).startswith("Eps"):
         return f"eps('{indices}')"
 
     if str(tensor).startswith("KD"):
