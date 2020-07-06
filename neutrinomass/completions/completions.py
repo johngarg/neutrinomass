@@ -864,6 +864,37 @@ def operator_completions(
     # return good_completions
 
 
+def check_remapping_on_terms(terms1, terms2, remapping):
+    new_terms = set()
+    for term in terms1:
+        for k, v in remapping.items():
+            simple = term.safe_simplify()
+            s = str(safe_nocoeff(simple))
+            s = multiple_replace(remapping, s)
+            # remove generation indices in comparison
+            s = re.sub(r"g[0-9]+_", "g_", s)
+            # remove negative signs on indices
+            s = re.sub(r"-", "", s)
+            ss = tuple(sorted(s.split("*")))
+            new_terms.add(ss)
+
+    comp2_strs = []
+    for term in terms2:
+        simple = term.safe_simplify()
+        s = str(safe_nocoeff(simple))
+        comp2_strs.append(s)
+
+    comp2_strs = [re.sub(r"g[0-9]+_", "g_", s) for s in comp2_strs]
+    comp2_strs = [re.sub(r"-", "", s) for s in comp2_strs]
+    comp2_tups = [tuple(sorted(s.split("*"))) for s in comp2_strs]
+
+    if new_terms == set(comp2_tups):
+        return remapping
+
+    # otherwise, no equivalence, return empty dict
+    return {}
+
+
 def compare_terms(comp1: Completion, comp2: Completion) -> Dict[str, str]:
     """Returns a dictionary representing the field relabellings that would need to
     be applied to the terms of comp1 to make it equivalent to comp2. This
@@ -886,38 +917,11 @@ def compare_terms(comp1: Completion, comp2: Completion) -> Dict[str, str]:
         qnumbers: field.label for field, qnumbers in comp2.exotic_info().items()
     }
     remapping = {
-        rev_map2[qnumbers]: field.label
+        field.label: rev_map2[qnumbers]
         for field, qnumbers in comp1.exotic_info().items()
     }
 
-    new_terms = set()
-    for term in comp1.terms:
-        for k, v in remapping.items():
-            simple = term.safe_simplify()
-            s = str(safe_nocoeff(simple))
-            s = multiple_replace(remapping, s)
-            # remove generation indices in comparison
-            s = re.sub(r"g[0-9]+_", "g_", s)
-            # remove negative signs on indices
-            s = re.sub(r"-", "", s)
-            ss = tuple(sorted(s.split("*")))
-            new_terms.add(ss)
-
-    comp2_strs = []
-    for term in comp2.terms:
-        simple = term.safe_simplify()
-        s = str(safe_nocoeff(simple))
-        comp2_strs.append(s)
-
-    comp2_strs = [re.sub(r"g[0-9]+_", "g_", s) for s in comp2_strs]
-    comp2_strs = [re.sub(r"-", "", s) for s in comp2_strs]
-    comp2_tups = [tuple(sorted(s.split("*"))) for s in comp2_strs]
-
-    if new_terms == set(comp2_tups):
-        return remapping
-
-    # otherwise, no equivalence, return empty dict
-    return {}
+    return check_remapping_on_terms(comp1.terms, comp2.terms, remapping)
 
 
 def are_equivalent_completions(comp1: Completion, comp2: Completion) -> bool:

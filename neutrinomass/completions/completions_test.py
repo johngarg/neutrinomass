@@ -443,3 +443,50 @@ def test_symmetries():
     for m in [*o2_models, *o3a_models, *o3b_models, *o8_models]:
         for c in m.completions:
             assert c.lagrangian.num_u1_symmetries() == 2
+
+
+def test_compare_terms():
+    phi1 = IndexedField("φ", "c0 i0 i1", charges={"y": -Rational(1, 3), "3b": 1})
+    eta1 = IndexedField("η", "-c1 i2", charges={"y": -Rational(1, 6), "3b": -1})
+    omega1 = IndexedField("ω", "i3", charges={"y": Rational(1, 2), "3b": 0})
+    terms_1 = [
+        phi1.conj
+        * L("u0 i2 g378_")
+        * Q("u1 c0 i3 g381_")
+        * eps("-u0 -u1")
+        * eps("-i0 -i2")
+        * eps("-i1 -i3"),
+        eta1.conj
+        * L("u0 i1 g379_")
+        * db("u1 -c1 g383_")
+        * eps("-u0 -u1")
+        * eps("-i2 -i1"),
+        omega1.conj
+        * L("u0 i1 g380_")
+        * eb("u1 g385_")
+        * eps("-u0 -u1")
+        * eps("-i3 -i1"),
+        phi1 * eta1 * omega1 * eps("-i0 -i3") * eps("-i1 -i2") * delta("c1 -c0"),
+    ]
+
+    omega2 = IndexedField("ω", "c0 i0 i1", charges={"y": -Rational(1, 3), "3b": 1})
+    phi2 = IndexedField("φ", "-c1 i2", charges={"y": -Rational(1, 6), "3b": -1})
+    eta2 = IndexedField("η", "i3", charges={"y": Rational(1, 2), "3b": 0})
+    terms_2 = [
+        phi2.conj
+        * db("u0 -c1 g383_")
+        * L("u1 i1 g379_")
+        * eps("-u0 -u1")
+        * eps("-i2 -i1"),
+        eta2.conj * L("u0 i1 g378_") * eb("u1 g385_") * eps("-u0 -u1") * eps("-i3 -i1"),
+        omega2.conj
+        * Q("u0 c0 i2 g381_")
+        * L("u1 i3 g380_")
+        * eps("-u0 -u1")
+        * eps("-i0 -i3")
+        * eps("-i1 -i2"),
+        phi2 * eta2 * omega2 * eps("-i1 -i2") * eps("-i3 -i0") * delta("c1 -c0"),
+    ]
+
+    remapping = {"φ": "ω", "η": "φ", "ω": "η"}
+    return check_remapping_on_terms(terms_1, terms_2, remapping)

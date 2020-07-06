@@ -11,6 +11,7 @@ from neutrinomass.completions.core import (
 from networkx import Graph
 from collections import defaultdict
 import time
+from typing import Dict, List
 
 ExoticField = cons_completion_field
 
@@ -30,6 +31,7 @@ class LazyCompletion:
 
         assert "quantum_numbers" in self.head
         assert "operator_name" in self.head
+        # assert "operator_dimension" in self.head
 
     def force(self):
         return eval(self.tail)
@@ -42,6 +44,10 @@ class LazyCompletion:
     def operator_name(self):
         return self.head["operator_name"]
 
+    # @property
+    # def operator_dimension(self):
+    #     return self.head["operator_dimension"]
+
 
 def read_completions(filename: str):
     """Do this as a context manager?"""
@@ -52,7 +58,7 @@ def read_completions(filename: str):
         while line:
             # start = time.time()
             comp = eval(line)
-            completions[comp.operator.name].append(comp)
+            completions[comp.operator_name].append(comp)
             line = f.readline()
             # print(f"Took {time.time() - start} seconds")
             counter += 1
@@ -60,3 +66,17 @@ def read_completions(filename: str):
                 break
 
     return completions
+
+
+def apply_naive_filter(
+    db: Dict[int, List[LazyCompletion]]
+) -> Dict[int, List[LazyCompletion]]:
+    for mass_dim, comps in db.items():
+        for comp in db:
+            pass
+
+
+def query(completions: List[LazyCompletion], func):
+    for comp in completions:
+        if func(comp):
+            yield comp

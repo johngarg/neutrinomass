@@ -355,6 +355,17 @@ class Field:
     __str__ = __repr__
 
     @property
+    def qn_string(self):
+        if self.is_scalar:
+            lor = "S"
+        elif self.is_fermion:
+            lor = "F"
+        else:
+            lor = "X"
+
+        return lor + self.dynkin[2:] + f"(self.y)(self.charges['3b'])"
+
+    @property
     def y(self):
         """Return the hypercharge as a sympy rational object"""
         return self.charges["y"]
