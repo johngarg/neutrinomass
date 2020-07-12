@@ -1,4 +1,4 @@
-from .core import EffectiveOperator
+from .core import EffectiveOperator, Completion
 from .completions import (
     are_equivalent_completions,
     operator_completions,

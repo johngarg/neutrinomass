@@ -367,6 +367,7 @@ class EffectiveOperator:
     @property
     def mass_dimension(self):
         d = sum(f.mass_dim for f in self.fields)
+        d += sum(f.derivs for f in self.fields)
         d_int = int(d)
         assert d == d_int
         return d_int
@@ -475,8 +476,10 @@ class Model:
     @property
     def exotic_numbers(self):
         return sorted(
-            format_quantum_numbers(i)
-            for i in self.completions[0].exotic_info().values()
+            set(
+                format_quantum_numbers(i)
+                for i in self.completions[0].exotic_info().values()
+            )
         )
 
     @property
