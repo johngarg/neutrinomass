@@ -186,7 +186,7 @@ exportGraphsAndPartitions[diags_, prefix_, path_] :=
     readableEdgeLists = Map[{#[[1]], #[[2]]} &, edgeLists, {2}];
     Do[
       diagramPath = outFileName[path, "diagrams", prefix, i] <> ".png";
-      Export[diagramPath, decoratedGraphs[[i]]];
+      Export[diagramPath, decoratedGraphs[[i]], ImageResolution -> 300];
       Print["Mathematica: "<>diagramPath<>" written!"];
 
       graphPath = outFileName[path, "graphs", prefix, i] <> ".csv";
