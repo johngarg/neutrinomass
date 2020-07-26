@@ -2,6 +2,7 @@
 
 from neutrinomass.database.closures import *
 from neutrinomass.completions import EFF_OPERATORS, DERIV_EFF_OPERATORS
+from neutrinomass.database.utils import get_leading_mv, estimate_np_scale
 
 loop = sympy.Symbol("loop")
 loopv2 = sympy.Symbol("loopv2")
@@ -11,16 +12,6 @@ yd = sympy.Symbol("yd")
 ye = sympy.Symbol("ye")
 yu = sympy.Symbol("yu")
 g2 = sympy.Symbol("g2")
-
-
-def get_leading_mv(eff_op):
-    """Returns the symbolic expression for the leading order contribution to the
-    neutrino mass implied by the operator.
-
-    """
-    estimates = neutrino_mass_estimate(eff_op)
-    numerical = [(e, numerical_np_scale_estimate(e)) for e in estimates]
-    return max(numerical, key=lambda x: x[1])[0]
 
 
 def test_operators_expr():
@@ -33,12 +24,12 @@ def test_operators_expr():
     assert yu * g2 * loop ** 2 * seesaw == get_leading_mv(EFF_OPERATORS["4b"])
     assert yd * loop ** 2 * seesaw == get_leading_mv(EFF_OPERATORS["5a"])
     assert yd * loop * loopv2 * seesaw == get_leading_mv(EFF_OPERATORS["5b"])
-    assert yd * g2 * loop ** 3 * seesaw == get_leading_mv(EFF_OPERATORS["5c"])
-    assert yd * loop ** 2 * seesaw == get_leading_mv(EFF_OPERATORS["5d"])
+    assert yd * g2 * loop ** 2 * loopv2 * seesaw == get_leading_mv(EFF_OPERATORS["5c"])
+    assert yd * loop * loopv2 * seesaw == get_leading_mv(EFF_OPERATORS["5d"])
     assert yu * loop ** 2 * seesaw == get_leading_mv(EFF_OPERATORS["6a"])
     assert yu * loop * loopv2 * seesaw == get_leading_mv(EFF_OPERATORS["6b"])
-    assert yu * loop ** 2 * seesaw == get_leading_mv(EFF_OPERATORS["6c"])
-    assert yu * g2 * loop ** 3 * seesaw == get_leading_mv(EFF_OPERATORS["6d"])
+    assert yu * loop * loopv2 * seesaw == get_leading_mv(EFF_OPERATORS["6c"])
+    assert yu * g2 * loop ** 2 * loopv2 * seesaw == get_leading_mv(EFF_OPERATORS["6d"])
     assert ye * loop ** 2 * seesaw == get_leading_mv(EFF_OPERATORS["7"])
     assert ye * yu * yd * g2 * loop ** 2 * seesaw * loopv2 == get_leading_mv(
         EFF_OPERATORS["8"]
@@ -66,30 +57,19 @@ def test_operators_expr():
         EFF_OPERATORS["76"]
     )
 
-    assert seesaw * loop == get_leading_mv(EFF_OPERATORS["1p"])
-    assert ye * loop ** 2 * seesaw == get_leading_mv(EFF_OPERATORS["61a"])
+    assert seesaw * loopv2 == get_leading_mv(EFF_OPERATORS["1p"])
+    assert ye * loop * loopv2 * seesaw == get_leading_mv(EFF_OPERATORS["61a"])
     assert g2 * loop ** 2 * seesaw == get_leading_mv(DERIV_EFF_OPERATORS["D8i"])
-    assert yd * yu * g2 * loop ** 3 * seesaw == get_leading_mv(
+    assert yd * yu * g2 * loop ** 2 * loopv2 * seesaw == get_leading_mv(
         DERIV_EFF_OPERATORS["D10b"]
     )
 
 
-def estimate_mv(eff_op):
-    print(eff_op.name)
-    estimates = neutrino_mass_estimate(eff_op)
-    numerical = [numerical_np_scale_estimate(e) for e in estimates]
-    return numerical
-
-
 def test_operators_numerical():
-    assert max(estimate_mv(EFF_OPERATORS["1"])) == 12
-    assert max(estimate_mv(EFF_OPERATORS["2"])) == 8
-    assert max(estimate_mv(EFF_OPERATORS["3a"])) == 4
-    assert max(estimate_mv(EFF_OPERATORS["3b"])) == 8
-    assert max(estimate_mv(EFF_OPERATORS["4a"])) == 10
-    assert max(estimate_mv(EFF_OPERATORS["5a"])) == 6
-
-    assert max(estimate_mv(EFF_OPERATORS["76"])) == -2
-
-
-test_operators_expr()
+    assert max(estimate_np_scale(EFF_OPERATORS["1"])) == 12
+    assert max(estimate_np_scale(EFF_OPERATORS["2"])) == 8
+    assert max(estimate_np_scale(EFF_OPERATORS["3a"])) == 4
+    assert max(estimate_np_scale(EFF_OPERATORS["3b"])) == 8
+    assert max(estimate_np_scale(EFF_OPERATORS["4a"])) == 10
+    assert max(estimate_np_scale(EFF_OPERATORS["5a"])) == 6
+    assert max(estimate_np_scale(EFF_OPERATORS["76"])) == -2

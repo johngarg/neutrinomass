@@ -47,6 +47,8 @@ RST = Wildcard.dot("rst")
 RULES = {
     Op(nu, nu, RST): Op(Const(nunu), RST),
     # free loops
+    Op(c(h0), h0, RST): Op(Const(loopv2), RST),
+    Op(c(hp), hp, RST): Op(Const(loop), RST),
     Op(c(eb), eb, RST): Op(Const(loop), RST),
     Op(c(db), db, RST): Op(Const(loop), RST),
     Op(c(ub), ub, RST): Op(Const(loop), RST),
@@ -54,8 +56,6 @@ RULES = {
     Op(c(u), u, RST): Op(Const(loop), RST),
     Op(c(e), e, RST): Op(Const(loop), RST),
     Op(c(nu), nu, RST): Op(Const(loop), RST),
-    Op(c(h0), h0, RST): Op(Const(loopv2), RST),
-    Op(c(hp), hp, RST): Op(Const(loop), RST),
     # masses
     Op(e, eb, RST): Op(Const(v), Const(ye), Const(loop), RST),
     Op(u, ub, RST): Op(Const(v), Const(yu), Const(loop), RST),
@@ -86,9 +86,10 @@ RULES = {
     ),
     # remove hp
     Op(hp, c(eb), RST): Op(Const(loop), Const(ye), nu, RST),
-    Op(hp, eb, RST): Op(Const(loop), Const(ye), nu, RST),
-    Op(hp, db, RST): Op(Const(yd), c(u), Const(loop), RST),
     Op(hp, c(u), RST): Op(Const(yd), db, Const(loop), RST),
+    Op(c(hp), db, RST): Op(Const(yd), c(u), Const(loop), RST),
+    Op(hp, d, RST): Op(Const(yu), c(ub), Const(loop), RST),
+    Op(c(hp), c(ub), RST): Op(Const(yu), d, Const(loop), RST),
     # make hp
     Op(c(eb), nu, RST): Op(Const(ye), hp, nu, nu, RST),
     # vev
@@ -100,6 +101,7 @@ def apply_rules(rules, subject):
     for k, v in rules.items():
         for substitution in match(subject, Pattern(k)):
             subject = substitute(Pattern(v), substitution)
+            return subject
 
     return subject
 
@@ -265,7 +267,3 @@ def numerical_np_scale_estimate(expr):
     sol = sympy.solve(m - mv, sympy.Symbol("Λ"))[0]
     scale = round(math.log10(sol))
     return scale - 3
-
-
-def np_scale_alist(eff_op):
-    pass
