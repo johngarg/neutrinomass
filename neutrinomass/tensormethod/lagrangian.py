@@ -98,12 +98,12 @@ def generate_fieldstrings(max_dim, fields, derivs=True):
     return out
 
 
-def npoint_terms(n, fields, nf=3):
+def npoint_terms(n, fields, nf=3, ignore=[]):
     conjs = [f.conj for f in fields]
     combos = combinations_with_replacement([*fields, *conjs], n)
     terms = []
     for combo in combos:
-        invs = unsimplified_invariants(*combo, ignore=[])
+        invs = unsimplified_invariants(*combo, ignore=ignore)
         terms += invs
 
     return terms

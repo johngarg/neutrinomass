@@ -917,6 +917,7 @@ def compare_terms(comp1: Completion, comp2: Completion) -> Dict[str, str]:
         qnumbers: field.label for field, qnumbers in comp2.exotic_info().items()
     }
     remapping = {
+        # rev_map2[qnumbers]: field.label
         field.label: rev_map2[qnumbers]
         for field, qnumbers in comp1.exotic_info().items()
     }

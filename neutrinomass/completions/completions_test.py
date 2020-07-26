@@ -490,3 +490,8 @@ def test_compare_terms():
 
     remapping = {"φ": "ω", "η": "φ", "ω": "η"}
     return check_remapping_on_terms(terms_1, terms_2, remapping)
+
+
+def test_remove_duplicate_completions():
+    comps = operator_completions(EFF_OPERATORS["3b"])
+    assert len(comps) > len(remove_equivalent_completions(comps))
