@@ -89,11 +89,14 @@ RULES = {
     Op(hp, c(u), RST): Op(Const(yd), db, Const(loop), RST),
     Op(c(hp), db, RST): Op(Const(yd), c(u), Const(loop), RST),
     Op(hp, d, RST): Op(Const(yu), c(ub), Const(loop), RST),
+    Op(hp, ub, RST): Op(Const(yu), c(d), Const(loop), RST),
     Op(c(hp), c(ub), RST): Op(Const(yu), d, Const(loop), RST),
+    Op(hp, u, c(d), RST): Op(Const(g2), Const(loop), Const(loop), RST),
     # make hp
     Op(c(eb), nu, RST): Op(Const(ye), hp, nu, nu, RST),
     # vev
     Op(h0, RST): Op(Const(v), RST),
+    Op(c(h0), RST): Op(Const(v), RST),
 }
 
 
@@ -106,7 +109,7 @@ def apply_rules(rules, subject):
     return subject
 
 
-def fixed_point(start, rules=RULES, max_iterations=10, trace=False):
+def fixed_point(start, rules=RULES, max_iterations=10):
     old, new = None, start
     counter = 1
     while new != old:
@@ -118,8 +121,6 @@ def fixed_point(start, rules=RULES, max_iterations=10, trace=False):
         old = new
         new = apply_rules(rules, old)
         counter += 1
-        if trace:
-            print(old)
 
     return new
 
@@ -225,12 +226,13 @@ def parse_operator(eff_op: EffectiveOperator):
     return [eval(f'Op({elem.replace("*", ",")})') for elem in out]
 
 
-def neutrino_mass_estimate(eff_op: EffectiveOperator, trace=False):
-    clean_lst = [clean(fixed_point(op, trace=trace)) for op in parse_operator(eff_op)]
+def neutrino_mass_estimate(eff_op: EffectiveOperator, verbose=False):
+    clean_lst = [clean(fixed_point(op)) for op in parse_operator(eff_op)]
     out = []
     for lst in clean_lst:
         if not isinstance(lst, list):
-            print(f"Skipping structure {lst} since it should be negligible")
+            if verbose:
+                print(f"Skipping structure {lst} since it should be negligible")
             continue
 
         # make sure only two neutrinos are in the diagram
@@ -265,5 +267,5 @@ def numerical_np_scale_estimate(expr):
     ]
     m = expr.subs(subs_list)
     sol = sympy.solve(m - mv, sympy.Symbol("Λ"))[0]
-    scale = round(math.log10(sol))
+    scale = math.log10(abs(sol))
     return scale - 3
