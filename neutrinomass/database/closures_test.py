@@ -66,10 +66,14 @@ def test_operators_expr():
 
 
 def test_operators_numerical():
-    assert max(estimate_np_scale(EFF_OPERATORS["1"])) == 12
-    assert max(estimate_np_scale(EFF_OPERATORS["2"])) == 8
-    assert max(estimate_np_scale(EFF_OPERATORS["3a"])) == 4
-    assert max(estimate_np_scale(EFF_OPERATORS["3b"])) == 8
-    assert max(estimate_np_scale(EFF_OPERATORS["4a"])) == 10
-    assert max(estimate_np_scale(EFF_OPERATORS["5a"])) == 6
-    assert max(estimate_np_scale(EFF_OPERATORS["76"])) == -2
+    from math import log10
+
+    proc = lambda n: round(log10(max(n)))
+
+    assert proc(estimate_np_scale(EFF_OPERATORS["1"])) == 12
+    assert proc(estimate_np_scale(EFF_OPERATORS["2"])) == 8
+    assert proc(estimate_np_scale(EFF_OPERATORS["3a"])) == 5
+    assert proc(estimate_np_scale(EFF_OPERATORS["3b"])) == 8
+    assert proc(estimate_np_scale(EFF_OPERATORS["4a"])) == 10
+    assert proc(estimate_np_scale(EFF_OPERATORS["5a"])) == 6
+    assert proc(estimate_np_scale(EFF_OPERATORS["76"])) == -2
