@@ -14,7 +14,7 @@ def get_leading_mv(eff_op):
     """
     estimates = neutrino_mass_estimate(eff_op)
     numerical = [(e, numerical_np_scale_estimate(e)) for e in estimates]
-    return sorted(numerical, key=lambda x: x[1])[-1][0]
+    return sorted(numerical, key=lambda x: round(x[1], 2))[-1][0]
 
 
 def estimate_np_scale(eff_op):
@@ -26,13 +26,19 @@ def estimate_np_scale(eff_op):
 def table_data(eff_op):
     estimates = neutrino_mass_estimate(eff_op)
     numerical = [(e, numerical_np_scale_estimate(e)) for e in estimates]
-    expr, np_scale = sorted(numerical, key=lambda x: x[1])[-1]
+    expr, np_scale = sorted(numerical, key=lambda x: round(x[1], 2))[-1]
 
-    expr.replace(sympy.Symbol("loopv2"), sympy.Symbol("loop"))
-    n_loops, max_loops = 0, 8
+    n_loops, n_loops_v2, max_loops = 0, [], 8
     for n in range(1, max_loops):
         if expr.coeff(sympy.Symbol("loop") ** n):
-            n_loops = n
-            break
+            n_loops += n
 
-    return n_loops, f"\\num{{{np_scale}}}"
+        if expr.coeff(sympy.Symbol("loopv2") ** n):
+            n_loops_v2 += sorted([n - j for j in range(n + 1)])
+
+    n_loops_str = (
+        str(n_loops)
+        if not n_loops_v2
+        else ",".join(str(i + n_loops) for i in n_loops_v2)
+    )
+    return n_loops_str, f"\\num{{{np_scale}}}"
