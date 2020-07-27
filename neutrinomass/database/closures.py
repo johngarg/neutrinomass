@@ -260,12 +260,12 @@ def numerical_np_scale_estimate(expr):
             sympy.Symbol("loopv2"),
             (1.0 / (16 * math.pi ** 2) + vev ** 2 / sympy.Symbol("Λ") ** 2),
         ),
-        (sympy.Symbol("g2"), 0.2 ** 2),
+        (sympy.Symbol("g2"), 0.6295 ** 2),
         (sympy.Symbol("yu"), 172.76 / vev),
         (sympy.Symbol("yd"), 4.18 / vev),
         (sympy.Symbol("ye"), 1.78 / vev),
     ]
     m = expr.subs(subs_list)
     sol = sympy.solve(m - mv, sympy.Symbol("Λ"))[0]
-    scale = math.log10(abs(sol))
-    return scale - 3
+    scale = abs(sol) * 1e-3
+    return scale

@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+
+from neutrinomass.database.operators import print_paper_table
+
+print_paper_table()
