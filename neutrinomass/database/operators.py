@@ -753,7 +753,7 @@ def print_paper_table():
         loops, scale = table_data(op)
         models = ""
         filtered = ""
-        row = fr"{format_primes(label)} & {latex} & {models} & {filtered} & {loops} & {scale} \\"
+        row = fr"${format_primes(label)}$ & {latex} & {models} & {filtered} & {loops} & {scale} \\"
         print(row)
 
 
