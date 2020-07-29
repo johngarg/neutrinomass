@@ -100,6 +100,16 @@ def export_exotics(exotics: set):
     return str(set([export_tensor(f) for f in exotics])).replace('"', "")
 
 
+def stringify_qns(field):
+    """Returns a string representation of a field."""
+    if field.label not in {"L", "Q", "ub", "db", "eb", "H"}:
+        lor = "S" if field.is_scalar else "F"
+        _, _, cup, cdown, i = field.dynkin
+        return f"{lor},{cup}{cdown},{i},{field.charges['3b']},{field.charges['y']}"
+
+    return field.label + (".conj" if field.is_conj else "")
+
+
 def export_completion(c: Completion, lazy=True):
 
     name = c.operator.name
@@ -114,11 +124,21 @@ def export_completion(c: Completion, lazy=True):
     quantum_numbers = []
     # lorentz irrep (string), colour dynkins, isospin dynkin, 3 * B, hypercharge
     for l, cu, cd, i, (bl, b), (yl, y) in c.exotic_info().values():
-        quantum_numbers.append((l, (cu, cd), i, (bl, b), (yl, str(y))))
+        # quantum_numbers.append((l, (cu, cd), i, (bl, b), (yl, str(y))))
+        quantum_numbers.append(f"{l},{cu}{cd},{i},{b},{str(y)}")
+    quantum_numbers.sort()
 
-    head = "{'operator_name': '%s', 'quantum_numbers': %s}" % (
+    plain_terms = []
+    for t in c.terms:
+        plain_term = []
+        for f in t.fields:
+            plain_term.append(stringify_qns(f))
+        plain_terms.append(tuple(plain_term))
+
+    head = "{'operator_name': '%s', 'quantum_numbers': %s, 'terms': %s}" % (
         name,
         str(quantum_numbers),
+        str(plain_terms),
     )
     completion_string = f"Completion(operator={eff_op}, partition={part}, graph={graph}, exotics={exotics}, terms={terms})"
     export_string = f"""LazyCompletion(head={head}, tail="{completion_string}")"""
