@@ -1,4 +1,4 @@
-* Exploding operators for Majorana neutrino masses and beyond :bomb:
+* Exploding operators for Majorana neutrino masses and beyond 💣
 
 This is the code accompanying the paper "Exploding operators for Majorana
 neutrino masses and beyond" (arXiv:1912.xxxxx).
