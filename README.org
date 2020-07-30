@@ -1,7 +1,7 @@
 * Exploding operators for Majorana neutrino masses and beyond 💣
 
 This is the code accompanying the paper "Exploding operators for Majorana
-neutrino masses and beyond" (arXiv:1912.xxxxx).
+neutrino masses and beyond" (arXiv:2008.xxxxx).
 
 The code is split into three smaller modules:
 
@@ -18,6 +18,77 @@ The code is split into three smaller modules:
    operators at dimension 7.
 
 Each module is described in detail below.
+
+#+BEGIN_SRC bash
+.
+├── __init__.py
+├── analysis
+│   ├── IBP_and_EOM.ipynb
+│   ├── __init__.py
+│   ├── closures.ipynb
+│   ├── dimension_six_smeft_example.ipynb
+│   └── topologies.ipynb
+├── completions
+│   ├── __init__.py
+│   ├── completions.py
+│   ├── completions_test.py
+│   ├── core.py
+│   ├── core_test.py
+│   ├── d9.py
+│   ├── deriv_operators.p
+│   ├── generatetopologies
+│   ├── operators.p
+│   ├── operators.py
+│   ├── operators_nf1.p
+│   ├── operators_test.py
+│   ├── tikzfeynman.py
+│   ├── topologies.py
+│   ├── topology_data
+│   │   ├── deletedata
+│   │   ├── diagrams
+│   │   ├── graphs
+│   │   └── partitions
+│   ├── utils.py
+│   └── wolfram
+│       └── generatetopologies.wl
+├── database
+│   ├── __init__.py
+│   ├── closures.py
+│   ├── closures_test.py
+│   ├── database.dat
+│   ├── database.py
+│   ├── export.py
+│   ├── export_test.py
+│   ├── json_serialiser.py
+│   ├── operators.py
+│   └── utils.py
+├── tensormethod
+│   ├── __init__.py
+│   ├── contract.py
+│   ├── contract_test.py
+│   ├── core.py
+│   ├── core_test.py
+│   ├── deriv_operators.p
+│   ├── deriv_operators.py
+│   ├── hs.py
+│   ├── hs_test.py
+│   ├── lagrangian.py
+│   ├── lagrangian_test.py
+│   ├── latexoperators
+│   ├── lnv.py
+│   ├── lnvderivlatex
+│   ├── lnvlatex
+│   ├── operatorxcheck.py
+│   ├── output.p
+│   ├── parse_hs.py
+│   ├── sm.py
+│   ├── smeft.py
+│   └── utils.py
+└── utils
+    ├── __init__.py
+    ├── functions.py
+    └── match.py
+#+END_SRC
 
 ** =tensormethod=
 
