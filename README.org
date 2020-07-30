@@ -1,7 +1,7 @@
-* Example code for generating tree-level completions of LNV effective operators
+* Exploding operators for Majorana neutrino masses and beyond :bomb:
 
 This is the code accompanying the paper "Exploding operators for Majorana
-neutrino mass" (arXiv:1912.xxxxx).
+neutrino masses and beyond" (arXiv:1912.xxxxx).
 
 The code is split into three smaller modules:
 
