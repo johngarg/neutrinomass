@@ -363,7 +363,7 @@ class Field:
         else:
             lor = "X"
 
-        return lor + self.dynkin[2:] + f"(self.y)(self.charges['3b'])"
+        return lor + self.dynkin[2:] + f"({self.y})({self.charges['3b']})"
 
     @property
     def y(self):
