@@ -395,12 +395,13 @@ class FailedCompletion:
 
 
 class Completion:
-    def __init__(self, operator, partition, graph, exotics, terms):
+    def __init__(self, operator, partition, graph, exotics, terms, topology=None):
         self.operator = operator
         self.partition = partition
         self.graph = graph
         self.exotics = exotics
         self.terms = terms
+        self.topology = topology
 
     def __eq__(self, other):
         if not isinstance(other, Completion):

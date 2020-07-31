@@ -57,6 +57,7 @@ from sympy import prime
 
 from functools import lru_cache, reduce
 import re
+import os
 
 
 # @lru_cache(maxsize=None)
@@ -192,11 +193,17 @@ def partitions(operator: EffectiveOperator, verbose=False) -> List[dict]:
                 g = topology_data["graph"]
                 g = set_external_fields(perm, g)
 
+                partition_file = topology_data["partition_file"]
+                topology_classification = os.path.splitext(
+                    os.path.basename(partition_file)
+                )[0]
+
                 data = {
                     "operator": op,
                     "partition": perm,
                     "epsilons": epsilons,
                     "graph": g,
+                    "topology": topology_classification,
                 }
                 out.append(data)
 
@@ -817,6 +824,7 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
     gauge_epsilons = partition["epsilons"]
     graph = partition["graph"]
     op = partition["operator"]
+    topo = partition["topology"]
 
     # if args is a string, then it's the reason the completion failed
     args = construct_completion(part, gauge_epsilons, graph)
@@ -833,7 +841,12 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
     nx.set_edge_attributes(graph, new_edge_attrs)
 
     return Completion(
-        operator=eff_operator, partition=part, graph=graph, exotics=exotics, terms=terms
+        operator=eff_operator,
+        partition=part,
+        graph=graph,
+        exotics=exotics,
+        terms=terms,
+        topology=topo,
     )
 
 
