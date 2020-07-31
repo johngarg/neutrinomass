@@ -837,7 +837,7 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
     exotics = set(f for f in edge_dict.keys())
     eff_operator = EffectiveOperator(op.name, explicit_op)
 
-    new_edge_attrs = {v: {"particle": k} for k, v in edge_dict.items()}
+    new_edge_attrs = {v: {"particle": k.label} for k, v in edge_dict.items()}
     nx.set_edge_attributes(graph, new_edge_attrs)
 
     return Completion(
