@@ -67,8 +67,11 @@ def export_operator(op: Operator):
 
 
 def proc_dicts(expr):
-    if isinstance(expr, int):
+    if isinstance(expr, (int, str)):
         return expr
+
+    # Used to have field as value, now using field.label, keep this here just in
+    # case it gets changed back
     if isinstance(expr, Field):
         return export_tensor(expr)
 
@@ -120,6 +123,7 @@ def export_completion(c: Completion, lazy=True):
     part = export_partition(c.partition)
     terms = export_terms(c.terms)
     exotics = export_exotics(c.exotics)
+    topo = c.topology
 
     quantum_numbers = []
     # lorentz irrep (string), colour dynkins, isospin dynkin, 3 * B, hypercharge
@@ -135,12 +139,11 @@ def export_completion(c: Completion, lazy=True):
             plain_term.append(stringify_qns(f))
         plain_terms.append(tuple(plain_term))
 
-    head = "{'operator_name': '%s', 'quantum_numbers': %s, 'terms': %s}" % (
-        name,
-        str(quantum_numbers),
-        str(plain_terms),
+    head = (
+        "{'operator_name': '%s', 'quantum_numbers': %s, 'terms': %s, 'topology': '%s'}"
+        % (name, str(quantum_numbers), str(plain_terms), topo)
     )
-    completion_string = f"Completion(operator={eff_op}, partition={part}, graph={graph}, exotics={exotics}, terms={terms})"
+    completion_string = f"Completion(operator={eff_op}, partition={part}, graph={graph}, exotics={exotics}, terms={terms}, topology='{topo}')"
     export_string = f"""LazyCompletion(head={head}, tail="{completion_string}")"""
 
     return export_string if lazy else completion_string

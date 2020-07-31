@@ -125,7 +125,7 @@ def distribute_fields(fields, partition):
     return quick_remove_equivalent_partitions(parts)
 
 
-def node_dictionary(partition):
+def node_dictionary(partition) -> Dict[int, str]:
     """Returns a dictionary mapping node to indexed field.
 
     Example:
@@ -138,7 +138,7 @@ def node_dictionary(partition):
     flat_data = list(flatten(partition))
     tuples = chunks(flat_data, 2)
     reversed_data = map(reversed, tuples)
-    return {k: {"particle": v} for k, v in reversed_data}
+    return {k: {"particle": v.label} for k, v in reversed_data}
 
 
 def set_external_fields(partition, graph):
