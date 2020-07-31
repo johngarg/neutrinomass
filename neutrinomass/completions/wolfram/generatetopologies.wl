@@ -102,14 +102,14 @@ removeIsomorphic[diags_] :=
   ];
 
 
-particleStyle[1] := Sequence[Dashed, Gray];
+particleStyle[1] := Sequence[Dashing[0.04], Gray];
 particleStyle[2] := Gray;
 
 decorateGraph::usage = "Displays graph nicely with scalar and fermion lines.";
 decorateGraph[gr_, vrts_, edgs_] :=
   Block[{gv},
         gv = Fold[SetProperty[{#1, #2}, {VertexSize -> Large}]&, gr, Keys[vrts]];
-        Fold[SetProperty[{#1, #2}, EdgeStyle -> {particleStyle[edgs[[Key[#2]]]], Thick}] &, gv, Keys[edgs]]
+        Fold[SetProperty[{#1, #2}, EdgeStyle -> {particleStyle[edgs[[Key[#2]]]], Thickness[0.01]}] &, gv, Keys[edgs]]
   ];
 
 
@@ -186,7 +186,7 @@ exportGraphsAndPartitions[diags_, prefix_, path_] :=
     readableEdgeLists = Map[{#[[1]], #[[2]]} &, edgeLists, {2}];
     Do[
       diagramPath = outFileName[path, "diagrams", prefix, i] <> ".png";
-      Export[diagramPath, decoratedGraphs[[i]], ImageResolution -> 300];
+      Export[diagramPath, decoratedGraphs[[i]], ImageResolution -> 150];
       Print["Mathematica: "<>diagramPath<>" written!"];
 
       graphPath = outFileName[path, "graphs", prefix, i] <> ".csv";
