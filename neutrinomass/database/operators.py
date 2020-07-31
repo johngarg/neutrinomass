@@ -693,7 +693,7 @@ def print_paper_table():
     ] = r"$L^{i} {\bar{e}^{\dagger}} Q^{j} \bar{d} (DH)^{k} H^{l}  \cdot  \epsilon_{i j} \epsilon_{k l}$"
     operator_latex[
         "D15"
-    ] = r"$(DL)^{i} {\bar{e}^{\dagger}} (D \bar{u}^{\dagger}) \bar{d} (DH)^{j}  \cdot  \epsilon_{i j}$"
+    ] = r"$(DL)^{i} {\bar{e}^{\dagger}} (D \bar{u}^{\dagger}) \bar{d} H^{j}  \cdot  \epsilon_{i j}$"
     operator_latex[
         "D16a"
     ] = r"$L^{i} {\bar{e}^{\dagger}} \tilde{Q}^{j} {\bar{u}^{\dagger}} (DH)^{k} H^{l}  \cdot  \epsilon_{i k} \epsilon_{j l}$"
