@@ -129,7 +129,7 @@ def export_completion(c: Completion, lazy=True):
     # lorentz irrep (string), colour dynkins, isospin dynkin, 3 * B, hypercharge
     for l, cu, cd, i, (bl, b), (yl, y) in c.exotic_info().values():
         # quantum_numbers.append((l, (cu, cd), i, (bl, b), (yl, str(y))))
-        quantum_numbers.append(f"{l},{cu}{cd},{i},{b},{str(y)}")
+        quantum_numbers.append(f"{l},{cu}{cd},{i},{str(y)},{b}")
     quantum_numbers.sort()
 
     plain_terms = []
