@@ -108,7 +108,7 @@ def stringify_qns(field):
     if field.label not in {"L", "Q", "ub", "db", "eb", "H"}:
         lor = "S" if field.is_scalar else "F"
         _, _, cup, cdown, i = field.dynkin
-        return f"{lor},{cup}{cdown},{i},{field.charges['3b']},{field.charges['y']}"
+        return f"{lor},{cup}{cdown},{i},{field.charges['y']},{field.charges['3b']}"
 
     return field.label + (".conj" if field.is_conj else "")
 
