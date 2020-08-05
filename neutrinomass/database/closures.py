@@ -6,13 +6,15 @@ they give rise to radiative neutrino masses.
 
 """
 
+from typing import Union, List
+
 import math
 import sympy
 from functools import reduce
 from matchpy import Operation, Symbol, Arity, match, Pattern, Wildcard, substitute
 from neutrinomass.completions import EffectiveOperator, EFF_OPERATORS
 from neutrinomass.tensormethod import H, L, Q, Field, IndexedField
-from neutrinomass.tensormethod.core import ISOSPIN, GENERATION
+from neutrinomass.tensormethod.core import ISOSPIN, GENERATION, Operator
 
 Op = Operation.new("Op", Arity.variadic, commutative=True, associative=True)
 Const = Operation.new("Const", Arity.unary)
@@ -149,7 +151,7 @@ qc = [d, u]
 eps = [[0, -1], [1, 0]]
 
 
-def parse_operator(eff_op: EffectiveOperator):
+def parse_operator(eff_op: Union[EffectiveOperator, Operator]):
     """Parse the operator `eff_op` into matchpy symbols with the SU(2) structure
     expanded.
 
@@ -157,7 +159,11 @@ def parse_operator(eff_op: EffectiveOperator):
     cleaner way.
 
     """
-    operator = eff_op.operator
+    if isinstance(eff_op, EffectiveOperator):
+        operator = eff_op.operator
+    else:
+        operator = eff_op
+
     fields, epsilons = [], []
     n_indices = 0
     for expr in operator.tensors:
@@ -226,8 +232,12 @@ def parse_operator(eff_op: EffectiveOperator):
     return [eval(f'Op({elem.replace("*", ",")})') for elem in out]
 
 
-def neutrino_mass_estimate(eff_op: EffectiveOperator, verbose=False):
-    clean_lst = [clean(fixed_point(op)) for op in parse_operator(eff_op)]
+def neutrino_mass_estimate(eff_op: Union[EffectiveOperator, List[Op]], verbose=False):
+    if isinstance(eff_op, EffectiveOperator):
+        clean_lst = [clean(fixed_point(op)) for op in parse_operator(eff_op)]
+    else:
+        clean_lst = [clean(fixed_point(op)) for op in eff_op]
+
     out = []
     for lst in clean_lst:
         if not isinstance(lst, list):

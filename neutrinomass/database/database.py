@@ -68,6 +68,14 @@ def read_completions(filename: str):
     return completions
 
 
+class ModelDatabase:
+    def __init__(self, completions):
+        self.completions = completions
+
+    def query(self, func):
+        pass
+
+
 def apply_naive_filter(
     db: Dict[int, List[LazyCompletion]]
 ) -> Dict[int, List[LazyCompletion]]:
