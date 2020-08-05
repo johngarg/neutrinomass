@@ -88,7 +88,7 @@ def replace(data, to_replace, replace_with, found=False) -> Tuple[tuple, bool]:
     return data, found
 
 
-def replace_fields(fields, partition):
+def replace_fields(fields: List[IndexedField], partition):
     """Takes the fields and puts them in place of the strings in the partition
     template.
 
@@ -105,6 +105,9 @@ def replace_fields(fields, partition):
 
 def quick_remove_equivalent_partitions(partitions):
     """Just remove double ups. (For now.)
+
+    This is also a good place to remove partitions that you know will be
+    filtered out.
 
     """
     return list(set(partitions))
@@ -126,13 +129,13 @@ def distribute_fields(fields, partition):
 
 
 def node_dictionary(partition) -> Dict[int, str]:
-    """Returns a dictionary mapping node to indexed field.
+    """Returns a dictionary mapping node to indexed field label.
 
     Example:
         >>> node_dictionary((((Q(u364_, c210_, i369_), 6), (L(u362_, i367_), 18)),
                             ((L(u361_, i366_), 54), (Q(u363_, c209_, i368_), 162)),
                             ((db(u368_, -c214_), 486), (db(u366_, -c212_), 1458))))
-        {6: Q(u364_, c210_, i369_), 18: L(u362_, i367_), ...}
+        {6: 'Q', 18: 'L', ...}
 
     """
     flat_data = list(flatten(partition))
@@ -141,7 +144,7 @@ def node_dictionary(partition) -> Dict[int, str]:
     return {k: {"particle": v.label} for k, v in reversed_data}
 
 
-def set_external_fields(partition, graph):
+def set_external_fields(partition, graph) -> None:
     """Add indexed fields as edge attributes on graph through side effect."""
     g = deepcopy(graph)
     node_attrs = node_dictionary(partition)
@@ -213,6 +216,7 @@ def partitions(operator: EffectiveOperator, verbose=False) -> List[dict]:
 
 
 def are_equivalent_partitions(a, b):
+    """Checks for partition equivalence by checking if the graphs are isomorphic."""
     ga = a["graph"]
     gb = b["graph"]
     node_matcher = nx.algorithms.isomorphism.categorical_node_match(
@@ -225,9 +229,9 @@ def are_equivalent_partitions(a, b):
     return graph_matcher.is_isomorphic()
 
 
-def remove_isomorphic(partitions: List[dict]) -> List[dict]:
+def remove_isomorphic(partitions: List[dict]) -> None:
     """Same algorithm as removeIsomorphic in ``wolfram/`` directory. Remove
-    isomorphic graphs to reduce double-ups of completions.
+    isomorphic graphs (by side effect) to reduce double-ups of completions.
 
     """
     remove_equivalent(partitions, are_equivalent_partitions)
@@ -248,7 +252,8 @@ def remove_isomorphic(partitions: List[dict]) -> List[dict]:
 # reduce_partition: applies replace_and_mutate to a partition until last vertex.
 
 
-def all_scalars(fields):
+def all_scalars(fields: List[Field]) -> bool:
+    """Checks if all fields are scalars."""
     boolean = True
     for f in fields:
         boolean = boolean and f.is_boson
@@ -256,7 +261,8 @@ def all_scalars(fields):
     return boolean
 
 
-def all_fermions(fields):
+def all_fermions(fields: List[Field]) -> bool:
+    """Checks if all fields are fermions."""
     boolean = True
     for f in fields:
         boolean = boolean and f.is_fermion
@@ -264,7 +270,11 @@ def all_fermions(fields):
     return boolean
 
 
-def drop_scalar(fields):
+def drop_scalar(fields: List[Field]) -> List[Field]:
+    """Given a list of fields with one scalar, return a list of only the
+    fermions, i.e. remove the scalar.
+
+    """
     scalars, fermions = [], []
     for f in fields:
         if f.is_boson:
@@ -328,7 +338,7 @@ def get_lorentz_epsilons(fields: Tuple[IndexedField]) -> Tuple[bool, List[Tensor
     return True, epsilons
 
 
-def is_contracted_epsilon(eps, indices):
+def is_contracted_epsilon(eps: Tensor, indices: List[Index]) -> bool:
     """Return True if two indices on epsilon are contracted, False otherwise."""
     i, j, *k = eps.indices
 
@@ -361,6 +371,10 @@ def is_contracted_epsilon(eps, indices):
 def separate_gauge_epsilons(
     fields: List[IndexedField], epsilons: List[Tensor]
 ) -> Tuple[List[Tensor], List[Tensor]]:
+    """Return a 2-tuple with the spectator epsilon tensors carrying gauge indices
+    and those that are contracted with the fields passed in.
+
+    """
 
     prod_fields = reduce(lambda x, y: x * y, fields)
     free_indices = prod_fields.get_free_indices()
@@ -377,7 +391,8 @@ def separate_gauge_epsilons(
     return spectator_epsilons, contracted_epsilons
 
 
-def check_charges(operator, ignore=[]):
+def check_charges(operator: Operator, ignore=[]) -> None:
+    """Make sure sum of charges vanishes, i.e. term is a U(1) singlet."""
     fields = [f for f in operator.tensors if isinstance(f, IndexedField)]
     for q in fields[0].charges:
         if q in ignore:
@@ -385,7 +400,8 @@ def check_charges(operator, ignore=[]):
         assert not sum(f.charges[q] for f in fields)
 
 
-def check_singlet(operator, ignore=["3b"]):
+def check_singlet(operator: Operator, ignore=["3b"]) -> None:
+    """Make sure operator is a SM and Lorentz singlet."""
     check_charges(operator, ignore=ignore)
     for free in operator.free_indices:
         assert free.index_type == "Generation"
@@ -487,6 +503,10 @@ def exotic_field_and_term(
 
 
 def process_derivative_term(op: Operator) -> Union[Operator, str]:
+    """Process term containing derivatives, return corresponding term that would
+    appear in the Lagrangian.
+
+    """
     deriv_structure = [f.derivs for f in op.fields]
     n_derivs = sum(deriv_structure)
 
@@ -677,25 +697,13 @@ def replace_and_mutate(
     edge_dict: Dict[FieldType, Tuple[int, int]],
     field_dict: Dict[tuple, str],
     graph: nx.Graph,
-) -> Tuple[IndexedField, Tuple[int, int]]:
+) -> Leaf:
     """Returns a Leaf structure that enters the partition in place of the contracted
     fields. Mutates major state of completion: terms, edge_dict of graph,
     gauge_epsilons and lorentz_epsilons. Mutation of the field_dict happens in
     `exotic_field_and_term` through `contract`.
 
     For a failed completion, keep reason in first element of leaf-tuple.
-
-    TODO Fix example
-    Example:
-        >>> terms, edges, epsilons =
-        >>> replace_and_mutate(((L(u362_, i367_), 6), (L(u361_, i366_), 18)),
-                               symbols=symbols,
-                               gauge_epsilons=gauge_epsilons,
-                               lorentz_epsilons=lorentz_epsilons,
-                               terms=terms,
-                               edge_dict=edges,
-                               field_dict=field_dict,
-                               graph=G)
 
     """
     fields, nodes = [], []
@@ -732,7 +740,7 @@ def replace_and_mutate(
     return Leaf(exotic_field, exotic_edge[0])
 
 
-def contains_only_leaves(xs):
+def contains_only_leaves(xs: tuple) -> bool:
     if not isinstance(xs, tuple):
         return False
 
@@ -744,6 +752,7 @@ def contains_only_leaves(xs):
 
 
 def reduced_row(row, func):
+    """Helper function to apply recursive call until you reach leaves."""
     if isinstance(row, Leaf):
         return row
 
@@ -754,7 +763,11 @@ def reduced_row(row, func):
     return func(tuple(map(lambda a: reduced_row(a, func), row)))
 
 
-def construct_completion(partition, gauge_epsilons, graph):
+def construct_completion(partition, gauge_epsilons, graph) -> Union[str, tuple]:
+    """Returns arguments needed to pass into Completion object contructor, or a
+    string with the reason the completion failed.
+
+    """
     lorentz_epsilons, terms, edge_dict, field_dict = [], [], {}, {}
     more_fermion_symbols = ["f" + str(i) for i in range(10)]
     more_scalar_symbols = ["S" + str(i) for i in range(10)]
@@ -820,6 +833,7 @@ def construct_completion(partition, gauge_epsilons, graph):
 
 
 def partition_completion(partition) -> Union[Completion, FailedCompletion]:
+    """Return the completion object associated with a partition."""
     part = partition["partition"]
     gauge_epsilons = partition["epsilons"]
     graph = partition["graph"]
@@ -853,6 +867,7 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
 def operator_completions(
     operator: EffectiveOperator, verbose=False
 ) -> List[Completion]:
+    """Return a list of the completions of an effective operator."""
 
     parts = partitions(operator, verbose=verbose)
 
@@ -878,6 +893,11 @@ def operator_completions(
 
 
 def check_remapping_on_terms(terms1, terms2, remapping):
+    """Return the remapping on the field labels in the terms that would get you from
+    one to the other, i.e. return the isomorphism if one exists, otherwise
+    return the empty dictionary.
+
+    """
     new_terms = set()
     for term in terms1:
         for k, v in remapping.items():
@@ -975,7 +995,6 @@ def collect_completions(
     func = lambda c: tuple(sorted(key(c).values()))
     for k, g in groupby(completions, key=func):
         g_list = list(g)
-        # TODO calling this here will be a bottleneck
         remove_equivalent_completions(g_list)
         k = tuple(sorted(set(k)))
         out[k] = g_list
@@ -1013,7 +1032,6 @@ def model_registry(completions, registry) -> Dict[tuple, int]:
     return reg
 
 
-# TODO Change to filter_models
 def filter_completions(
     completions: Dict[tuple, List[Completion]], sieve: Dict[tuple, List[Completion]]
 ) -> Dict[tuple, List[Completion]]:
@@ -1071,6 +1089,7 @@ def operator_strip_derivs(op: Operator) -> List[Operator]:
 def construct_operator(
     fields: List[Tuple[Field, str]], epsilons: List[Tensor]
 ) -> Operator:
+    """Helper function to construct operator."""
     tensors = []
     for field, index_string in fields:
         u, d, _, _, _ = field.fresh_indices().indices_by_type.values()
@@ -1124,6 +1143,11 @@ def derivative_combinations(
 def deriv_operator_completions(
     operator: EffectiveOperator, verbose=False
 ) -> List[Completion]:
+    """Find the completions of a derivative operator. Differs from regular
+    ``operator_completions`` in that it acts the derivatives in all possible
+    ways. There shouldn't be more than one derivative acting on a single field.
+
+    """
     deriv_combos = derivative_combinations(operator)
 
     if verbose:
@@ -1139,5 +1163,6 @@ def deriv_operator_completions(
 
 
 def collect_models(comps):
+    """Group models by particle content."""
     collected = collect_completions(comps)
     return [Model(cs) for _, cs in list(collected.items())]
