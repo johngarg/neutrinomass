@@ -3,7 +3,8 @@
 from neutrinomass.database.export import *
 from neutrinomass.tensormethod import D, L, Q, db, ub, eb, H, eps, delta
 from neutrinomass.completions.core import cons_completion_field
-from neutrinomass.completions import operator_completions, EFF_OPERATORS
+from neutrinomass.completions import operator_completions
+from neutrinomass.completions import EFF_OPERATORS, DERIV_EFF_OPERATORS
 from sympy import Rational
 
 from networkx import Graph
@@ -64,3 +65,7 @@ def test_lazy_completion():
 
     assert isinstance(lazy_comp.head, dict)
     assert isinstance(lazy_comp.tail, str)
+
+    op = DERIV_EFF_OPERATORS["D3"]
+    comp = list(operator_completions(op))[0]
+    lazy_comp = eval(export_completion(comp, lazy=True))

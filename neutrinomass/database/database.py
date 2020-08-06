@@ -54,23 +54,33 @@ def read_completions(filename: str):
     completions = defaultdict(list)
     with open(filename, "r") as f:
         line = f.readline()
-        counter = 1
+        # counter = 1
         while line:
             # start = time.time()
             comp = eval(line)
+            # counter += 1
             completions[comp.operator_name].append(comp)
             line = f.readline()
             # print(f"Took {time.time() - start} seconds")
-            counter += 1
-            if counter == 1000:
-                break
+            # if counter == 1000:
+            #     break
 
     return completions
 
 
 class ModelDatabase:
-    def __init__(self, completions):
-        self.completions = completions
+    def __init__(self, path: str):
+        self.path = path
+
+        import os
+        from glob import glob
+
+        data = {}
+        filenames = glob(os.path.join(self.path, "*.dat"))
+        for f in filenames:
+            data = read_completions(f)
+
+        self.data = data
 
     def query(self, func):
         pass

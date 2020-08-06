@@ -3,6 +3,7 @@
 import string
 from sympy.core.numbers import Zero
 
+# Be careful, some of these (e.g. \x and \r) cause various issues
 TEX_GREEK_LOWERCASE = [
     r"\alpha",
     r"\beta",
