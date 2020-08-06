@@ -274,6 +274,7 @@ class VectorLikeDiracFermion(FieldType):
             is_conj=is_conj,
             symmetry=None,
             latex=latex,
+            comm=FERMI,
             # **kwargs,
         )
 
