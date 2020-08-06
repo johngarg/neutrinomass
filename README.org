@@ -14,8 +14,6 @@ The code is split into three smaller modules:
    the models in the database.
 4. =database= The database of lepton-number violating models and functions for
    interacting with it.
-5. =matching= The code we use to match the models onto the complete basis of
-   operators at dimension 7.
 
 Each module is described in detail below.
 
@@ -162,7 +160,7 @@ completions of =EffectiveOperator= objects. These are constructed from
 >>> o1 = invariants(L, L, H, H, ignore=["u"])
 >>> o1
 [L(u0, I_0)*L(u1, I_1)*H(I_2)*Eps(-I_0, -I_2)*H(I_3)*Eps(-I_3, -I_1)]
->>> eff_o1 = EffectiveOperator("O_1", o1)
+>>> eff_o1 = EffectiveOperator("O_1", o1[0])
 #+END_SRC
 Models generating the Weinberg at tree-level can then be found with the
 =operator_completions= and =collect_models= functions
@@ -173,10 +171,15 @@ The =Model= objects are collections of =Completion= objects that contain the
 same particle content. Each =Completion= object has an associated =Lagrangian=,
 which contains information about the lepton-number violating interaction terms,
 and can be called upon to generate the entire gauge and Lorentz invariant
-renormalisable Lagrangian:
+renormalisable interaction Lagrangian
 #+BEGIN_SRC python
->>> lag = seesaw_2.lagrangian; lag
->>> lag.generate_all_terms(); lag
+>>> lag = seesaw_2.completions[0].lagrangian
+>>> lag.terms
+[L(U_0, I_0, g0_)*H(I_1)*ψ(U_1, I_2, I_3)*metric(-U_1, -U_0)*metric(-I_2, -I_0)*metric(-I_3, -I_1),
+ L(U_0, I_0, g1_)*H(I_1)*ψ(U_1, I_2, I_3)*metric(-U_0, -U_1)*metric(-I_2, -I_1)*metric(-I_3, -I_0),
+ ψ(U_0, I_0, I_1)*ψ(U_1, I_2, I_3)*metric(-U_0, -U_1)*metric(-I_0, -I_2)*metric(-I_1, -I_3)]
+>>> lag.num_u1_symmetries()
+2
 #+END_SRC
 
 The completions are found by filling in allowed topologies generated with
@@ -184,3 +187,7 @@ The completions are found by filling in allowed topologies generated with
 Mathematica]] was released, which would make this bridge much nicer. Many
 topologies are already loaded in. Generation of new topologies happens with the
 =generate_topologies= script.
+
+** =database=
+
+Add some comments about how to use the database.
