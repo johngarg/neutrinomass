@@ -772,8 +772,8 @@ def construct_completion(partition, gauge_epsilons, graph) -> Union[str, tuple]:
     more_fermion_symbols = ["f" + str(i) for i in range(10)]
     more_scalar_symbols = ["S" + str(i) for i in range(10)]
     symbols = {
-        "fermion": ["ψ", "ξ", "χ", "ζ", "θ"] + more_fermion_symbols,
-        "boson": ["φ", "η", "ω", "ρ", "σ"] + more_scalar_symbols,
+        "fermion": ["ψ", "χ", "f", "ζ", "θ"] + more_fermion_symbols,
+        "boson": ["φ", "η", "s", "ω", "σ"] + more_scalar_symbols,
     }
 
     func = lambda leaves: replace_and_mutate(
