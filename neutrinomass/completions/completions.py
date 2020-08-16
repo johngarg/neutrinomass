@@ -276,29 +276,12 @@ def graph_fingerprint(part):
     return sorted(degree.values())
 
 
-def remove_isomorphic(partitions: List[dict], verbose: bool = False) -> None:
+def remove_isomorphic(partitions: List[dict]) -> None:
     """Same algorithm as removeIsomorphic in ``wolfram/`` directory. Remove
     isomorphic graphs (by side effect) to reduce double-ups of completions.
 
     """
-    # sorted_parts = sorted(partitions, key=graph_fingerprint)
-    # out = []
-    # for f, p in groupby(sorted_parts, key=graph_fingerprint):
-    #     similar_parts = list(p)
-    #     n = len(similar_parts)
-    #     if n == 1:
-    #         out += similar_parts
-    #     elif n > 1:
-    #         cleaned = remove_equivalent_nopop(similar_parts, are_equivalent_partitions)
-    #         out += cleaned
-
-    # return out
-
-    # remove_equivalent(partitions, are_equivalent_partitions, verbose=verbose)
-    return remove_equivalent_nopop(
-        partitions, are_equivalent_partitions, verbose=verbose
-    )
-    # return None
+    return remove_equivalent_nopop(partitions, are_equivalent_partitions)
 
 
 # The approach to finding the completions is the following: contract off fields
@@ -935,7 +918,7 @@ def operator_completions(
     parts = partitions(operator, verbose=verbose)
     if verbose:
         print(f"Starting with {len(parts)} partitions, removing isomorphic ones...")
-    parts = remove_isomorphic(parts, verbose=verbose)
+    parts = remove_isomorphic(parts)
 
     if verbose:
         print(f"Finding completions of {len(parts)} partitions...")
@@ -1042,7 +1025,7 @@ def remove_equivalent_completions(
     returns copied list.
 
     """
-    remove_equivalent(comps, are_equivalent_completions, verbose=verbose)
+    remove_equivalent(comps, are_equivalent_completions)
 
 
 def collect_completions(

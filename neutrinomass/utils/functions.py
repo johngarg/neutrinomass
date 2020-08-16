@@ -42,9 +42,6 @@ def remove_equivalent(
     i = 0
     while i < len(l) - 1:
 
-        if verbose:
-            print(len(l))
-
         j = i + 1
         while j <= len(l) - 1:
             if eq_func(l[i], l[j]):
