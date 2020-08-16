@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import time
-from typing import List, Callable, TypeVar
+from typing import List, Callable, TypeVar, Set
 
 T = TypeVar("T")
 
@@ -31,7 +31,9 @@ def timeit(method):
     return timed
 
 
-def remove_equivalent(l: List[T], eq_func: Callable[[T, T], bool]) -> List[T]:
+def remove_equivalent(
+    l: List[T], eq_func: Callable[[T, T], bool], verbose: bool = False
+) -> None:
     """Iterates through the list `l` and removes duplicate items according to
     `eq_func`.
 
@@ -39,6 +41,10 @@ def remove_equivalent(l: List[T], eq_func: Callable[[T, T], bool]) -> List[T]:
 
     i = 0
     while i < len(l) - 1:
+
+        if verbose:
+            print(len(l))
+
         j = i + 1
         while j <= len(l) - 1:
             if eq_func(l[i], l[j]):
@@ -46,3 +52,48 @@ def remove_equivalent(l: List[T], eq_func: Callable[[T, T], bool]) -> List[T]:
             else:
                 j += 1
         i += 1
+
+
+def remove_equivalent_nopop(
+    l: List[T], eq_func: Callable[[T, T], bool], verbose: bool = False
+) -> List[T]:
+    """Iterates through the list `l` and removes duplicate items according to
+    `eq_func`.
+
+    """
+
+    to_remove: Set[int] = set()
+    i = 0
+    while i < len(l) - 1:
+
+        if i in to_remove:
+            i += 1
+            continue
+
+        j = i + 1
+        while j <= len(l) - 1:
+            if j in to_remove:
+                j += 1
+                continue
+
+            if eq_func(l[i], l[j]):
+                to_remove.add(j)
+            else:
+                j += 1
+
+        i += 1
+
+    return dropped_vals(l, to_remove)
+
+
+def dropped_vals(l: list, vals: set):
+    out = [None] * (len(l) - len(vals))
+    i = 0
+    for idx, item in enumerate(l):
+        if idx in vals:
+            continue
+
+        out[i] = item
+        i += 1
+
+    return out

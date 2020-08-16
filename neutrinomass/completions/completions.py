@@ -29,7 +29,7 @@ from neutrinomass.completions.utils import (
     multiple_replace,
     allowed_lor_dyn,
 )
-from neutrinomass.utils import remove_equivalent
+from neutrinomass.utils.functions import remove_equivalent, remove_equivalent_nopop
 from neutrinomass.completions.core import (
     Completion,
     Model,
@@ -262,17 +262,43 @@ def are_equivalent_partitions(a, b):
     """Checks for partition equivalence by checking if the graphs are isomorphic."""
     ga = a["graph"]
     gb = b["graph"]
+
+    if not iso.faster_could_be_isomorphic(ga, gb):
+        return False
+
     em = iso.categorical_edge_match("particle", "exotic")
     return nx.is_isomorphic(ga, gb, edge_match=em)
 
 
-def remove_isomorphic(partitions: List[dict]) -> None:
+def graph_fingerprint(part):
+    g = part["graph"]
+    degree = dict(g.degree())
+    return sorted(degree.values())
+
+
+def remove_isomorphic(partitions: List[dict], verbose: bool = False) -> None:
     """Same algorithm as removeIsomorphic in ``wolfram/`` directory. Remove
     isomorphic graphs (by side effect) to reduce double-ups of completions.
 
     """
-    remove_equivalent(partitions, are_equivalent_partitions)
-    return None
+    # sorted_parts = sorted(partitions, key=graph_fingerprint)
+    # out = []
+    # for f, p in groupby(sorted_parts, key=graph_fingerprint):
+    #     similar_parts = list(p)
+    #     n = len(similar_parts)
+    #     if n == 1:
+    #         out += similar_parts
+    #     elif n > 1:
+    #         cleaned = remove_equivalent_nopop(similar_parts, are_equivalent_partitions)
+    #         out += cleaned
+
+    # return out
+
+    # remove_equivalent(partitions, are_equivalent_partitions, verbose=verbose)
+    return remove_equivalent_nopop(
+        partitions, are_equivalent_partitions, verbose=verbose
+    )
+    # return None
 
 
 # The approach to finding the completions is the following: contract off fields
@@ -909,7 +935,7 @@ def operator_completions(
     parts = partitions(operator, verbose=verbose)
     if verbose:
         print(f"Starting with {len(parts)} partitions, removing isomorphic ones...")
-    remove_isomorphic(parts)
+    parts = remove_isomorphic(parts, verbose=verbose)
 
     if verbose:
         print(f"Finding completions of {len(parts)} partitions...")
@@ -1009,12 +1035,14 @@ def are_equivalent_completions(comp1: Completion, comp2: Completion) -> bool:
     return bool(compare_terms(comp1, comp2))
 
 
-def remove_equivalent_completions(comps: List[Completion]) -> List[Completion]:
+def remove_equivalent_completions(
+    comps: List[Completion], verbose: bool = False
+) -> List[Completion]:
     """Compares completions by comparing Lagrangian terms. Removes duplicates and
     returns copied list.
 
     """
-    remove_equivalent(comps, are_equivalent_completions)
+    remove_equivalent(comps, are_equivalent_completions, verbose=verbose)
 
 
 def collect_completions(
