@@ -47,11 +47,12 @@ from neutrinomass.utils import pmatch
 
 from typing import Tuple, List, Dict, Union
 import networkx as nx
+import networkx.algorithms.isomorphism as iso
 from copy import copy, deepcopy
 from alive_progress import alive_bar
 
-from collections import Counter
-from itertools import permutations, groupby
+from collections import Counter, defaultdict
+from itertools import permutations, groupby, combinations
 from sympy.tensor.tensor import Tensor
 from sympy import prime
 
@@ -60,7 +61,6 @@ import re
 import os
 
 
-# @lru_cache(maxsize=None)
 def replace(data, to_replace, replace_with, found=False) -> Tuple[tuple, bool]:
     """Replace first occurance of ``to_replace`` with ``replace_with`` in
     ``data``.
@@ -128,7 +128,9 @@ def distribute_fields(fields, partition):
     return quick_remove_equivalent_partitions(parts)
 
 
-def node_dictionary(partition) -> Dict[int, str]:
+def node_dictionary(
+    partition: tuple, field_dict: Dict[IndexedField, int]
+) -> Dict[int, str]:
     """Returns a dictionary mapping node to indexed field label.
 
     Example:
@@ -140,14 +142,16 @@ def node_dictionary(partition) -> Dict[int, str]:
     """
     flat_data = list(flatten(partition))
     tuples = chunks(flat_data, 2)
-    reversed_data = map(reversed, tuples)
-    return {k: {"particle": v.label} for k, v in reversed_data}
+    reversed_data = list(map(reversed, tuples))
+    return {k: {"particle": v.label + str(field_dict[v])} for k, v in reversed_data}
 
 
-def set_external_fields(partition, graph) -> None:
+def set_external_fields(
+    partition: tuple, graph: nx.Graph, field_dict: Dict[IndexedField, int]
+) -> None:
     """Add indexed fields as edge attributes on graph through side effect."""
     g = deepcopy(graph)
-    node_attrs = node_dictionary(partition)
+    node_attrs = node_dictionary(partition, field_dict)
 
     edge_attrs = {}
     for edge in graph.edges:
@@ -157,6 +161,43 @@ def set_external_fields(partition, graph) -> None:
 
     nx.set_edge_attributes(g, edge_attrs)
     return g
+
+
+def indexed_fields_with_counters(op: Operator) -> Dict[IndexedField, int]:
+    """Return a dictionary mapping indexed fields to an integer labelling distinct
+    fields to help with isomorphism filtering.
+
+    """
+    # idxs are the pairs of contracted isospin indices
+    counts = defaultdict(list)
+    idxs = []
+    for f in op.tensors:
+        if isinstance(f, IndexedField):
+            counts[f.label].append(f)
+        else:
+            idxs.append(f.indices)
+
+    labelled_counts = {k: [[f, i] for i, f in enumerate(v)] for k, v in counts.items()}
+    for k, v in labelled_counts.items():
+        for (f1, i1), (f2, i2) in combinations(v, 2):
+            if not f1.indices_by_type["Isospin"]:
+                # fields are interchangeable, replace
+                f2_idx = labelled_counts[k].index([f2, i2])
+                labelled_counts[k][f2_idx] = [f2, i1]
+                continue
+
+            iso1 = f1.indices_by_type["Isospin"][0]
+            iso2 = f2.indices_by_type["Isospin"][0]
+            if [-iso1, -iso2] in idxs or [-iso2, -iso1] in idxs:
+                # combination of indices match an epsilon-index pair. In this
+                # case, need to replace i2 with i1
+                f2_idx = labelled_counts[k].index([f2, i2])
+                labelled_counts[k][f2_idx] = [f2, i1]
+            else:
+                continue
+
+    flat = reduce(lambda x, y: x + y, labelled_counts.values())
+    return dict(flat)
 
 
 def partitions(operator: EffectiveOperator, verbose=False) -> List[dict]:
@@ -187,14 +228,16 @@ def partitions(operator: EffectiveOperator, verbose=False) -> List[dict]:
     for topology_data in topology_data_list:
         if verbose:
             print(f"Furnishing topology {counter}...")
-        fields = operator.operator.indexed_fields
+        # return counters as well for isomorphism filtering
+        fields_and_counters = indexed_fields_with_counters(operator.operator)
+        fields = [f for f, i in fields_and_counters.items()]
         perms = distribute_fields(fields, topology_data["partition"])
         for op in colour_ops:
             epsilons = op.operator.epsilons
 
             for perm in perms:
                 g = topology_data["graph"]
-                g = set_external_fields(perm, g)
+                g = set_external_fields(perm, g, fields_and_counters)
 
                 partition_file = topology_data["partition_file"]
                 topology_classification = os.path.splitext(
@@ -219,14 +262,8 @@ def are_equivalent_partitions(a, b):
     """Checks for partition equivalence by checking if the graphs are isomorphic."""
     ga = a["graph"]
     gb = b["graph"]
-    node_matcher = nx.algorithms.isomorphism.categorical_node_match(
-        ["external"], ["external", -1]  # set default value to -1 for internal nodes
-    )
-    graph_matcher = nx.algorithms.isomorphism.GraphMatcher(
-        ga, gb, node_match=node_matcher
-    )
-
-    return graph_matcher.is_isomorphic()
+    em = iso.categorical_edge_match("particle", "exotic")
+    return nx.is_isomorphic(ga, gb, edge_match=em)
 
 
 def remove_isomorphic(partitions: List[dict]) -> None:
@@ -870,6 +907,9 @@ def operator_completions(
     """Return a list of the completions of an effective operator."""
 
     parts = partitions(operator, verbose=verbose)
+    if verbose:
+        print(f"Starting with {len(parts)} partitions, removing isomorphic ones...")
+    remove_isomorphic(parts)
 
     if verbose:
         print(f"Finding completions of {len(parts)} partitions...")

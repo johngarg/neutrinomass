@@ -53,7 +53,7 @@ def test_export_completion():
 
         assert new.exotics == old.exotics
         assert new.partition == old.partition
-        assert new.graph.__dict__ == old.graph.__dict__
+        assert new.graph.__dict__["_adj"] == old.graph.__dict__["_adj"]
         assert new.terms == old.terms
         assert new.operator.__dict__ == old.operator.__dict__
 
