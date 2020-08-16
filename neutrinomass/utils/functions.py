@@ -33,10 +33,9 @@ def timeit(method):
 
 def remove_equivalent(l: List[T], eq_func: Callable[[T, T], bool]) -> List[T]:
     """Iterates through the list `l` and removes duplicate items according to
-    `eq_func`. Returns a copy of `l` with duplicates removed.
+    `eq_func`.
 
     """
-    # list_copy = deepcopy(l)
 
     i = 0
     while i < len(l) - 1:
@@ -47,5 +46,3 @@ def remove_equivalent(l: List[T], eq_func: Callable[[T, T], bool]) -> List[T]:
             else:
                 j += 1
         i += 1
-
-    # return l
