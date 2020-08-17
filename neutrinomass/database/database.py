@@ -12,8 +12,20 @@ from networkx import Graph
 from collections import defaultdict
 import time
 from typing import Dict, List
+import re
 
 ExoticField = cons_completion_field
+
+
+def match(pattern: str, data: str):
+    return re.match(pattern, data)
+
+
+def matches_in(pattern, coll):
+    for x in coll:
+        if match(pattern, x):
+            return True
+    return False
 
 
 def Partition(*args):
@@ -44,6 +56,22 @@ class LazyCompletion:
     def operator_name(self):
         return self.head["operator_name"]
 
+    def contains_field(self, pattern):
+        return matches_in(pattern, self.quantum_numbers)
+
+    def contains_interaction(self, patterns):
+        """This probably needs to be rewritten recursively"""
+        interactions = self.head["terms"]
+        for interaction in interactions:
+            is_match = True
+            for pattern in patterns:
+                is_match = is_match and bool(matches_in(pattern, interaction))
+
+            if is_match:
+                return True
+
+        return False
+
     # @property
     # def operator_dimension(self):
     #     return self.head["operator_dimension"]
@@ -54,16 +82,10 @@ def read_completions(filename: str):
     completions = defaultdict(list)
     with open(filename, "r") as f:
         line = f.readline()
-        # counter = 1
         while line:
-            # start = time.time()
             comp = eval(line)
-            # counter += 1
             completions[comp.operator_name].append(comp)
             line = f.readline()
-            # print(f"Took {time.time() - start} seconds")
-            # if counter == 1000:
-            #     break
 
     return completions
 
@@ -75,26 +97,20 @@ class ModelDatabase:
         import os
         from glob import glob
 
-        data = {}
+        print("Initialising database...")
         filenames = glob(os.path.join(self.path, "*.dat"))
-        for f in filenames:
-            data = read_completions(f)
-
-        self.data = data
+        mvdb_data = [dict(read_completions(f)) for f in filenames]
+        mvdb = {k: v for d in mvdb_data for k, v in d.items()}
+        self.data = mvdb
 
     def query(self, func):
-        pass
+        """Function that acts on each model"""
+        return {k: [m for m in v if func(m)] for k, v in self.data.items()}
 
-
-def apply_naive_filter(
-    db: Dict[int, List[LazyCompletion]]
-) -> Dict[int, List[LazyCompletion]]:
-    for mass_dim, comps in db.items():
-        for comp in db:
-            pass
-
-
-def query(completions: List[LazyCompletion], func):
-    for comp in completions:
-        if func(comp):
-            yield comp
+    def filter_seesaw(self):
+        no_seesaws = (
+            lambda m: not m.contains_field("F,00,2,0,0")
+            and not m.contains_field("F,00,0,0,0")
+            and not m.contains_field("S,00,2,1,0")
+        )
+        return self.query(no_seesaws)
