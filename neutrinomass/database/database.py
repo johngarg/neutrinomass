@@ -327,6 +327,10 @@ class ModelDatabase:
         for model in self.data[op]:
             self.filter_model_by_mass(op, model)
 
+    def filter_by_mass(self):
+        for op in self.data:
+            self.filter_models_by_mass(op)
+
     def filter_model_by_dimension(self, op: str, model):
         """Remove all completions with the same or a subset of the particle content of
         an upstream model by the dimension criterion, i.e. only keep models that
@@ -373,12 +377,9 @@ class ModelDatabase:
             self.order()
 
         if self.is_mass:
-            func = lambda x: self.filter_model_by_mass(x)
+            self.filter_by_mass()
         else:
-            func = lambda x: self.filter_model_by_dimension(x)
-
-        for op in self.data:
-            func(op)
+            self.filter_by_dimension()
 
     def order_by_mass(self):
         """Provides `scale_dict` and orders the data dictionary by neutrino mass scale
@@ -427,7 +428,7 @@ class ModelDatabase:
         """All common preprocessing steps in one function"""
         if filter_seesaws:
             # print("Removing seesaw fields...")
-            self.filter(ModelDatabase.no_seesaws)
+            self.filter_by_query(ModelDatabase.no_seesaws)
         # print("Removing equivalent models...")
         self.remove_equivalent_models()
         # print("Ordering by neutrino-mass scales...")
