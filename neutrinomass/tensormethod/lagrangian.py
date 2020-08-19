@@ -112,7 +112,7 @@ def npoint_terms(n, fields, nf=3, ignore=[]):
 def clean_fields(exotics: set):
     """Returns fields with Dirac partners separated and duplicates removed"""
     out = []
-    for f in self.exotics:
+    for f in exotics:
         out.append(f)
         if f.is_fermion and f.y != 0:
             out.append(f.dirac_partner())
