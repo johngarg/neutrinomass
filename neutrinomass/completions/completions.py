@@ -941,6 +941,15 @@ def operator_completions(
     # return good_completions
 
 
+def sort_strings(terms: List[List[str]]):
+    """To account for (anti)symmetric indices, just sort the strings representing
+    the fields. For use in the function `check_remapping_on_terms`.
+
+    """
+    data = [["".join(sorted(item)) for item in interaction] for interaction in terms]
+    return set(map(lambda x: tuple(sorted(x)), data))
+
+
 def check_remapping_on_terms(terms1, terms2, remapping):
     """Return the remapping on the field labels in the terms that would get you from
     one to the other, i.e. return the isomorphism if one exists, otherwise
@@ -960,6 +969,8 @@ def check_remapping_on_terms(terms1, terms2, remapping):
             ss = tuple(sorted(s.split("*")))
             new_terms.add(ss)
 
+    new_terms = sort_strings(new_terms)
+
     comp2_strs = []
     for term in terms2:
         simple = term.safe_simplify()
@@ -969,8 +980,10 @@ def check_remapping_on_terms(terms1, terms2, remapping):
     comp2_strs = [re.sub(r"g[0-9]+_", "g_", s) for s in comp2_strs]
     comp2_strs = [re.sub(r"-", "", s) for s in comp2_strs]
     comp2_tups = [tuple(sorted(s.split("*"))) for s in comp2_strs]
+    # sort epsilons and deltas to account for symmetric indices
+    comp2_tups = sort_strings(comp2_tups)
 
-    if new_terms == set(comp2_tups):
+    if new_terms == comp2_tups:
         return remapping
 
     # otherwise, no equivalence, return empty dict
