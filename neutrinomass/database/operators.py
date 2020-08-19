@@ -2,6 +2,7 @@
 
 from neutrinomass.completions import EFF_OPERATORS, DERIV_EFF_OPERATORS
 from neutrinomass.database.utils import table_data
+from neutrinomass.database.database import ModelDatabase
 
 
 def print_paper_table():
@@ -743,6 +744,16 @@ def print_paper_table():
         "D22"
     ] = r"${\bar{e}^{\dagger}} {\bar{e}^{\dagger}} (DH)^{i} (DH)^{j} H^{k} H^{l}  \cdot  \epsilon_{i k} \epsilon_{j l}$"
 
+    db_path = "/Users/johngargalionis/Desktop/operators/"
+    mvdb = ModelDatabase(db_path)
+
+    mvdb.order()
+    mvdb.democratic_remove_equivalent()
+    models_dict = {k: str(len(v)) for k, v in mvdb.data.items()}
+
+    mvdb.democratic_filter()
+    filtered_dict = {k: str(len(v)) for k, v in mvdb.data.items()}
+
     for label, latex in operator_latex.items():
 
         if label in EFF_OPERATORS:
@@ -751,8 +762,13 @@ def print_paper_table():
             op = DERIV_EFF_OPERATORS[label]
 
         loops, scale = table_data(op)
-        models = ""
-        filtered = ""
+
+        if label not in mvdb.data:
+            models, filtered = "", ""
+        else:
+            models = models_dict[label]
+            filtered = filtered_dict[label]
+
         row = fr"${format_primes(label)}$ & {latex} & {models} & {filtered} & {loops} & {scale} \\"
         print(row)
 

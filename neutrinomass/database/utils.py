@@ -41,4 +41,4 @@ def table_data(eff_op):
         if not n_loops_v2
         else ",".join(str(i + n_loops) for i in n_loops_v2)
     )
-    return n_loops_str, f"\\num{{{np_scale}}}"
+    return n_loops_str, f"\\mynum{{{np_scale}}}"
