@@ -109,22 +109,25 @@ def npoint_terms(n, fields, nf=3, ignore=[]):
     return terms
 
 
+def clean_fields(exotics: set):
+    """Returns fields with Dirac partners separated and duplicates removed"""
+    out = []
+    for f in self.exotics:
+        out.append(f)
+        if f.is_fermion and f.y != 0:
+            out.append(f.dirac_partner())
+
+    eq = lambda x, y: x.field == y.field
+    remove_equivalent(out, eq_func=eq)
+    return sorted(out)
+
+
 class Lagrangian:
     def __init__(self, exotics: set, interaction_terms: list):
         """Exotics is a set containing only one Dirac partner for a Dirac fermion."""
         self.exotics = exotics
         self.interaction_terms = interaction_terms
-
-    @property
-    def fields(self):
-        """Returns fields with Dirac partners separated"""
-        out = []
-        for f in self.exotics:
-            out.append(f)
-            if f.is_fermion and f.y != 0:
-                out.append(f.dirac_partner())
-
-        return sorted(out)
+        self.fields = clean_fields(self.exotics)
 
     @property
     def terms(self):
@@ -133,7 +136,7 @@ class Lagrangian:
 
     def u1_symmetries(self):
         exotics = [f.field for f in self.fields]
-        extra_0s = [0 for _ in range(len(exotics))]
+        extra_0s = [0 for _ in range(len(self.fields))]
 
         #            H  Q  ub db L eb
         yukawas = [[1, 1, 1, 0, 0, 0], [-1, 1, 0, 1, 0, 0], [-1, 0, 0, 0, 1, 1]]
