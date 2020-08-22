@@ -911,14 +911,16 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
 
 
 def operator_completions(
-    operator: EffectiveOperator, verbose=False
+    operator: EffectiveOperator, remove_isomorphic_diagrams=True, verbose=False
 ) -> List[Completion]:
     """Return a list of the completions of an effective operator."""
 
     parts = partitions(operator, verbose=verbose)
     if verbose:
         print(f"Starting with {len(parts)} partitions, removing isomorphic ones...")
-    parts = remove_isomorphic(parts)
+
+    if remove_isomorphic_diagrams:
+        parts = remove_isomorphic(parts)
 
     if verbose:
         print(f"Finding completions of {len(parts)} partitions...")
