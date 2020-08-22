@@ -108,25 +108,26 @@ def negate_u1(string):
         return "-" + string
 
 
-def process_string_term(term: tuple):
-    """Returns a list of the sorted term and its hermitian conjugate."""
-    conj_term = []
-    for field in term:
-        if field in {"L", "H", "Q", "ub", "db", "eb"}:
-            conj_term.append(field + ".conj")
-        elif field in {"L.conj", "H.conj", "Q.conj", "ub.conj", "db.conj", "eb.conj"}:
-            conj_term.append(field[:-5])
-        else:  # exotic case
-            # interchange colour dynkin indices
-            lor, col, iso, hyp, bar = field.split(",")
-            col = "".join(reversed(col))
-            hyp = negate_u1(hyp)
-            bar = negate_u1(bar)
+def conjugate_field(field: str) -> str:
+    if field in {"L", "H", "Q", "ub", "db", "eb"}:
+        return field + ".conj"
+    elif field in {"L.conj", "H.conj", "Q.conj", "ub.conj", "db.conj", "eb.conj"}:
+        return field[:-5]
+    else:  # exotic case
+        # interchange colour dynkin indices
+        lor, col, iso, hyp, bar = field.split(",")
+        col = "".join(reversed(col))
+        hyp = negate_u1(hyp)
+        bar = negate_u1(bar)
 
-            conj_numbers = [lor, col, iso, hyp, bar]
-            conj_string = ",".join(conj_numbers)
-            conj_term.append(conj_string)
+        conj_numbers = [lor, col, iso, hyp, bar]
+        conj_string = ",".join(conj_numbers)
+        return conj_string
 
+
+def conjugate_term(term: tuple) -> tuple:
+    """Returns the sorted hermitian conjugate of the term."""
+    conj_term = [conjugate_field(field) for field in term]
     return tuple(sorted(conj_term))
 
 
@@ -156,11 +157,13 @@ class ModelDatabase:
             for model in v:
                 for exotic in model.quantum_numbers:
                     if exotic not in exotics:
+                        exotics[conjugate_field(exotic)] = prime(counter)
                         exotics[exotic] = prime(counter)
                         counter += 1
 
         # dict mapping exotic field (str representation) to unique prime number
-        self.exotics_prime_dict = exotics
+        self.exotic_prime_dict = exotics
+        self.inv_exotic_prime_dict = {v: k for k, v in self.exotic_prime_dict.items()}
 
         term_dict = {}
         counter = 1
@@ -172,14 +175,16 @@ class ModelDatabase:
                     term = tuple(sorted(model.head["terms"][i]))
                     model.head["terms"][i] = term
                     if term not in term_dict:
-                        conj_term = process_string_term(term)
+                        # add conj term first so that when filtering you keep
+                        # the unconjugated term
+                        term_dict[conjugate_term(term)] = prime(counter)
                         term_dict[term] = prime(counter)
-                        term_dict[conj_term] = prime(counter)
                         counter += 1
 
         # dict mapping sorted tuple of strings representing interaction (and
         # conjugate) to unique prime number
         self.term_prime_dict = term_dict
+        self.inv_term_prime_dict = {v: k for k, v in self.term_prime_dict.items()}
 
         # dict mapping operator label to neutrino-mass scale estimate
         self.scale_dict = None
@@ -228,7 +233,7 @@ class ModelDatabase:
         """Product of primes representing the fields in the model"""
         prod = 1
         for qn in model.quantum_numbers:
-            prod *= self.exotics_prime_dict[qn]
+            prod *= self.exotic_prime_dict[qn]
         return prod
 
     def stringent_model_number(self, model):
