@@ -148,7 +148,7 @@ def node_dictionary(
 
 def set_external_fields(
     partition: tuple, graph: nx.Graph, field_dict: Dict[IndexedField, int]
-) -> None:
+) -> nx.Graph:
     """Add indexed fields as edge attributes on graph through side effect."""
     g = deepcopy(graph)
     node_attrs = node_dictionary(partition, field_dict)
@@ -200,7 +200,9 @@ def indexed_fields_with_counters(op: Operator) -> Dict[IndexedField, int]:
     return dict(flat)
 
 
-def partitions(operator: EffectiveOperator, verbose=False) -> List[dict]:
+def partitions(
+    operator: EffectiveOperator, verbose=False, remove_isomorphic_diagrams=True
+) -> List[dict]:
     """Returns a list of operator partitions, epsilons and graphs of the form:
 
     {"fields": ((L(u0, I_0), 18), ...)
@@ -228,11 +230,14 @@ def partitions(operator: EffectiveOperator, verbose=False) -> List[dict]:
     for topology_data in topology_data_list:
         if verbose:
             print(f"Furnishing topology {counter}...")
+            counter += 1
+
         # return counters as well for isomorphism filtering
         fields_and_counters = indexed_fields_with_counters(operator.operator)
         fields = [f for f, i in fields_and_counters.items()]
         perms = distribute_fields(fields, topology_data["partition"])
         for op in colour_ops:
+            col_out = []
             epsilons = op.operator.epsilons
 
             for perm in perms:
@@ -251,9 +256,12 @@ def partitions(operator: EffectiveOperator, verbose=False) -> List[dict]:
                     "graph": g,
                     "topology": topology_classification,
                 }
-                out.append(data)
+                col_out.append(data)
 
-        counter += 1
+            if remove_isomorphic_diagrams:
+                col_out = remove_isomorphic(col_out)
+
+            out += col_out
 
     return out
 
@@ -276,7 +284,7 @@ def graph_fingerprint(part):
     return sorted(degree.values())
 
 
-def remove_isomorphic(partitions: List[dict]) -> None:
+def remove_isomorphic(partitions: List[dict]) -> List[dict]:
     """Same algorithm as removeIsomorphic in ``wolfram/`` directory. Remove
     isomorphic graphs (by side effect) to reduce double-ups of completions.
 
@@ -536,14 +544,18 @@ def exotic_field_and_term(
     partner, fix_su2_epsilons = partner.lower_su2()
     term = reduce(lambda x, y: x * y, fix_su2_epsilons, op * partner)
 
-    # construct term and check to see if vanishes
-    if term.safe_simplify() == 0:
+    # construct term and check to see if vanishes. This is a very costly step,
+    # check first whether there are any doubled up fields in the term and only
+    # run on those
+    set_fields = set([f.label for f in term.fields])
+    if len(set_fields) < len(term.fields) and term.safe_simplify() == 0:
         return exotic_field, partner, f"Vanishing coupling at {term}"
 
     # need to construct term again because sympy is annoying
     term = reduce(lambda x, y: x * y, fix_su2_epsilons, op * partner)
 
-    check_singlet(term)
+    # This has been thoroughly tested so commented out below to help performance
+    # check_singlet(term)
 
     return exotic_field, partner, term
 
@@ -689,12 +701,24 @@ def contract(
         # return the reason
         return maybe_term
 
-    no_deriv_maybe_term = process_derivative_term(maybe_term)
-    if isinstance(no_deriv_maybe_term, str):
-        return no_deriv_maybe_term
+    # Check to see if there are any derivatives present, if there are process the term
+    deriv_structure = [f.derivs for f in maybe_term.fields]
+    n_derivs = sum(deriv_structure)
 
-    if no_deriv_maybe_term.safe_simplify() == 0:
-        return f"Vanishing coupling at {maybe_term} after derivative processing."
+    if n_derivs == 0:
+        no_deriv_maybe_term = maybe_term
+
+        if isinstance(no_deriv_maybe_term, str):
+            return no_deriv_maybe_term
+
+    else:
+        no_deriv_maybe_term = process_derivative_term(maybe_term)
+
+        if isinstance(no_deriv_maybe_term, str):
+            return no_deriv_maybe_term
+
+        if no_deriv_maybe_term.safe_simplify() == 0:
+            return f"Vanishing coupling at {maybe_term} after derivative processing."
 
     return exotic, no_deriv_maybe_term, spectator_gauge_eps, lorentz_epsilons
 
@@ -861,16 +885,27 @@ def construct_completion(partition, gauge_epsilons, graph) -> Union[str, tuple]:
     # mutate Lorentz epsilons with last contraction
     lorentz_epsilons += new_lorentz_epsilons
 
-    proc_term = process_derivative_term(prod)
+    # Check to see if there are any derivatives present, if there are process the term
+    deriv_structure = [f.derivs for f in prod.fields]
+    n_derivs = sum(deriv_structure)
 
-    if isinstance(proc_term, str):
-        return proc_term
+    if n_derivs == 0:
+        proc_term = prod
 
-    if proc_term.safe_simplify() == 0:
-        return f"Vanishing coupling at {proc_term} after derivative processing."
+        if isinstance(proc_term, str):
+            return proc_term
+
+    else:
+        proc_term = process_derivative_term(prod)
+
+        if isinstance(proc_term, str):
+            return proc_term
+
+        if proc_term.safe_simplify() == 0:
+            return f"Vanishing coupling at {maybe_term} after derivative processing."
 
     # make sure the term is a singlet
-    check_singlet(proc_term)
+    # check_singlet(proc_term)
 
     # append the processed term to terms
     terms.append(proc_term)
@@ -915,12 +950,14 @@ def operator_completions(
 ) -> List[Completion]:
     """Return a list of the completions of an effective operator."""
 
-    parts = partitions(operator, verbose=verbose)
+    parts = partitions(
+        operator, verbose=verbose, remove_isomorphic_diagrams=remove_isomorphic_diagrams
+    )
     if verbose:
         print(f"Starting with {len(parts)} partitions, removing isomorphic ones...")
 
-    if remove_isomorphic_diagrams:
-        parts = remove_isomorphic(parts)
+    # if remove_isomorphic_diagrams:
+    #     parts = remove_isomorphic(parts)
 
     if verbose:
         print(f"Finding completions of {len(parts)} partitions...")
