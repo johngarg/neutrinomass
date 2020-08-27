@@ -2,16 +2,21 @@
 
 from neutrinomass.database.database import *
 
+db_path = "/Users/johngargalionis/Desktop/operators/"
+mvdb = ModelDatabase(db_path)
+
 
 def test_query():
-    db_path = "/Users/johngargalionis/Desktop/operators/"
-    mvdb = ModelDatabase(db_path)
-
     no_scalars = lambda m: not m.contains_field("S,*")
 
     func = lambda m: no_scalars(m) and ModelDatabase.no_seesaws(m)
     for k, v in mvdb.query(func).items():
         assert not v
+
+
+def test_process():
+    mvdb.process(filter_seesaws=True)
+    assert len(mvdb.data["8p"]) == 8
 
 
 def test_conjugate_term():
