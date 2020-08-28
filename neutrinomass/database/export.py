@@ -4,6 +4,7 @@ from neutrinomass.completions.core import Completion, cons_completion_field
 from neutrinomass.completions.topologies import Leaf
 from neutrinomass.tensormethod.core import Field, IndexedField, eps, delta, Operator
 from neutrinomass.completions.core import FieldType
+from neutrinomass.utils.functions import stringify_qns
 
 import networkx as nx
 
@@ -101,16 +102,6 @@ def export_terms(terms):
 
 def export_exotics(exotics: set):
     return str(set([export_tensor(f) for f in exotics])).replace('"', "")
-
-
-def stringify_qns(field):
-    """Returns a string representation of a field."""
-    if field.label not in {"L", "Q", "ub", "db", "eb", "H"}:
-        lor = "S" if field.is_scalar else "F"
-        _, _, cup, cdown, i = field.dynkin
-        return f"{lor},{cup}{cdown},{i},{field.charges['y']},{field.charges['3b']}"
-
-    return field.label + (".conj" if field.is_conj else "")
 
 
 def export_completion(c: Completion, lazy=True):

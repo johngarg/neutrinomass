@@ -495,5 +495,5 @@ def test_compare_terms():
 def test_remove_duplicate_completions():
     comps = list(operator_completions(EFF_OPERATORS["3b"]))
     comps_len = len(comps)
-    remove_equivalent_completions(comps)
+    comps = clean_completions(comps)
     assert comps_len > len(comps)

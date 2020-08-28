@@ -8,7 +8,7 @@ from neutrinomass.completions.core import (
     Completion,
     cons_completion_field,
 )
-from neutrinomass.completions.completions import remove_equivalent_completions
+from neutrinomass.utils.functions import conjugate_field, conjugate_term
 
 from networkx import Graph
 from collections import defaultdict
@@ -96,39 +96,6 @@ def read_completions(filename: str):
             line = f.readline()
 
     return completions
-
-
-def negate_u1(string):
-    """Negates number in string, for use in `process_term` as aux. function."""
-    if string == "0":
-        return string
-    elif string[0] == "-":
-        return string[1:]
-    else:
-        return "-" + string
-
-
-def conjugate_field(field: str) -> str:
-    if field in {"L", "H", "Q", "ub", "db", "eb"}:
-        return field + ".conj"
-    elif field in {"L.conj", "H.conj", "Q.conj", "ub.conj", "db.conj", "eb.conj"}:
-        return field[:-5]
-    else:  # exotic case
-        # interchange colour dynkin indices
-        lor, col, iso, hyp, bar = field.split(",")
-        col = "".join(reversed(col))
-        hyp = negate_u1(hyp)
-        bar = negate_u1(bar)
-
-        conj_numbers = [lor, col, iso, hyp, bar]
-        conj_string = ",".join(conj_numbers)
-        return conj_string
-
-
-def conjugate_term(term: tuple) -> tuple:
-    """Returns the sorted hermitian conjugate of the term."""
-    conj_term = [conjugate_field(field) for field in term]
-    return tuple(sorted(conj_term))
 
 
 class ModelDatabase:
@@ -261,19 +228,6 @@ class ModelDatabase:
         self.is_forced = True
         for k, v in self.data.items():
             self.data = {k: [m.force() for m in v]}
-
-    def remove_equivalent_completions(self):
-        """Removes equivalent completions by checking for an isomorphism between the
-        lagrangians. A much more efficient removal of equivalent models can be
-        done with `stringent_remove_equivalent_models`, which will be equivalent
-        to this function in almost all situations.
-
-        """
-        if not self.is_forced:
-            raise Exception("Need to force database first.")
-
-        for k, v in self.data.items():
-            remove_equivalent_completions(v)
 
     def democratic_remove_equivalent_models(self):
         """Removes duplicate models only by field content"""

@@ -44,6 +44,7 @@ from neutrinomass.completions.core import (
 )
 from neutrinomass.completions.topologies import get_topology_data, Leaf
 from neutrinomass.utils import pmatch
+from neutrinomass.utils.functions import stringify_qns, conjugate_term
 
 from typing import Tuple, List, Dict, Union
 import networkx as nx
@@ -167,6 +168,9 @@ def indexed_fields_with_counters(op: Operator) -> Dict[IndexedField, int]:
     """Return a dictionary mapping indexed fields to an integer labelling distinct
     fields to help with isomorphism filtering.
 
+    TODO Need to rewrite this to include colour indices! Need to then move
+    position of call to include operator with colour structure!
+
     """
     # idxs are the pairs of contracted isospin indices
     counts = defaultdict(list)
@@ -200,9 +204,7 @@ def indexed_fields_with_counters(op: Operator) -> Dict[IndexedField, int]:
     return dict(flat)
 
 
-def partitions(
-    operator: EffectiveOperator, verbose=False, remove_isomorphic_diagrams=True
-) -> List[dict]:
+def partitions(operator: EffectiveOperator, verbose=False) -> List[dict]:
     """Returns a list of operator partitions, epsilons and graphs of the form:
 
     {"fields": ((L(u0, I_0), 18), ...)
@@ -237,7 +239,7 @@ def partitions(
         fields = [f for f, i in fields_and_counters.items()]
         perms = distribute_fields(fields, topology_data["partition"])
         for op in colour_ops:
-            col_out = []
+            # col_out = []
             epsilons = op.operator.epsilons
 
             for perm in perms:
@@ -256,12 +258,12 @@ def partitions(
                     "graph": g,
                     "topology": topology_classification,
                 }
-                col_out.append(data)
+                out.append(data)
 
-            if remove_isomorphic_diagrams:
-                col_out = remove_isomorphic(col_out)
+            # if remove_isomorphic_diagrams:
+            #     col_out = remove_isomorphic(col_out)
 
-            out += col_out
+            # out += col_out
 
     return out
 
@@ -946,13 +948,11 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
 
 
 def operator_completions(
-    operator: EffectiveOperator, remove_isomorphic_diagrams=True, verbose=False
+    operator: EffectiveOperator, verbose=False
 ) -> List[Completion]:
     """Return a list of the completions of an effective operator."""
 
-    parts = partitions(
-        operator, verbose=verbose, remove_isomorphic_diagrams=remove_isomorphic_diagrams
-    )
+    parts = partitions(operator, verbose=verbose)
     if verbose:
         print(f"Starting with {len(parts)} partitions, removing isomorphic ones...")
 
@@ -1070,7 +1070,7 @@ def are_equivalent_completions(comp1: Completion, comp2: Completion) -> bool:
     return bool(compare_terms(comp1, comp2))
 
 
-def remove_equivalent_completions(
+def slow_remove_equivalent_completions(
     comps: List[Completion], verbose: bool = False
 ) -> List[Completion]:
     """Compares completions by comparing Lagrangian terms. Removes duplicates and
@@ -1098,7 +1098,7 @@ def collect_completions(
     func = lambda c: tuple(sorted(key(c).values()))
     for k, g in groupby(completions, key=func):
         g_list = list(g)
-        remove_equivalent_completions(g_list)
+        slow_remove_equivalent_completions(g_list)
         k = tuple(sorted(set(k)))
         out[k] = g_list
 
@@ -1265,7 +1265,59 @@ def deriv_operator_completions(
     return comps
 
 
+def completions(*args, **kwargs):
+    """General dispatch function for completions"""
+    if "D" in operator.name:
+        return deriv_operator_completions(*args, **kwargs)
+    return operator_completions(*args, **kwargs)
+
+
 def collect_models(comps):
     """Group models by particle content."""
     collected = collect_completions(comps)
     return [Model(cs) for _, cs in list(collected.items())]
+
+
+def cons_term_prime_dict(completions: List[Completion]) -> Dict[tuple, int]:
+    # begin by generating term prime dictionary
+    term_dict = {}
+    counter = 1
+    for comp in completions:
+        n_terms = len(comp.terms)
+        for term in comp.terms:
+            # sort all of the terms by side effect
+            new_term = tuple(sorted(stringify_qns(f) for f in term.fields))
+            if new_term not in term_dict:
+                # add conj term first so that when filtering you keep
+                # the unconjugated term
+                term_dict[conjugate_term(new_term)] = prime(counter)
+                term_dict[new_term] = prime(counter)
+                counter += 1
+
+    return term_dict
+
+
+def completion_characteristic_number(
+    comp: Completion, prime_dict: Dict[tuple, int]
+) -> int:
+    prod = 1
+    for term in comp.terms:
+        new_term = tuple(sorted(stringify_qns(f) for f in term.fields))
+        prod *= prime_dict[new_term]
+    return prod
+
+
+def clean_completions(completions: List[Completion]) -> List[Completion]:
+    """A fast way of removing equivalent completions using prime label method on terms.
+
+    """
+    completions = list(completions)
+    prime_dict = cons_term_prime_dict(completions)
+    inv_prime_dict = {v: k for k, v in prime_dict.items()}
+
+    comp_dict = {}
+    for comp in completions:
+        num = completion_characteristic_number(comp, prime_dict)
+        comp_dict[(num, comp.topology)] = comp
+
+    return sorted((v for k, v in comp_dict.items()), key=lambda x: x.topology)
