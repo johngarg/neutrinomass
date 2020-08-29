@@ -556,8 +556,7 @@ def exotic_field_and_term(
     # need to construct term again because sympy is annoying
     term = reduce(lambda x, y: x * y, fix_su2_epsilons, op * partner)
 
-    # This has been thoroughly tested so commented out below to help performance
-    # check_singlet(term)
+    check_singlet(term)
 
     return exotic_field, partner, term
 
@@ -703,6 +702,8 @@ def contract(
         # return the reason
         return maybe_term
 
+    check_singlet(maybe_term)
+
     # Check to see if there are any derivatives present, if there are process the term
     deriv_structure = [f.derivs for f in maybe_term.fields]
     n_derivs = sum(deriv_structure)
@@ -721,6 +722,8 @@ def contract(
 
         if no_deriv_maybe_term.safe_simplify() == 0:
             return f"Vanishing coupling at {maybe_term} after derivative processing."
+
+    check_singlet(no_deriv_maybe_term)
 
     return exotic, no_deriv_maybe_term, spectator_gauge_eps, lorentz_epsilons
 
@@ -803,6 +806,8 @@ def replace_and_mutate(
 
     # mutate lorentz_epsilons, terms
     lorentz_epsilons += new_lorentz_epsilons
+
+    check_singlet(term)
     terms.append(term)
 
     # update edge_dict
@@ -907,7 +912,7 @@ def construct_completion(partition, gauge_epsilons, graph) -> Union[str, tuple]:
             return f"Vanishing coupling at {maybe_term} after derivative processing."
 
     # make sure the term is a singlet
-    # check_singlet(proc_term)
+    check_singlet(proc_term)
 
     # append the processed term to terms
     terms.append(proc_term)
