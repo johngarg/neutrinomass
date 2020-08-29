@@ -561,9 +561,11 @@ class Field:
                 if self.derivs == 0:
                     return rf"\tilde{{{self.latex}}}"
                 # tilde will be on field get_latex method
-                return rf"{self.latex}"
+                return self.latex
 
             # add dagger for singlets
+            if self.derivs != 0:
+                return self.latex
             return "{" + self.latex + r"^{\dagger}}"
 
         return self.latex
