@@ -558,7 +558,10 @@ class Field:
         if self.is_conj:
             # add twidle for doublets so that their SU2 indices are always raised
             if self.isospin_irrep != (0,):
-                return rf"\tilde{{{self.latex}}}"
+                if self.derivs == 0:
+                    return rf"\tilde{{{self.latex}}}"
+                # tilde will be on field get_latex method
+                return rf"{self.latex}"
 
             # add dagger for singlets
             return "{" + self.latex + r"^{\dagger}}"
