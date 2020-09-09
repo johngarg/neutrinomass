@@ -1318,7 +1318,6 @@ def clean_completions(completions: List[Completion]) -> List[Completion]:
     """
     completions = list(completions)
     prime_dict = cons_term_prime_dict(completions)
-    inv_prime_dict = {v: k for k, v in prime_dict.items()}
 
     comp_dict = {}
     for comp in completions:
