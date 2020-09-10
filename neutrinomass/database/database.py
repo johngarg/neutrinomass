@@ -344,6 +344,8 @@ class ModelDatabase:
         """Provides `scale_dict` and orders the data dictionary by neutrino mass scale
         prediction.
 
+        Currently does the same as fill_scale_dict but also orders data
+
         """
         from neutrinomass.database import neutrino_mass_estimate
         from neutrinomass.database import numerical_np_scale_estimate

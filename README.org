@@ -1,7 +1,7 @@
 * Exploding operators for Majorana neutrino masses and beyond 💣💥
 
 This is the code accompanying the paper "Exploding operators for Majorana
-neutrino masses and beyond" (arXiv:2008.xxxxx).
+neutrino masses and beyond".
 
 The code is split into three smaller modules:
 
