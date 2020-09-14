@@ -1094,6 +1094,8 @@ def collect_completions(
     FieldType to a tuple of numbers representing that field. This defaults to
     the `exotic_info` method.
 
+    Not for general user interface.
+
     """
     out = {}
 
@@ -1103,7 +1105,7 @@ def collect_completions(
     func = lambda c: tuple(sorted(key(c).values()))
     for k, g in groupby(completions, key=func):
         g_list = list(g)
-        slow_remove_equivalent_completions(g_list)
+        # slow_remove_equivalent_completions(g_list)
         k = tuple(sorted(set(k)))
         out[k] = g_list
 
@@ -1278,7 +1280,10 @@ def completions(*args, **kwargs):
 
 
 def collect_models(comps):
-    """Group models by particle content."""
+    """Group models by particle content.
+
+    A bit cumbersome to use. Should be refactored out of tests at some point.
+    """
     collected = collect_completions(comps)
     return [Model(cs) for _, cs in list(collected.items())]
 

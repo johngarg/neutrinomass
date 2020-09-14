@@ -484,10 +484,6 @@ class Model:
             )
         )
 
-    @property
-    def exotics(self):
-        pass
-
     def __repr__(self):
         return "Model(" + " + ".join(i for i in self.exotic_numbers) + ")"
 

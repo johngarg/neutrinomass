@@ -3,3 +3,6 @@ include neutrinomass/completions/deriv_operators.p
 include neutrinomass/completions/topology_data/diagrams/*
 include neutrinomass/completions/topology_data/graphs/*
 include neutrinomass/completions/topology_data/partitions/*
+include neutrinomass/database/democratic.p
+include neutrinomass/database/exotics.p
+include neutrinomass/database/terms.p

@@ -20,7 +20,9 @@ from sympy import prime
 from itertools import groupby
 import os
 from glob import glob
-
+import pandas as pd
+import pickle
+from neutrinomass.database.utils import ONE_LOOP_WEINBERG
 
 ExoticField = cons_completion_field
 
@@ -98,24 +100,68 @@ def read_completions(filename: str):
     return completions
 
 
+class ModelDataFrame(pd.DataFrame):
+    _metadata = [
+        "exotics",
+        "terms",
+        "exotic2int",
+        "int2exotic",
+        "term2int",
+        "int2term",
+    ]
+
+    @property
+    def _constructor(self):
+        return ModelDataFrame
+
+    @classmethod
+    def new(cls, data, exotics, terms):
+        df = cls(data)
+
+        df.exotic2int = {k: v for k, v in exotics.items()}
+        df.int2exotic = {v: k for k, v in exotics.items()}
+        df.exotics = {**df.exotic2int, **df.int2exotic}
+
+        df.term2int = {k: v for k, v in terms.items()}
+        df.int2term = {v: k for k, v in terms.items()}
+        df.terms = {**df.term2int, **df.int2term}
+
+        # remove the models that generate the Weinberg operator through a loop
+        # of heavy fields
+        return df.drop(ONE_LOOP_WEINBERG)
+
+    def completion(self, index: int) -> Completion:
+        return eval(self["completion"][index])
+
+
 class ModelDatabase:
     def __init__(
-        self, path: str, philosophy: str = "democratic", criterion: str = "mass"
+        self,
+        path: str,
+        philosophy: str = "democratic",
+        criterion: str = "mass",
+        data=None,
     ):
-        self.path = path
         self.philosophy = philosophy
         self.criterion = criterion
         self.is_forced = False
-        self.is_ordered = False
 
         assert self.philosophy in {"democratic", "stringent"}
         assert self.criterion in {"mass", "dimension"}
 
-        # print("Initialising database...")
-        filenames = glob(os.path.join(self.path, "*.dat"))
-        mvdb_data = [dict(read_completions(f)) for f in filenames]
-        mvdb = {k: v for d in mvdb_data for k, v in d.items()}
-        self.data = mvdb
+        if data is None:
+            self.path = path
+
+            # print("Initialising database...")
+            filenames = glob(os.path.join(self.path, "*.dat"))
+            mvdb_data = [dict(read_completions(f)) for f in filenames]
+            mv_dict = {k: v for d in mvdb_data for k, v in d.items()}
+            self.data = mv_dict
+
+        else:
+            self.path = None
+            self.is_ordered = True
+            self.data = data
 
         # initialise prime dictionary
         exotics = {}
@@ -396,3 +442,9 @@ class ModelDatabase:
         self.order()
         # print("Filtering democratically by neutrino-mass estimate...")
         self.filter()
+
+
+DATA = pickle.load(open(os.path.join(os.path.dirname(__file__), "democratic.p"), "rb"))
+EXOTICS = pickle.load(open(os.path.join(os.path.dirname(__file__), "exotics.p"), "rb"))
+TERMS = pickle.load(open(os.path.join(os.path.dirname(__file__), "terms.p"), "rb"))
+MVDF = ModelDataFrame.new(data=DATA, exotics=EXOTICS, terms=TERMS)
