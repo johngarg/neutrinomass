@@ -126,9 +126,14 @@ class ModelDataFrame(pd.DataFrame):
         df.int2term = {v: k for k, v in terms.items()}
         df.terms = {**df.term2int, **df.int2term}
 
-        # remove the models that generate the Weinberg operator through a loop
-        # of heavy fields
-        return df.drop(ONE_LOOP_WEINBERG)
+        return df
+
+    def filter_one_loop(self):
+        """Remove the models that generate the Weinberg operator through a loop of
+        heavy fields
+
+        """
+        return self.drop(ONE_LOOP_WEINBERG)
 
     def completion(self, index: int) -> Completion:
         return eval(self["completion"][index])
