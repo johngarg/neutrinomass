@@ -452,4 +452,4 @@ class ModelDatabase:
 DATA = pickle.load(open(os.path.join(os.path.dirname(__file__), "democratic.p"), "rb"))
 EXOTICS = pickle.load(open(os.path.join(os.path.dirname(__file__), "exotics.p"), "rb"))
 TERMS = pickle.load(open(os.path.join(os.path.dirname(__file__), "terms.p"), "rb"))
-MVDF = ModelDataFrame.new(data=DATA, exotics=EXOTICS, terms=TERMS)
+MVDF = ModelDataFrame.new(data=DATA, exotics=EXOTICS, terms=TERMS).filter_one_loop()
