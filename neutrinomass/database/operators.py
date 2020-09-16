@@ -2,7 +2,11 @@
 
 from neutrinomass.completions import EFF_OPERATORS, DERIV_EFF_OPERATORS
 from neutrinomass.database.utils import table_data
-from neutrinomass.database.database import ModelDatabase
+from neutrinomass.database import MVDF
+
+import pickle
+from collections import Counter
+import os
 
 
 def print_paper_table():
@@ -744,15 +748,18 @@ def print_paper_table():
         "D22"
     ] = r"${\bar{e}^{\dagger}} {\bar{e}^{\dagger}} (DH)^{i} (DH)^{j} H^{k} H^{l}  \cdot  \epsilon_{i k} \epsilon_{j l}$"
 
-    db_path = "/Users/johngargalionis/Desktop/operators/"
-    mvdb = ModelDatabase(db_path)
+    models_dict = pickle.load(
+        open(os.path.join(os.path.dirname(__file__), "models.p"), "rb")
+    )
+    op_labels = set(models_dict.keys())
+    filtered_dict = Counter(list(MVDF["op"]))
 
-    mvdb.order()
-    mvdb.democratic_remove_equivalent()
-    models_dict = {k: str(len(v)) for k, v in mvdb.data.items()}
+    for k, v in models_dict.items():
+        if k not in filtered_dict:
+            filtered_dict[k] = 0
 
-    mvdb.democratic_filter()
-    filtered_dict = {k: str(len(v)) for k, v in mvdb.data.items()}
+    models_dict = {k: str(v) for k, v in models_dict.items()}
+    filtered_dict = {k: str(v) for k, v in filtered_dict.items()}
 
     for label, latex in operator_latex.items():
 
@@ -763,7 +770,7 @@ def print_paper_table():
 
         loops, scale = table_data(op)
 
-        if label not in mvdb.data:
+        if label not in op_labels:
             models, filtered = "", ""
         else:
             models = models_dict[label]
