@@ -2,6 +2,7 @@
 
 """Core classes and functions for completions code."""
 
+import sys
 from typing import Dict
 from copy import deepcopy
 
@@ -469,6 +470,22 @@ class Completion:
 
     def exotic_fields(self):
         return set([e.field for e in self.exotics])
+
+    def info(self):
+        print("Fields:")
+        for k, v in self.exotic_info().items():
+            print("{:<5s}{:<20s}".format(k.label, format_quantum_numbers(v)))
+
+        print("\nLagrangian:")
+        in_jupyter = sys.argv[-1].endswith("json")
+        for term in self.terms:
+            if in_jupyter:
+                display(term)
+            else:
+                print(term)
+
+        print("\nDiagram:")
+        self.draw_diagram()
 
 
 class Model:
