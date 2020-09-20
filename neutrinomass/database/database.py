@@ -398,6 +398,7 @@ class ModelDatabase:
         from neutrinomass.completions import EFF_OPERATORS
         from neutrinomass.completions import DERIV_EFF_OPERATORS
 
+        scale_dict, symbolic_scale_dict = {}, {}
         ops = {**EFF_OPERATORS, **DERIV_EFF_OPERATORS}
         for k, v in ops.items():
             estimates = neutrino_mass_estimate(v)
@@ -412,8 +413,11 @@ class ModelDatabase:
             assert max_scale > 0
             assert max_symbolic_scale is not None
 
-            self.scale_dict[k] = max_scale
-            self.symbolic_scale_dict[k] = max_symbolic_scale
+            scale_dict[k] = max_scale
+            symbolic_scale_dict[k] = max_symbolic_scale
+
+        self.scale_dict = scale_dict
+        self.symbolic_scale_dict = symbolic_scale_dict
 
     def order_by_mass(self):
         """Provides `scale_dict` and orders the data dictionary by neutrino mass scale
