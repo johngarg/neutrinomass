@@ -407,7 +407,7 @@ class ModelDatabase:
                 scale = numerical_np_scale_estimate(symbolic_expr)
                 if scale > max_scale:
                     max_scale = scale
-                    max_symbolic_scale = symbolic_expr
+                    max_symbolic_scale = str(symbolic_expr)
 
             assert max_scale > 0
             assert max_symbolic_scale is not None
