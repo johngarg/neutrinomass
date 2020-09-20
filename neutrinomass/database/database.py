@@ -206,6 +206,7 @@ class ModelDatabase:
 
         # dict mapping operator label to neutrino-mass scale estimate
         self.scale_dict = None
+        self.symbolic_scale_dict = None
 
         # 2D array with number of models rejected from completions of jth
         # ordered operator because a subset features in completions of ith
@@ -390,6 +391,29 @@ class ModelDatabase:
             self.filter_by_mass()
         else:
             self.filter_by_dimension()
+
+    def fill_scale_dict(self):
+        from neutrinomass.database import neutrino_mass_estimate
+        from neutrinomass.database import numerical_np_scale_estimate
+        from neutrinomass.completions import EFF_OPERATORS
+        from neutrinomass.completions import DERIV_EFF_OPERATORS
+
+        ops = {**EFF_OPERATORS, **DERIV_EFF_OPERATORS}
+        for k, v in ops.items():
+            estimates = neutrino_mass_estimate(v)
+            max_scale = 0
+            max_symbolic_scale = None
+            for symbolic_expr in estimates:
+                scale = numerical_np_scale_estimate(symbolic_expr)
+                if scale > max_scale:
+                    max_scale = scale
+                    max_symbolic_scale = symbolic_expr
+
+            assert max_scale > 0
+            assert max_symbolic_scale is not None
+
+            self.scale_dict[k] = max_scale
+            self.symbolic_scale_dict[k] = max_symbolic_scale
 
     def order_by_mass(self):
         """Provides `scale_dict` and orders the data dictionary by neutrino mass scale

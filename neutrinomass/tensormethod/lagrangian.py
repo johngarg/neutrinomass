@@ -64,8 +64,8 @@ def npoint_fieldstrings(n, fields=(L, eb, Q, db, ub, H), derivs=False, func=None
                 terms += [singlets[0]]
             bar()
 
-    for f in fields:
-        del f.charges["l"]
+    # for f in [L, eb, Q, ub, db, H]:
+    #     del f.charges["l"]
 
     return terms
 

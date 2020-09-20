@@ -79,6 +79,17 @@ RULES = {
         nu,
         RST,
     ),
+    Op(db, c(ub), h0, c(hp), RST): Op(
+        Const(v),
+        Const(v),
+        Const(g2),
+        Const(loop),
+        Const(loop),
+        Const(loopv2),
+        Const(yu),
+        Const(yd),
+        RST,
+    ),
     # remove W
     Op(W, hp, RST): Op(Const(v), Const(loop), RST),
     Op(W, u, RST): Op(d, Const(loop), RST),
