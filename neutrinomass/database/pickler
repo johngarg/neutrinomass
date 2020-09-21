@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+
+import os
+import argparse
+
+import pickle
+from collections import defaultdict
+
+from neutrinomass.database.database import ModelDatabase
+from neutrinomass.database.utils import loop_data
+from neutrinomass.completions import EFF_OPERATORS
+from neutrinomass.completions import DERIV_EFF_OPERATORS
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--path", type=str, help="Path to raw data", default="raw_data")
+parser.add_argument("--output", type=str, help="Output directory", default=os.getcwd())
+args = parser.parse_args()
+
+DB = ModelDatabase(args.path)
+DB.fill_scale_dict()
+
+OPS = {**EFF_OPERATORS, **DERIV_EFF_OPERATORS}
+
+
+def get_scalars_fermions(model):
+    n_scalars = 0
+    n_fermions = 0
+    for f in model.quantum_numbers:
+        if f[0] == "S":
+            n_scalars += 1
+        elif f[0] == "F":
+            n_fermions += 1
+
+    return n_scalars, n_fermions
+
+
+def data_dict(db):
+    """Returns dataframe object"""
+    data = defaultdict(list)
+    for k, v in db.data.items():
+        symb_scale = db.symbolic_scale_dict[k]
+        loops, loopsv2 = loop_data(symb_scale)
+        n_loops = [i + loops for i in loopsv2]
+        min_loops = min(n_loops)
+        max_loops = max(n_loops)
+        n_derivs = sum(f.derivs for f in v.fields)
+        for model in v:
+            # general info
+            data["democratic_num"].append(db.democratic_model_number(model))
+            data["stringent_num"].append(db.stringent_model_number(model))
+            data["op"].append(k)
+            data["dim"].append(OPS[k].mass_dimension)
+            data["scale"].append(db.scale_dict[k])
+            data["symbolic_scale"].append(symb_scale)
+            data["topology"].append(model.head["topology"])
+
+            # number of fields
+            n_scalars, n_fermions = get_scalars_fermions(model)
+            data["n_fields"].append(n_scalars + n_fermions)
+            data["n_scalars"].append(n_scalars)
+            data["n_fermions"].append(n_fermions)
+
+            # number of loops
+            data["min_loops"].append(min_loops)
+            data["max_loops"].append(max_loops)
+
+            # number of derivatives
+            data["n_derivs"].append(n_derivs)
+
+            # completion
+            data["completion"].append(model.tail)
+
+    return data
+
+
+# write pickle files out
+pickle.dump(data_dict(DB), open(os.path.join(args.output, "unfiltered.p"), "wb"))
+pickle.dump(DB.exotic_prime_dict, open(os.path.join(args.output, "./exotics.p"), "wb"))
+pickle.dump(DB.term_prime_dict, open(os.path.join(args.output, "./terms.p"), "wb"))
+
+# write democratic file out
+DB.remove_equivalent_models()
+DB.order_by_mass()
+DB.filter_by_mass()
+pickle.dump(data_dict(DB), open(os.path.join(args.output, "democratic.p"), "wb"))
