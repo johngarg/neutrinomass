@@ -116,6 +116,7 @@ Makefile
 data/
 *.cprof
 *.p
+*.out
 upload.sh
 database.dat
 *.ipynb
