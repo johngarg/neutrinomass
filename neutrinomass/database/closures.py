@@ -261,10 +261,16 @@ def neutrino_mass_estimate(eff_op: Union[EffectiveOperator, List[Op]], verbose=F
         lst.remove("nunu")
 
         n_vevs = lst.count("v")
-        n_lambdas = n_vevs - 1
+        assert n_vevs % 2 == 0
+        n_loopv2 = (n_vevs - 2) // 2
+
+        for _ in range(n_vevs):
+            lst.remove("v")
 
         prod = reduce(lambda x, y: x * y, [sympy.Symbol(i) for i in lst])
-        prod = prod / sympy.Symbol("Λ") ** n_lambdas
+        prod *= sympy.Symbol("v") * sympy.Symbol("v") / sympy.Symbol("Λ")
+        for _ in range(n_loopv2):
+            prod *= sympy.Symbol("loopv2")
         out.append(prod)
 
     return out
