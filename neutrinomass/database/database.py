@@ -307,7 +307,7 @@ class ModelDatabase:
             return self.democratic_remove_equivalent_models()
         return self.stringent_remove_equivalent_models()
 
-    def filter_model_by_mass(self, op: str, model):
+    def filter_model_by_mass(self, op: str, model, keep_filter_data=False):
         """Remove all completions with the same or a subset of the particle content of
         an upstream model by the neutrino-mass criterion, i.e. only keep
         leading-order contributions to the neutrino mass.
@@ -327,10 +327,11 @@ class ModelDatabase:
                     new_v.append(test_model)
                     continue
 
-                ordered_op_label_list = list(self.data)
-                sieve_op_pos = ordered_op_label_list.index(op)
-                other_op_pos = ordered_op_label_list.index(k)
-                self.filter_data[sieve_op_pos][other_op_pos] += 1 / len(v)
+                if keep_filter_data:
+                    ordered_op_label_list = list(self.data)
+                    sieve_op_pos = ordered_op_label_list.index(op)
+                    other_op_pos = ordered_op_label_list.index(k)
+                    self.filter_data[sieve_op_pos][other_op_pos] += 1 / len(v)
 
             self.data[k] = new_v
 

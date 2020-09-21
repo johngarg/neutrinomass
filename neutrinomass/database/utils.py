@@ -23,11 +23,7 @@ def estimate_np_scale(eff_op):
     return numerical
 
 
-def table_data(eff_op):
-    estimates = neutrino_mass_estimate(eff_op)
-    numerical = [(e, numerical_np_scale_estimate(e)) for e in estimates]
-    expr, np_scale = sorted(numerical, key=lambda x: round(x[1], 2))[-1]
-
+def loop_data(expr):
     n_loops, n_loops_v2, max_loops = 0, [], 8
     for n in range(1, max_loops):
         if expr.coeff(sympy.Symbol("loop") ** n):
@@ -35,6 +31,16 @@ def table_data(eff_op):
 
         if expr.coeff(sympy.Symbol("loopv2") ** n):
             n_loops_v2 += sorted([n - j for j in range(n + 1)])
+
+    return n_loops, n_loops_v2
+
+
+def table_data(eff_op):
+    estimates = neutrino_mass_estimate(eff_op)
+    numerical = [(e, numerical_np_scale_estimate(e)) for e in estimates]
+    expr, np_scale = sorted(numerical, key=lambda x: round(x[1], 2))[-1]
+
+    n_loops, n_loops_v2 = loop_data(expr)
 
     n_loops_str = (
         str(n_loops)
