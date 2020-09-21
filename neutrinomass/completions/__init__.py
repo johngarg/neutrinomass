@@ -2,6 +2,8 @@ from .core import EffectiveOperator, Completion
 from .completions import (
     are_equivalent_completions,
     operator_completions,
+    completions,
+    clean_completions,
     collect_completions,
     collect_models,
     filter_completions,
