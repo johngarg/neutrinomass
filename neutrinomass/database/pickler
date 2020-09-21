@@ -10,12 +10,14 @@ from neutrinomass.database.database import ModelDatabase
 from neutrinomass.database.utils import loop_data
 from neutrinomass.completions import EFF_OPERATORS
 from neutrinomass.completions import DERIV_EFF_OPERATORS
+from neutrinomass.database.heavyloops import generate_models
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--path", type=str, help="Path to raw data", default="raw_data")
-parser.add_argument("--output", type=str, help="Output directory", default=os.getcwd())
+parser.add_argument("--path", type=str, default="raw_data")
+parser.add_argument("--output", type=str, default=os.getcwd())
 args = parser.parse_args()
 
+print("Initialising model database...")
 DB = ModelDatabase(args.path)
 DB.fill_scale_dict()
 
@@ -36,8 +38,10 @@ def get_scalars_fermions(model):
 
 def data_dict(db):
     """Returns dataframe object"""
+
     data = defaultdict(list)
     for k, v in db.data.items():
+        scale = db.scale_dict[k]
         symb_scale = db.symbolic_scale_dict[k]
         loops, loopsv2 = loop_data(symb_scale)
         n_loops = [i + loops for i in loopsv2]
@@ -45,12 +49,11 @@ def data_dict(db):
         max_loops = max(n_loops)
         n_derivs = sum(f.derivs for f in v.fields)
         for model in v:
-            # general info
             data["democratic_num"].append(db.democratic_model_number(model))
             data["stringent_num"].append(db.stringent_model_number(model))
             data["op"].append(k)
             data["dim"].append(OPS[k].mass_dimension)
-            data["scale"].append(db.scale_dict[k])
+            data["scale"].append(scale)
             data["symbolic_scale"].append(symb_scale)
             data["topology"].append(model.head["topology"])
 
@@ -73,13 +76,56 @@ def data_dict(db):
     return data
 
 
-# write pickle files out
-pickle.dump(data_dict(DB), open(os.path.join(args.output, "unfiltered.p"), "wb"))
-pickle.dump(DB.exotic_prime_dict, open(os.path.join(args.output, "./exotics.p"), "wb"))
-pickle.dump(DB.term_prime_dict, open(os.path.join(args.output, "./terms.p"), "wb"))
+def field_options(db, field):
+    """Returns exotic field string that possibly is associated with `field`, i.e.
+    includes baryon number
 
-# write democratic file out
-DB.remove_equivalent_models()
+    """
+    return [k for k in db.exotic2int if k.startswith(field)]
+
+
+def one_loop_democratic_nums(db, models):
+    model_nums = []
+    for model in models:
+        opts = [field_options(db, f) for f in model]
+        if [] in opts:
+            continue
+
+        # it seems all opts are of length one, so just take first
+        model_num = 1
+        for opt in opts:
+            assert len(opt) == 1
+            model_num *= db.exotics[opt[0]]
+
+        model_nums.append(model_num)
+
+    return model_nums
+
+
+# write pickle files out
+unfiltered_path = os.path.join(args.output, "unfiltered.p")
+exotics_path = os.path.join(args.output, "./exotics.p")
+terms_path = os.path.join(args.output, "./terms.p")
+
+pickle.dump(data_dict(DB), open(unfiltered_path, "wb"))
+print(f"{unfiltered_path} written!")
+pickle.dump(DB.exotic_prime_dict, open(exotics_path, "wb"))
+print(f"{exotics_path} written!")
+pickle.dump(DB.term_prime_dict, open(terms_path, "wb"))
+print(f"{terms_path} written!")
+
+# Process database and perform democratic filtering
+print("Removing equivalent models democratically...")
+DB.democratic_remove_equivalent_models()
+print("Sorting by mass...")
 DB.order_by_mass()
+print("Filtering by mass...")
 DB.filter_by_mass()
-pickle.dump(data_dict(DB), open(os.path.join(args.output, "democratic.p"), "wb"))
+print("Filtering models that generate heavy loops...")
+ONE_LOOP_WEINBERG = set(one_loop_democratic_nums(DB, generate_models()))
+DB.filter_one_loop_weinberg(ONE_LOOP_WEINBERG)
+
+# Write democratic file out
+democratic_path = os.path.join(args.output, "democratic.p")
+pickle.dump(data_dict(DB), open(democratic_path, "wb"))
+print(f"{democratic_path} written!")

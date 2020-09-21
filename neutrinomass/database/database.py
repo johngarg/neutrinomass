@@ -15,6 +15,7 @@ from collections import defaultdict
 import time
 from typing import Dict, List
 import re
+import math
 import numpy as np
 from sympy import prime
 from itertools import groupby
@@ -332,6 +333,26 @@ class ModelDatabase:
                     sieve_op_pos = ordered_op_label_list.index(op)
                     other_op_pos = ordered_op_label_list.index(k)
                     self.filter_data[sieve_op_pos][other_op_pos] += 1 / len(v)
+
+            self.data[k] = new_v
+
+    def filter_one_loop_weinberg(self, democratic_nums):
+        one_loop_scale = 605520000000.0 / (16 * math.pi ** 2)
+        for k, v in self.data.items():
+            if self.scale_dict[k] >= one_loop_scale:
+                continue
+
+            new_v = []
+            for model in v:
+                for n in democratic_nums:
+                    if self.democratic_model_number(model) % n == 0:
+                        keep = False
+                        break
+                else:
+                    keep = True
+
+                if keep:
+                    new_v.append(model)
 
             self.data[k] = new_v
 
