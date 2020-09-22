@@ -206,5 +206,6 @@ def test_dgj():
             continue
 
         expr = get_leading_mv(EFF_OPERATORS[k])
-        if v != expr:
-            print(f"{k}: {expr}")
+        assert v == expr
+        # if v != expr:
+        #     print(f"{k}: {expr}")
