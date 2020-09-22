@@ -81,7 +81,7 @@ def field_options(db, field):
     includes baryon number
 
     """
-    return [k for k in db.exotic2int if k.startswith(field)]
+    return [k for k in db.exotic_prime_dict if k.startswith(field)]
 
 
 def one_loop_democratic_nums(db, models):
