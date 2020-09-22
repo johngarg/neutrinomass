@@ -47,6 +47,7 @@ loopv2 = Symbol("loopv2")
 # replacement rules for closures
 RST = Wildcard.dot("rst")
 RULES = {
+    # neutrinos
     Op(nu, nu, RST): Op(Const(nunu), RST),
     # free loops
     Op(c(h0), h0, RST): Op(Const(loopv2), RST),
@@ -79,8 +80,19 @@ RULES = {
         nu,
         RST,
     ),
-    Op(db, c(ub), h0, c(hp), RST): Op(
+    Op(c(eb), c(d), u, RST): Op(
         Const(v),
+        Const(g2),
+        Const(loop),
+        Const(loop),
+        Const(loopv2),
+        Const(yu),
+        Const(yd),
+        Const(ye),
+        nu,
+        RST,
+    ),
+    Op(db, c(ub), c(hp), RST): Op(
         Const(v),
         Const(g2),
         Const(loop),
@@ -122,9 +134,11 @@ def apply_rules(rules, subject):
     return subject
 
 
-def fixed_point(start, rules=RULES, max_iterations=10):
+def fixed_point(start, rules=RULES, max_iterations=10, verbose=False):
     old, new = None, start
     counter = 1
+    if verbose:
+        print(start)
     while new != old:
         # Check if max iterations reached
         if counter > max_iterations:
@@ -133,6 +147,8 @@ def fixed_point(start, rules=RULES, max_iterations=10):
 
         old = new
         new = apply_rules(rules, old)
+        if verbose:
+            print(new)
         counter += 1
 
     return new
@@ -267,7 +283,8 @@ def neutrino_mass_estimate(eff_op: Union[EffectiveOperator, List[Op]], verbose=F
         for _ in range(n_vevs):
             lst.remove("v")
 
-        prod = reduce(lambda x, y: x * y, [sympy.Symbol(i) for i in lst])
+        # need to account for seesaw case
+        prod = reduce(lambda x, y: x * y, [sympy.Symbol(i) for i in lst]) if lst else 1
         prod *= sympy.Symbol("v") * sympy.Symbol("v") / sympy.Symbol("Λ")
         for _ in range(n_loopv2):
             prod *= sympy.Symbol("loopv2")
@@ -279,14 +296,12 @@ def neutrino_mass_estimate(eff_op: Union[EffectiveOperator, List[Op]], verbose=F
 def numerical_np_scale_estimate(expr):
     """Returns log10 of estimate of Λ in TeV."""
     vev = 174
-    mv = 0.05e-9
+    mv = 5e-11
+    loop = 1.0 / (16 * math.pi ** 2)
     subs_list = [
         (sympy.Symbol("v"), vev),
-        (sympy.Symbol("loop"), 1.0 / (16 * math.pi ** 2)),
-        (
-            sympy.Symbol("loopv2"),
-            (1.0 / (16 * math.pi ** 2) + vev ** 2 / sympy.Symbol("Λ") ** 2),
-        ),
+        (sympy.Symbol("loop"), loop),
+        (sympy.Symbol("loopv2"), (loop + vev ** 2 / sympy.Symbol("Λ") ** 2),),
         (sympy.Symbol("g2"), 0.6295 ** 2),
         (sympy.Symbol("yu"), 172.76 / vev),
         (sympy.Symbol("yd"), 4.18 / vev),
@@ -296,3 +311,24 @@ def numerical_np_scale_estimate(expr):
     sol = sympy.solve(m - mv, sympy.Symbol("Λ"))[0]
     scale = abs(sol) * 1e-3
     return scale
+
+
+def numerical_mv(expr):
+    """Returns estimate of neutrino-mass scale in GeV assuming a NP scale of 1
+    TeV.
+
+    """
+    vev = 174
+    mv = 5e-11
+    loop = 1.0 / (16 * math.pi ** 2)
+    subs_list = [
+        (sympy.Symbol("v"), vev),
+        (sympy.Symbol("loop"), loop),
+        (sympy.Symbol("loopv2"), (loop + vev ** 2 / sympy.Symbol("Λ") ** 2),),
+        (sympy.Symbol("g2"), 0.6295 ** 2),
+        (sympy.Symbol("yu"), 172.76 / vev),
+        (sympy.Symbol("yd"), 4.18 / vev),
+        (sympy.Symbol("ye"), 1.78 / vev),
+        (sympy.Symbol("Λ"), 1000),
+    ]
+    return expr.subs(subs_list)

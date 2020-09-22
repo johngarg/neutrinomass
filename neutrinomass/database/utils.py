@@ -4,6 +4,7 @@ import sympy
 from neutrinomass.database.closures import (
     neutrino_mass_estimate,
     numerical_np_scale_estimate,
+    numerical_mv,
 )
 
 
@@ -13,8 +14,8 @@ def get_leading_mv(eff_op):
 
     """
     estimates = neutrino_mass_estimate(eff_op)
-    numerical = [(e, numerical_np_scale_estimate(e)) for e in estimates]
-    return sorted(numerical, key=lambda x: round(x[1], 2))[-1][0]
+    numerical = [(e, numerical_mv(e)) for e in estimates]
+    return max(numerical, key=lambda x: x[1])[0]
 
 
 def estimate_np_scale(eff_op):
