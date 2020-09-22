@@ -104,8 +104,8 @@ def one_loop_democratic_nums(db, models):
 
 # write pickle files out
 unfiltered_path = os.path.join(args.output, "unfiltered.p")
-exotics_path = os.path.join(args.output, "./exotics.p")
-terms_path = os.path.join(args.output, "./terms.p")
+exotics_path = os.path.join(args.output, "exotics.p")
+terms_path = os.path.join(args.output, "terms.p")
 
 pickle.dump(data_dict(DB), open(unfiltered_path, "wb"))
 print(f"{unfiltered_path} written!")
