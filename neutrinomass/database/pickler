@@ -44,10 +44,10 @@ def data_dict(db):
         scale = db.scale_dict[k]
         symb_scale = db.symbolic_scale_dict[k]
         loops, loopsv2 = loop_data(symb_scale)
-        n_loops = [i + loops for i in loopsv2]
+        n_loops = [loops] if not loopsv2 else [i + loops for i in loopsv2]
         min_loops = min(n_loops)
         max_loops = max(n_loops)
-        n_derivs = sum(f.derivs for f in v.fields)
+        n_derivs = sum(f.derivs for f in OPS[k].fields)
         for model in v:
             data["democratic_num"].append(db.democratic_model_number(model))
             data["stringent_num"].append(db.stringent_model_number(model))
@@ -95,7 +95,7 @@ def one_loop_democratic_nums(db, models):
         model_num = 1
         for opt in opts:
             assert len(opt) == 1
-            model_num *= db.exotics[opt[0]]
+            model_num *= db.exotic_prime_dict[opt[0]]
 
         model_nums.append(model_num)
 
