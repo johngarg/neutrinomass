@@ -9,6 +9,9 @@ from neutrinomass.completions.core import (
     cons_completion_field,
 )
 from neutrinomass.utils.functions import conjugate_field, conjugate_term
+from neutrinomass.database.utils import subsets
+from functools import reduce
+import operator
 
 from networkx import Graph
 from collections import defaultdict
@@ -18,12 +21,12 @@ import re
 import math
 import numpy as np
 from sympy import prime
+from sympy.ntheory import factorint
 from itertools import groupby
 import os
 from glob import glob
 import pandas as pd
 import pickle
-from neutrinomass.database.utils import ONE_LOOP_WEINBERG
 
 ExoticField = cons_completion_field
 
@@ -129,15 +132,20 @@ class ModelDataFrame(pd.DataFrame):
 
         return df
 
-    def filter_one_loop(self):
-        """Remove the models that generate the Weinberg operator through a loop of
-        heavy fields
-
-        """
-        return self.drop(ONE_LOOP_WEINBERG)
-
     def completion(self, index: int) -> Completion:
         return eval(self["completion"][index])
+
+    def related_models(self, index: int) -> "ModelDataFrame":
+        demo_num = self["democratic_num"][index]
+        factor_groups = [l for l in subsets(factorint(demo_num)) if len(l) > 1]
+
+        indices = []
+        for group in factor_groups:
+            prod = reduce(operator.mul, group)
+            indices += list(self[self["democratic_num"] == prod].index)
+
+        indices.remove(index)
+        return self.loc[indices]
 
 
 class ModelDatabase:
