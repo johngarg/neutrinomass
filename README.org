@@ -20,7 +20,7 @@ The code is split into three smaller modules:
 
 Each module is described in detail below. There is also an =examples= directory
 that contains a tutorial for how to use the model dataframe object =MVDF= that
-we intend to be the main way to interact with the filtered database of mdoels.
+we intend to be the main way to interact with the filtered database of models.
 
 ** =tensormethod=
 
