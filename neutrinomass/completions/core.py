@@ -432,7 +432,11 @@ class Completion:
 
     def draw_diagram(self):
         import matplotlib.pyplot as plt
+        from matplotlib import rc
         import networkx as nx
+
+        # Unicode Greek edge labels won't render in TeX
+        rc("text", usetex=False)
 
         g = self.graph
         edge_labels = nx.get_edge_attributes(g, name="particle")
