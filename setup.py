@@ -34,7 +34,7 @@ setup(
     # long_description=long_description,
     author="John Gargalionis",
     author_email="garj@student.unimelb.edu.au",
-    version="1.0.0",
+    version="1.0.1",
     url="https://github.com/johngarg/neutrinomass",
     license="MIT",
     packages=[
