@@ -53,6 +53,7 @@ setup(
         "sympy==1.2",
         "alive_progress>=1.5.1",
         "matchpy>=0.5.2",
+        "pandas>=1.1.2",
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
