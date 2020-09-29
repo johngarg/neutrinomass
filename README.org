@@ -62,7 +62,7 @@ H(i0)
 >>> q
 Q(u0, c0, i1)
 >>> h * q * eps("-i0 -i1")
-H(I_0)*Q(u0, c0, I_1)*Eps(-I_0, -I_1)
+H(I_0)*Q(u0, c0, I_1)*metric(-I_0, -I_1)
 >>> (h * q * eps("-i0 -i1")).dynkin
 10100
 #+END_SRC
@@ -73,10 +73,10 @@ ignored (as we want in our case)
 #+BEGIN_SRC python
 >>> from neutrinomass.tensormethod import L, H, invariants
 >>> invariants(L, L, H, H)
-[L(U_0, I_0)*L(U_1, I_1)*Eps(-U_1, -U_0)*H(I_2)*Eps(-I_0, -I_2)*H(I_3)*Eps(-I_3, -I_1)]
+[L(U_0, I_0)*L(U_1, I_1)*metric(-U_1, -U_0)*H(I_2)*metric(-I_0, -I_2)*H(I_3)*metric(-I_3, -I_1)]
 >>> o1 = invariants(L, L, H, H, ignore=["u"])[0]
 >>> o1
-L(u0, I_0)*L(u1, I_1)*H(I_2)*Eps(-I_0, -I_2)*H(I_3)*Eps(-I_3, -I_1)
+L(u0, I_0)*L(u1, I_1)*H(I_2)*metric(-I_0, -I_2)*H(I_3)*metric(-I_3, -I_1)
 >>> o1.latex()
 'L^{i} L^{j} H^{k} H^{l} \\epsilon_{i k} \\epsilon_{j l}'
 #+END_SRC
