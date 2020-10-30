@@ -193,4 +193,7 @@ The files in the =database= module include
   operator through heavy loops.
 
 The =examples= directory provides a tutorial for working with the database and
-some examples of common kinds of queries.
+some examples of common kinds of queries. The queries are made on the /neutrino
+mass dataframe/ object =MVDF=, which inherits from the pandas dataframe. For
+more information relevant to using the dataframe objects in pandas, the [[https://pandas.pydata.org/pandas-docs/stable/user_guide/index.html][user
+guide]] is probably a good place to start.
