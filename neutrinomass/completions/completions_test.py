@@ -8,6 +8,9 @@ from neutrinomass.completions.operators import EFF_OPERATORS, DERIV_EFF_OPERATOR
 
 from sympy import Rational
 
+from importlib import import_module
+from pathlib import Path
+
 import pytest
 
 
@@ -36,6 +39,11 @@ def test_get_lorentz_epsilons():
     passes, epsilons = get_lorentz_epsilons((Q("u0 c0 i0"), L.conj("d1 i1")))
     assert not passes
     assert not epsilons
+    derivative_state = {"remaining": 1, "pending_fermions": [], "edges": []}
+    assert not route_derivative_to_internal_fermion(
+        (Q("u0 c0 i0"), L.conj("d1 i1")), derivative_state
+    )
+    assert derivative_state["remaining"] == 1
 
     passes, epsilons = get_lorentz_epsilons(
         (D(L, "01")("d0 i0"), D(H, "11")("u0 d1 i1"))
@@ -169,6 +177,37 @@ def test_deriv_completions():
     assert models["OphieD1"] == models["OphieD2"]
     assert models["OphieD1"] == models["OphieD3"]
     assert models["OphieD1"] == models["OphieD4"]
+
+
+def test_d20_routes_derivative_to_internal_fermion(monkeypatch):
+    completions_module = import_module("neutrinomass.completions.completions")
+    topology_data = get_topology_data(5, 2)
+    topology_11 = [
+        data
+        for data in topology_data
+        if Path(data["partition_file"]).stem == "5s2f_11"
+    ]
+    monkeypatch.setattr(
+        completions_module, "get_topology_data", lambda **kwargs: topology_11
+    )
+
+    completions = deriv_operator_completions(DERIV_EFF_OPERATORS["D20"])
+    expected = tuple(
+        sorted(
+            (
+                ("F", 0, 0, 3, ("3b", 0), ("y", Rational("1/2"))),
+                ("S", 0, 0, 2, ("3b", 0), ("y", 0)),
+                ("S", 0, 0, 3, ("3b", 0), ("y", Rational("3/2"))),
+            )
+        )
+    )
+
+    matching = [
+        c for c in completions if tuple(sorted(c.exotic_info().values())) == expected
+    ]
+    assert matching
+    assert all(c.derivative_edges for c in matching)
+    assert all(c.topology == "5s2f_11" for c in completions)
 
 
 def test_derivs_nlo_completions():

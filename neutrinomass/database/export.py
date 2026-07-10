@@ -115,6 +115,7 @@ def export_completion(c: Completion, lazy=True):
     terms = export_terms(c.terms)
     exotics = export_exotics(c.exotics)
     topo = c.topology
+    derivative_edges = getattr(c, "derivative_edges", ())
 
     quantum_numbers = []
     # lorentz irrep (string), colour dynkins, isospin dynkin, 3 * B, hypercharge
@@ -134,7 +135,7 @@ def export_completion(c: Completion, lazy=True):
         "{'operator_name': '%s', 'quantum_numbers': %s, 'terms': %s, 'topology': '%s'}"
         % (name, str(quantum_numbers), str(plain_terms), topo)
     )
-    completion_string = f"Completion(operator={eff_op}, partition={part}, graph={graph}, exotics={exotics}, terms={terms}, topology='{topo}')"
+    completion_string = f"Completion(operator={eff_op}, partition={part}, graph={graph}, exotics={exotics}, terms={terms}, topology='{topo}', derivative_edges={derivative_edges})"
     export_string = f"""LazyCompletion(head={head}, tail="{completion_string}")"""
 
     return export_string if lazy else completion_string

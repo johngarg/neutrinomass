@@ -397,13 +397,23 @@ class FailedCompletion:
 
 
 class Completion:
-    def __init__(self, operator, partition, graph, exotics, terms, topology=None):
+    def __init__(
+        self,
+        operator,
+        partition,
+        graph,
+        exotics,
+        terms,
+        topology=None,
+        derivative_edges=None,
+    ):
         self.operator = operator
         self.partition = partition
         self.graph = graph
         self.exotics = exotics
         self.terms = terms
         self.topology = topology
+        self.derivative_edges = tuple(derivative_edges or ())
 
     def __eq__(self, other):
         if not isinstance(other, Completion):
@@ -424,6 +434,8 @@ class Completion:
             graph=deepcopy(self.graph, memo),
             exotics=deepcopy(self.exotics, memo),
             terms=deepcopy(self.terms, memo),
+            topology=self.topology,
+            derivative_edges=deepcopy(self.derivative_edges, memo),
         )
 
     @property

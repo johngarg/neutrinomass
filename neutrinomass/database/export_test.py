@@ -48,6 +48,7 @@ def test_export_operator():
 def test_export_completion():
     for _, op in list(EFF_OPERATORS.items())[:5]:
         comp = list(operator_completions(op))[0]
+        comp.derivative_edges = ((1, 2),)
         new_str, old = export_completion(comp, lazy=False), comp
         new = eval(new_str)
 
@@ -56,6 +57,7 @@ def test_export_completion():
         assert new.graph.__dict__["_adj"] == old.graph.__dict__["_adj"]
         assert new.terms == old.terms
         assert new.operator.__dict__ == old.operator.__dict__
+        assert new.derivative_edges == old.derivative_edges
 
 
 def test_lazy_completion():

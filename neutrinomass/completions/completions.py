@@ -394,6 +394,101 @@ def get_lorentz_epsilons(fields: Tuple[IndexedField]) -> Tuple[bool, List[Tensor
     return True, epsilons
 
 
+def is_vector_fermion_contraction(fields: Tuple[IndexedField]) -> bool:
+    """Return whether ``fields`` form a dotted-undotted fermion current.
+
+    Such a current is not a renormalisable scalar interaction by itself.  In a
+    derivative completion it can nevertheless be saturated by the momentum
+    numerator of an arrow-preserving internal fermion propagator.
+    """
+
+    if not any(isinstance(f, FieldType) and f.is_fermion for f in fields):
+        return False
+
+    prod = reduce(lambda x, y: x * y, fields)
+    undotted, dotted, _, _, _ = prod.indices_by_type.values()
+    return len(undotted) == 1 and len(dotted) == 1
+
+
+def differentiate_indexed_fermion(field: IndexedField) -> IndexedField:
+    """Act a slashed derivative on ``field`` while preserving its gauge indices."""
+
+    derivative = D(field.field, allowed_lor_dyn(field))
+    fresh = derivative.fresh_indices()
+    undotted, dotted, _, _, _ = fresh.indices_by_type.values()
+    indices = (*undotted, *dotted, *field.gauge_indices)
+    return derivative(" ".join(str(i) for i in indices))
+
+
+def route_derivative_to_internal_fermion(fields, derivative_state):
+    """Move one unresolved derivative to an internal fermion momentum.
+
+    The derivative is preferentially placed on a non-exotic fermion.  This
+    leaves the existing ``process_derivative_term`` logic responsible for
+    selecting the appropriate conjugate/Dirac partner of the heavy fermion.
+    The state is consumed only after the resulting interaction is validated.
+    """
+
+    if derivative_state is None or derivative_state["remaining"] != 1:
+        return None
+
+    fields = tuple(fields)
+    if not is_vector_fermion_contraction(fields):
+        return None
+
+    candidates = [f for f in fields if f.is_fermion and not f.derivs]
+    candidates.sort(key=lambda f: isinstance(f, FieldType))
+    internal_fermions = tuple(
+        f for f in fields if isinstance(f, FieldType) and f.is_fermion
+    )
+
+    for candidate in candidates:
+        differentiated = differentiate_indexed_fermion(candidate)
+        routed_fields = tuple(
+            differentiated if f is candidate else f for f in fields
+        )
+        allowed, lorentz_epsilons = get_lorentz_epsilons(routed_fields)
+        if allowed:
+            return routed_fields, lorentz_epsilons, internal_fermions
+
+    return None
+
+
+def prepare_lorentz_contraction(fields, derivative_state=None):
+    """Return fields and epsilon tensors for a local Lorentz contraction."""
+
+    fields = tuple(fields)
+    allowed, lorentz_epsilons = get_lorentz_epsilons(fields)
+    if allowed:
+        return fields, lorentz_epsilons, ()
+
+    routed = route_derivative_to_internal_fermion(fields, derivative_state)
+    if routed is not None:
+        return routed
+
+    return None
+
+
+def consume_routed_derivative(derivative_state, internal_fermions):
+    """Consume a routed derivative and retain the fermion whose edge carried it."""
+
+    if not internal_fermions:
+        return
+
+    derivative_state["remaining"] -= 1
+    derivative_state["pending_fermions"] += list(internal_fermions)
+
+
+def record_routed_derivative_edges(derivative_state, edge_dict):
+    """Resolve routed heavy fermions to their graph edges."""
+
+    for field in derivative_state["pending_fermions"]:
+        edge = edge_dict.get(field)
+        if edge is not None and edge not in derivative_state["edges"]:
+            derivative_state["edges"].append(edge)
+    derivative_state["pending_fermions"] = []
+
+
 def is_contracted_epsilon(eps: Tensor, indices: List[Index]) -> bool:
     """Return True if two indices on epsilon are contracted, False otherwise."""
     i, j, *k = eps.indices
@@ -654,6 +749,7 @@ def contract(
     symbols: Dict[str, List[str]],
     gauge_epsilons: list,
     field_dict: Dict[tuple, str],
+    derivative_state=None,
 ) -> Union[Tuple[FieldType, Operator, List[Tensor], List[Tensor]], str]:
     """Takes two or three indexed fields and the epsilons [epsilons and deltas of
     SU(2) and SU(3) from the operator] and returns a new indexed field
@@ -680,10 +776,12 @@ def contract(
     if len(fields) != 2 and len(fields) != 3:
         raise Exception("Too many fields passed to contract.")
 
-    allowed_contraction, lorentz_epsilons = get_lorentz_epsilons(fields)
-    if not allowed_contraction:
+    prepared = prepare_lorentz_contraction(fields, derivative_state)
+    if prepared is None:
         # Bad lorentz contraction
         return "Bad Lorentz contraction."
+
+    fields, lorentz_epsilons, routed_internal_fermions = prepared
 
     # some gauge epsilons will be removed in the contraction, the others will
     # just watch
@@ -724,6 +822,8 @@ def contract(
             return f"Vanishing coupling at {maybe_term} after derivative processing."
 
     check_singlet(no_deriv_maybe_term)
+
+    consume_routed_derivative(derivative_state, routed_internal_fermions)
 
     return exotic, no_deriv_maybe_term, spectator_gauge_eps, lorentz_epsilons
 
@@ -772,6 +872,7 @@ def replace_and_mutate(
     edge_dict: Dict[FieldType, Tuple[int, int]],
     field_dict: Dict[tuple, str],
     graph: nx.Graph,
+    derivative_state=None,
 ) -> Leaf:
     """Returns a Leaf structure that enters the partition in place of the contracted
     fields. Mutates major state of completion: terms, edge_dict of graph,
@@ -795,7 +896,13 @@ def replace_and_mutate(
         return Leaf(field, node)
 
     # field_dict is updated in this call
-    maybe_contract = contract(fields, symbols, gauge_epsilons, field_dict)
+    maybe_contract = contract(
+        fields,
+        symbols,
+        gauge_epsilons,
+        field_dict,
+        derivative_state=derivative_state,
+    )
 
     # For a failed completion, keep reason in first element of leaf-tuple.
     if isinstance(maybe_contract, str):
@@ -813,6 +920,9 @@ def replace_and_mutate(
     # update edge_dict
     exotic_edge = get_connecting_edge(graph, nodes)
     edge_dict[exotic_field] = exotic_edge
+
+    if derivative_state is not None and derivative_state["pending_fermions"]:
+        record_routed_derivative_edges(derivative_state, edge_dict)
 
     return Leaf(exotic_field, exotic_edge[0])
 
@@ -840,12 +950,19 @@ def reduced_row(row, func):
     return func(tuple(map(lambda a: reduced_row(a, func), row)))
 
 
-def construct_completion(partition, gauge_epsilons, graph) -> Union[str, tuple]:
+def construct_completion(
+    partition, gauge_epsilons, graph, derivative_count=0
+) -> Union[str, tuple]:
     """Returns arguments needed to pass into Completion object contructor, or a
     string with the reason the completion failed.
 
     """
     lorentz_epsilons, terms, edge_dict, field_dict = [], [], {}, {}
+    derivative_state = {
+        "remaining": derivative_count,
+        "pending_fermions": [],
+        "edges": [],
+    }
     more_fermion_symbols = ["f" + str(i) for i in range(10)]
     more_scalar_symbols = ["S" + str(i) for i in range(10)]
     symbols = {
@@ -862,6 +979,7 @@ def construct_completion(partition, gauge_epsilons, graph) -> Union[str, tuple]:
         edge_dict=edge_dict,
         field_dict=field_dict,
         graph=graph,
+        derivative_state=derivative_state,
     )
 
     reduced_partition = [reduced_row(row, func) for row in partition]
@@ -880,9 +998,12 @@ def construct_completion(partition, gauge_epsilons, graph) -> Union[str, tuple]:
 
     fields = [f for f in prod.tensors if isinstance(f, IndexedField)]
 
-    allowed, new_lorentz_epsilons = get_lorentz_epsilons(fields)
-    if not allowed:
+    prepared = prepare_lorentz_contraction(fields, derivative_state)
+    if prepared is None:
         return "Bad Lorentz contraction."
+
+    fields, new_lorentz_epsilons, routed_internal_fermions = prepared
+    prod = reduce(lambda x, y: x * y, fields)
 
     _, eps_to_remove = separate_gauge_epsilons(fields, gauge_epsilons)
 
@@ -917,7 +1038,18 @@ def construct_completion(partition, gauge_epsilons, graph) -> Union[str, tuple]:
     # append the processed term to terms
     terms.append(proc_term)
 
-    return terms, edge_dict, field_dict, lorentz_epsilons
+    consume_routed_derivative(derivative_state, routed_internal_fermions)
+    record_routed_derivative_edges(derivative_state, edge_dict)
+    if derivative_state["remaining"]:
+        return "Unresolved derivative insertion."
+
+    return (
+        terms,
+        edge_dict,
+        field_dict,
+        lorentz_epsilons,
+        tuple(derivative_state["edges"]),
+    )
 
 
 def partition_completion(partition) -> Union[Completion, FailedCompletion]:
@@ -929,13 +1061,22 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
     topo = partition["topology"]
 
     # if args is a string, then it's the reason the completion failed
-    args = construct_completion(part, gauge_epsilons, graph)
+    args = construct_completion(
+        part,
+        gauge_epsilons,
+        graph,
+        derivative_count=partition.get("derivative_count", 0),
+    )
     if not isinstance(args, str):
-        terms, edge_dict, field_dict, lorentz_epsilons = args
+        terms, edge_dict, field_dict, lorentz_epsilons, derivative_edges = args
     else:
         return FailedCompletion(args)
 
-    explicit_op = reduce(lambda a, b: a * b, lorentz_epsilons, op.operator)
+    completion_operator = partition.get("completion_operator")
+    if completion_operator is None:
+        explicit_op = reduce(lambda a, b: a * b, lorentz_epsilons, op.operator)
+    else:
+        explicit_op = completion_operator.operator
     exotics = set(f for f in edge_dict.keys())
     eff_operator = EffectiveOperator(op.name, explicit_op)
 
@@ -949,6 +1090,7 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
         exotics=exotics,
         terms=terms,
         topology=topo,
+        derivative_edges=derivative_edges,
     )
 
 
@@ -1209,6 +1351,79 @@ def construct_operator(
     return reduce(lambda x, y: x * y, tensors + epsilons)
 
 
+def unique_lorentz_completion_operator(operator: EffectiveOperator):
+    """Return the unique nonzero Lorentz singlet associated with ``operator``.
+
+    Momentum routing is only enabled when the Lorentz structure is unique.  A
+    multi-dimensional Lorentz space requires an explicit basis projection and
+    is deliberately left to the existing local-derivative implementation.
+    """
+
+    singlets = {}
+    for singlet in lorentz_singlets(operator.operator):
+        simple = singlet.safe_simplify()
+        if simple != 0:
+            singlets[str(safe_nocoeff(simple))] = singlet
+
+    if len(singlets) != 1:
+        return None
+
+    return EffectiveOperator(operator.name, next(iter(singlets.values())))
+
+
+def momentum_routed_completions(
+    operator: EffectiveOperator, verbose=False
+) -> List[Completion]:
+    """Complete a single-derivative operator by routing momentum on heavy fermions.
+
+    External derivative labels are removed while furnishing the graph.  One
+    derivative token must then be consumed by a dotted-undotted current
+    containing an internal fermion.  The original, explicit Lorentz singlet is
+    retained on the returned completion.
+    """
+
+    fields, epsilons, n_derivs = operator_strip_derivs(operator.operator).values()
+    if n_derivs != 1:
+        return []
+
+    completion_operator = unique_lorentz_completion_operator(operator)
+    if completion_operator is None:
+        return []
+
+    stripped_operator = EffectiveOperator(
+        operator.name, construct_operator(fields, epsilons)
+    )
+    routed = []
+    for partition in partitions(stripped_operator, verbose=verbose):
+        partition["completion_operator"] = completion_operator
+        partition["derivative_count"] = n_derivs
+        completion = partition_completion(partition)
+        if not isinstance(completion, FailedCompletion):
+            routed.append(completion)
+
+    return routed
+
+
+def append_unique_completions(completions, candidates):
+    """Append candidates whose Lagrangians are not already represented."""
+
+    by_model = defaultdict(list)
+    model_key = lambda c: tuple(sorted(set(c.exotic_info().values())))
+    for completion in completions:
+        by_model[model_key(completion)].append(completion)
+
+    for candidate in candidates:
+        key = model_key(candidate)
+        if any(
+            are_equivalent_completions(candidate, known)
+            for known in by_model[key]
+        ):
+            continue
+
+        completions.append(candidate)
+        by_model[key].append(candidate)
+
+
 def derivative_combinations(
     op: Union[Operator, EffectiveOperator]
 ) -> Union[List[Operator], List[EffectiveOperator]]:
@@ -1268,6 +1483,9 @@ def deriv_operator_completions(
         if combo.operator.simplify() == 0:
             continue
         comps += list(operator_completions(combo, verbose=verbose))
+
+    routed = momentum_routed_completions(operator, verbose=verbose)
+    append_unique_completions(comps, routed)
 
     return comps
 
