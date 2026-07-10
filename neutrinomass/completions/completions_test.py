@@ -10,6 +10,10 @@ from sympy import Rational
 
 from importlib import import_module
 from pathlib import Path
+from collections import defaultdict
+import os
+import subprocess
+import sys
 
 import pytest
 
@@ -148,6 +152,50 @@ def test_completions():
     assert not o4a_comps
     assert len(o4b_comps) == 3
     assert len(o8_comps) == 4
+
+
+def test_collect_completions_preserves_nonadjacent_groups():
+    completions = list(lnv_completions("1"))
+    expected = defaultdict(list)
+    for completion in completions:
+        key = tuple(sorted(set(completion.exotic_info().values())))
+        expected[key].append(completion)
+
+    groups = list(expected.values())
+    interleaved = [
+        group[index]
+        for index in range(max(map(len, groups)))
+        for group in groups
+        if index < len(group)
+    ]
+    collected = collect_completions(interleaved)
+
+    assert {key: len(value) for key, value in collected.items()} == {
+        key: len(value) for key, value in expected.items()
+    }
+    assert sum(map(len, collected.values())) == len(completions) == 8
+
+
+def test_collect_completions_is_hash_seed_independent(tmp_path):
+    script = """
+from neutrinomass.completions import EFF_OPERATORS
+from neutrinomass.completions.completions import collect_completions, operator_completions
+
+completions = list(operator_completions(EFF_OPERATORS["1"]))
+collected = collect_completions(completions)
+print(len(completions), sum(map(len, collected.values())))
+"""
+    env = {**os.environ, "PYTHONHASHSEED": "1", "MPLCONFIGDIR": str(tmp_path)}
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[2],
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.stdout.strip() == "8 8"
 
 
 def test_o9_completions():

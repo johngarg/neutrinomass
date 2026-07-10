@@ -46,14 +46,14 @@ from neutrinomass.completions.topologies import get_topology_data, Leaf
 from neutrinomass.utils import pmatch
 from neutrinomass.utils.functions import stringify_qns, conjugate_term
 
-from typing import Tuple, List, Dict, Union
+from typing import Tuple, List, Dict, Union, Iterable
 import networkx as nx
 import networkx.algorithms.isomorphism as iso
 from copy import copy, deepcopy
 from alive_progress import alive_bar
 
 from collections import Counter, defaultdict
-from itertools import permutations, groupby, combinations
+from itertools import permutations, combinations
 from sympy.tensor.tensor import Tensor
 from sympy import prime
 
@@ -1226,8 +1226,8 @@ def slow_remove_equivalent_completions(
 
 
 def collect_completions(
-    completions: List[Completion], key=None
-) -> Dict[tuple, Completion]:
+    completions: Iterable[Completion], key=None
+) -> Dict[tuple, List[Completion]]:
     """Return dictionary mapping field content to list of completions.
 
     `key` is a function that takes a completion and returns a dictionary mapping
@@ -1237,19 +1237,16 @@ def collect_completions(
     Not for general user interface.
 
     """
-    out = {}
+    out = defaultdict(list)
 
     if key is None:
         key = lambda x: x.exotic_info()
 
-    func = lambda c: tuple(sorted(key(c).values()))
-    for k, g in groupby(completions, key=func):
-        g_list = list(g)
-        # slow_remove_equivalent_completions(g_list)
-        k = tuple(sorted(set(k)))
-        out[k] = g_list
+    for completion in completions:
+        model_key = tuple(sorted(set(key(completion).values())))
+        out[model_key].append(completion)
 
-    return out
+    return dict(out)
 
 
 def prime_registry(sieve: Dict[tuple, List[Completion]]) -> Dict[tuple, int]:
