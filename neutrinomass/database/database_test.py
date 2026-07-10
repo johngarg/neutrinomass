@@ -3,6 +3,16 @@
 from neutrinomass.database.database import *
 
 
+class DummyLazyCompletion:
+    def __init__(self, value):
+        self.value = value
+        self.head = {"terms": []}
+        self.quantum_numbers = set()
+
+    def force(self):
+        return self.value
+
+
 def test_conjugate_term():
     test_terms = [
         ["L.conj", "F,10,3,1/6,1", "F,10,3,7/6,1"],
@@ -20,3 +30,31 @@ def test_conjugate_term():
 
     for i, sorted_conj in enumerate(proc_terms):
         assert list(sorted_conj) == sorted(conj_terms[i])
+
+
+def test_force_preserves_every_operator():
+    database = ModelDatabase(
+        path=None,
+        data={
+            "operator-a": [DummyLazyCompletion("a1"), DummyLazyCompletion("a2")],
+            "operator-b": [DummyLazyCompletion("b1")],
+        },
+    )
+
+    database.force()
+
+    assert database.data == {
+        "operator-a": ["a1", "a2"],
+        "operator-b": ["b1"],
+    }
+    assert database.is_forced
+
+
+def test_path_database_starts_unordered(tmp_path):
+    database = ModelDatabase(str(tmp_path))
+
+    assert database.is_ordered is False
+
+    database.filter()
+
+    assert database.is_ordered is True

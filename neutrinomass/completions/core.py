@@ -71,7 +71,11 @@ class FieldType(IndexedField):
         return hash(tuple(dict_.items()))
 
     def __deepcopy__(self, memo):
-        return self.__class__(
+        kwargs = {}
+        if hasattr(self, "is_unbarred"):
+            kwargs["is_unbarred"] = self.is_unbarred
+
+        copied = self.__class__(
             label=self.label,
             indices=deepcopy(self.indices, memo),
             charges=deepcopy(self.charges, memo),
@@ -79,7 +83,10 @@ class FieldType(IndexedField):
             is_conj=self.is_conj,
             symmetry=deepcopy(self.symmetry, memo),
             comm=self.comm,
+            **kwargs,
         )
+        memo[id(self)] = copied
+        return copied
 
 
 class ComplexScalar(FieldType):
@@ -427,7 +434,8 @@ class Completion:
         )
 
     def __hash__(self):
-        return hash((self.operator, self.exotic_info(), self.partition))
+        exotic_info = tuple(sorted(self.exotic_info().values()))
+        return hash((self.operator, exotic_info, self.partition))
 
     def __deepcopy__(self, memo):
         return self.__class__(

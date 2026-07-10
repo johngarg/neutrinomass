@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import re
+from collections import Counter
 from typing import List, Callable, TypeVar
 from copy import deepcopy
 
@@ -31,10 +32,11 @@ def foldr(func, xs, acc=None):
 
 def fixedpoint(f, x):
     """Applies f o f o f ... f(x) until output is unchanged."""
-    app = f(x)
-    while application != x:
-        return fixedpoint(f, app)
-    return x
+    while True:
+        application = f(x)
+        if application == x:
+            return x
+        x = application
 
 
 def factors(n):
@@ -62,13 +64,4 @@ def allowed_lor_dyn(f) -> str:
 
 
 def multiset_equality(x, y):
-    multiset_1 = Counter()
-    multiset_2 = Counter()
-
-    for i in x:
-        multiset_1.update({i: 1})
-
-    for i in y:
-        multiset_2.update({i: 1})
-
-    return multiset_1 == multiset_2
+    return Counter(x) == Counter(y)

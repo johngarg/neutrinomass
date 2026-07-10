@@ -159,6 +159,7 @@ class ModelDatabase:
         self.philosophy = philosophy
         self.criterion = criterion
         self.is_forced = False
+        self.is_ordered = False
 
         assert self.philosophy in {"democratic", "stringent"}
         assert self.criterion in {"mass", "dimension"}
@@ -286,9 +287,12 @@ class ModelDatabase:
         if self.is_forced:
             return
 
+        forced_data = {
+            operator_name: [model.force() for model in models]
+            for operator_name, models in self.data.items()
+        }
+        self.data = forced_data
         self.is_forced = True
-        for k, v in self.data.items():
-            self.data = {k: [m.force() for m in v]}
 
     def democratic_remove_equivalent_models(self):
         """Removes duplicate models only by field content"""

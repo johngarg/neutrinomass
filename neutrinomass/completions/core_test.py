@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from copy import deepcopy
+
 from neutrinomass.completions.core import *
 from neutrinomass.completions.operators import EFF_OPERATORS, DERIV_EFF_OPERATORS
 from neutrinomass.tensormethod.core import BOSE, FERMI, D
@@ -39,7 +41,13 @@ def test_vectorlike_dirac_fermion():
     assert f.conj.is_conj
     assert invariants(f.field, f.dirac_partner().field, ignore=[])
     assert not invariants(f.field, f.field, ignore=[])
-    return f, partner
+
+    copied_partner = deepcopy(partner)
+    assert copied_partner.label == partner.label
+    assert copied_partner.indices == partner.indices
+    assert copied_partner.charges == partner.charges
+    assert copied_partner.is_unbarred == partner.is_unbarred
+    assert copied_partner.dirac_partner().label == f.label
 
 
 def test_effective_operator():

@@ -111,7 +111,7 @@ def quick_remove_equivalent_partitions(partitions):
     filtered out.
 
     """
-    return list(set(partitions))
+    return list(dict.fromkeys(partitions))
 
 
 def distribute_fields(fields, partition):
@@ -1026,7 +1026,7 @@ def construct_completion(
             return proc_term
 
         if proc_term.safe_simplify() == 0:
-            return f"Vanishing coupling at {maybe_term} after derivative processing."
+            return f"Vanishing coupling at {prod} after derivative processing."
 
     # make sure the term is a singlet
     check_singlet(proc_term)
@@ -1485,11 +1485,11 @@ def deriv_operator_completions(
     return comps
 
 
-def completions(*args, **kwargs):
+def completions(operator: EffectiveOperator, *args, **kwargs):
     """General dispatch function for completions"""
-    if "D" in operator.name:
-        return deriv_operator_completions(*args, **kwargs)
-    return operator_completions(*args, **kwargs)
+    if any(field.derivs for field in operator.fields):
+        return deriv_operator_completions(operator, *args, **kwargs)
+    return operator_completions(operator, *args, **kwargs)
 
 
 def collect_models(comps):

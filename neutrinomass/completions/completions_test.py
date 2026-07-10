@@ -126,7 +126,38 @@ def test_process_derivative_term():
 
 def test_construct_completion():
     data = partitions(EFF_OPERATORS["2"])[0]
-    assert construct_completion(data["partition"], data["epsilons"], data["graph"])
+    result = construct_completion(data["partition"], data["epsilons"], data["graph"])
+
+    assert not isinstance(result, str)
+    assert len(result) == 5
+
+
+def test_completion_is_hashable():
+    completion = next(operator_completions(EFF_OPERATORS["1"]))
+
+    assert isinstance(hash(completion), int)
+
+
+def test_completions_dispatches_on_derivatives(monkeypatch):
+    completions_module = import_module("neutrinomass.completions.completions")
+    regular_result = object()
+    derivative_result = object()
+    monkeypatch.setattr(
+        completions_module,
+        "operator_completions",
+        lambda operator, **kwargs: regular_result,
+    )
+    monkeypatch.setattr(
+        completions_module,
+        "deriv_operator_completions",
+        lambda operator, **kwargs: derivative_result,
+    )
+
+    assert completions_module.completions(EFF_OPERATORS["1"]) is regular_result
+    assert (
+        completions_module.completions(DERIV_EFF_OPERATORS["D3"])
+        is derivative_result
+    )
 
 
 def test_completions():
@@ -196,6 +227,45 @@ print(len(completions), sum(map(len, collected.values())))
     )
 
     assert result.stdout.strip() == "8 8"
+
+
+def test_partition_order_is_hash_seed_independent(tmp_path):
+    script = """
+import hashlib
+from neutrinomass.completions import EFF_OPERATORS
+from neutrinomass.completions.completions import partitions
+
+operator_partitions = partitions(EFF_OPERATORS["1"])
+data = "\\n".join(repr(partition["partition"]) for partition in operator_partitions)
+print(len(operator_partitions), hashlib.sha256(data.encode()).hexdigest())
+"""
+    outputs = []
+    for seed in ("0", "1"):
+        env = {
+            **os.environ,
+            "PYTHONHASHSEED": seed,
+            "MPLCONFIGDIR": str(tmp_path / seed),
+        }
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=Path(__file__).resolve().parents[2],
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        outputs.append(result.stdout.strip())
+
+    assert outputs[0] == outputs[1]
+
+
+def test_quick_remove_equivalent_partitions_preserves_first_occurrence():
+    partitions_ = [("second",), ("first",), ("second",)]
+
+    assert quick_remove_equivalent_partitions(partitions_) == [
+        ("second",),
+        ("first",),
+    ]
 
 
 def test_o9_completions():
