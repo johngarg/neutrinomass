@@ -22,11 +22,14 @@ from neutrinomass.tensormethod.contract import (
 
 from neutrinomass.utils import timeit
 from neutrinomass.tensormethod.utils import safe_nocoeff
+from neutrinomass.completions.equivalence import (
+    equivalent_lagrangians,
+    field_label_parts,
+)
 from neutrinomass.completions.utils import (
     flatten,
     chunks,
     factors,
-    multiple_replace,
     allowed_lor_dyn,
 )
 from neutrinomass.utils.functions import remove_equivalent, remove_equivalent_nopop
@@ -53,12 +56,11 @@ from copy import copy, deepcopy
 from alive_progress import alive_bar
 
 from collections import Counter, defaultdict
-from itertools import permutations, combinations
+from itertools import permutations, combinations, product
 from sympy.tensor.tensor import Tensor
 from sympy import prime
 
 from functools import lru_cache, reduce
-import re
 import os
 
 
@@ -749,7 +751,7 @@ def contract(
 ) -> Union[Tuple[FieldType, Operator, List[Tensor], List[Tensor]], str]:
     """Takes two or three indexed fields and the epsilons [epsilons and deltas of
     SU(2) and SU(3) from the operator] and returns a new indexed field
-    transforming in the same way as $x \otimes y$.
+    transforming in the same way as $x \\otimes y$.
 
     Gauge epsilons (and deltas) are going to be potentially used up in this
     process, while epsilons carrying Lorentz indices will be introduced
@@ -1125,53 +1127,150 @@ def operator_completions(
     # return good_completions
 
 
-def sort_strings(terms: List[List[str]]):
-    """To account for (anti)symmetric indices, just sort the strings representing
-    the fields. For use in the function `check_remapping_on_terms`.
-
-    """
-    data = [["".join(sorted(item)) for item in interaction] for interaction in terms]
-    return set(map(lambda x: tuple(sorted(x)), data))
-
-
 def check_remapping_on_terms(terms1, terms2, remapping):
     """Return the remapping on the field labels in the terms that would get you from
     one to the other, i.e. return the isomorphism if one exists, otherwise
     return the empty dictionary.
 
     """
-    new_terms = set()
-    for term in terms1:
-        for k, v in remapping.items():
-            simple = term.safe_simplify()
-            s = str(safe_nocoeff(simple))
-            s = multiple_replace(remapping, s)
-            # remove generation indices in comparison
-            s = re.sub(r"g[0-9]+_", "g_", s)
-            # remove negative signs on indices
-            s = re.sub(r"-", "", s)
-            ss = tuple(sorted(s.split("*")))
-            new_terms.add(ss)
-
-    new_terms = sort_strings(new_terms)
-
-    comp2_strs = []
-    for term in terms2:
-        simple = term.safe_simplify()
-        s = str(safe_nocoeff(simple))
-        comp2_strs.append(s)
-
-    comp2_strs = [re.sub(r"g[0-9]+_", "g_", s) for s in comp2_strs]
-    comp2_strs = [re.sub(r"-", "", s) for s in comp2_strs]
-    comp2_tups = [tuple(sorted(s.split("*"))) for s in comp2_strs]
-    # sort epsilons and deltas to account for symmetric indices
-    comp2_tups = sort_strings(comp2_tups)
-
-    if new_terms == comp2_tups:
+    if equivalent_lagrangians(terms1, terms2, remapping):
         return remapping
 
     # otherwise, no equivalence, return empty dict
     return {}
+
+
+def base_exotic_label(label: str) -> str:
+    """Return the particle-species label without conjugate/Dirac suffixes."""
+
+    return field_label_parts(label)[0]
+
+
+def exotic_species_kind(field: FieldType) -> str:
+    """Return the mass/particle nature omitted from the gauge quantum numbers."""
+
+    if isinstance(field, VectorLikeDiracFermion):
+        return "dirac_fermion"
+    if isinstance(field, MajoranaFermion):
+        return "majorana_fermion"
+    if isinstance(field, RealScalar):
+        return "real_scalar"
+    if isinstance(field, ComplexScalar):
+        return "complex_scalar"
+    raise TypeError(f"Unrecognised exotic species {type(field).__name__}")
+
+
+def exotic_species(completion: Completion) -> Dict[str, tuple]:
+    """Map each distinct particle species to its physical descriptor.
+
+    A base label denotes one physical species. Repeated occurrences of that label
+    are interaction-edge occurrences, whereas different labels remain distinct even
+    when their representations coincide. Democratic filtering deliberately applies
+    the separate, coarser convention of collapsing equal representations.
+    """
+
+    species = {}
+    for field, quantum_numbers in completion.exotic_info().items():
+        label = base_exotic_label(field.label)
+        descriptor = (exotic_species_kind(field), quantum_numbers)
+        known_descriptor = species.get(label)
+        if known_descriptor is not None and known_descriptor != descriptor:
+            raise ValueError(f"Inconsistent quantum numbers for exotic species {label}")
+        species[label] = descriptor
+    return species
+
+
+def exotic_field_occurrences(completion: Completion):
+    """Return field-factor signatures grouped by particle-species label."""
+
+    occurrences = defaultdict(Counter)
+    species_labels = exotic_species(completion)
+    for term in completion.terms:
+        for field in term.indexed_fields:
+            label, is_conjugate, is_dirac_partner = field_label_parts(field.label)
+            if label not in species_labels:
+                continue
+            signature = (
+                is_conjugate,
+                is_dirac_partner,
+                field.dynkin,
+                tuple(
+                    sorted(
+                        (name, str(value))
+                        for name, value in field.charges.items()
+                    )
+                ),
+                field.comm,
+                field.derivs,
+            )
+            occurrences[label][signature] += 1
+    return occurrences
+
+
+def oriented_exotic_mappings(comp1, comp2, remapping):
+    """Yield suffix orientations compatible with the physical field factors."""
+
+    occurrences1 = exotic_field_occurrences(comp1)
+    occurrences2 = exotic_field_occurrences(comp2)
+    species1 = exotic_species(comp1)
+    orientation_groups = []
+    source_labels = sorted(remapping)
+    for source_label in source_labels:
+        target_label = remapping[source_label]
+        is_dirac = species1[source_label][0] == "dirac_fermion"
+        options = []
+        for conjugate_flip in (False, True):
+            for dirac_flip in ((False, True) if is_dirac else (False,)):
+                remapped_occurrences = Counter()
+                for signature, multiplicity in occurrences1[source_label].items():
+                    is_conjugate, is_dirac_partner, *field_data = signature
+                    remapped_signature = (
+                        is_conjugate ^ conjugate_flip,
+                        is_dirac_partner ^ dirac_flip,
+                        *field_data,
+                    )
+                    remapped_occurrences[remapped_signature] += multiplicity
+                if remapped_occurrences == occurrences2[target_label]:
+                    options.append((target_label, conjugate_flip, dirac_flip))
+        if not options:
+            return
+        orientation_groups.append(options)
+
+    for orientations in product(*orientation_groups):
+        yield dict(zip(source_labels, orientations))
+
+
+def exotic_label_bijections(comp1: Completion, comp2: Completion):
+    """Yield all representation-preserving species relabellings."""
+
+    species1 = exotic_species(comp1)
+    species2 = exotic_species(comp2)
+    quantum_numbers1 = Counter(species1.values())
+    quantum_numbers2 = Counter(species2.values())
+    if quantum_numbers1 != quantum_numbers2:
+        return
+
+    labels1_by_quantum_numbers = defaultdict(list)
+    labels2_by_quantum_numbers = defaultdict(list)
+    for label, quantum_numbers in species1.items():
+        labels1_by_quantum_numbers[quantum_numbers].append(label)
+    for label, quantum_numbers in species2.items():
+        labels2_by_quantum_numbers[quantum_numbers].append(label)
+
+    quantum_number_classes = sorted(labels1_by_quantum_numbers, key=repr)
+    permutation_groups = []
+    source_groups = []
+    for quantum_numbers in quantum_number_classes:
+        source_labels = sorted(labels1_by_quantum_numbers[quantum_numbers])
+        target_labels = sorted(labels2_by_quantum_numbers[quantum_numbers])
+        source_groups.append(source_labels)
+        permutation_groups.append(tuple(permutations(target_labels)))
+
+    for target_groups in product(*permutation_groups):
+        mapping = {}
+        for source_labels, target_labels in zip(source_groups, target_groups):
+            mapping.update(zip(source_labels, target_labels))
+        yield mapping
 
 
 def compare_terms(comp1: Completion, comp2: Completion) -> Dict[str, str]:
@@ -1183,33 +1282,26 @@ def compare_terms(comp1: Completion, comp2: Completion) -> Dict[str, str]:
        {"φ": "φ", "η": "η", ...}
 
     """
-    # make sure field content is the same
-    if set(comp1.exotic_info().values()) != set(comp2.exotic_info().values()):
-        return {}
-
     # cannot be equivalent
     if len(comp1.terms) != len(comp2.terms):
         return {}
 
-    # qnumbers -> label
-    rev_map2 = {
-        qnumbers: field.label for field, qnumbers in comp2.exotic_info().items()
-    }
-    remapping = {
-        # rev_map2[qnumbers]: field.label
-        field.label: rev_map2[qnumbers]
-        for field, qnumbers in comp1.exotic_info().items()
-    }
+    for remapping in exotic_label_bijections(comp1, comp2):
+        for oriented_remapping in oriented_exotic_mappings(comp1, comp2, remapping):
+            if equivalent_lagrangians(
+                comp1.terms, comp2.terms, oriented_remapping
+            ):
+                return remapping
 
-    return check_remapping_on_terms(comp1.terms, comp2.terms, remapping)
+    return {}
 
 
 def are_equivalent_completions(comp1: Completion, comp2: Completion) -> bool:
     """Checks to see if the Lagrangian terms describing two completions are
     equivalent.
 
-    Two completions are equivalent if their Lagrangian terms in canonical form
-    are the same up to field relabellings.
+    Two completions are equivalent if their exact contraction graphs are the same
+    up to representation-preserving field relabellings.
 
     """
     return bool(compare_terms(comp1, comp2))
