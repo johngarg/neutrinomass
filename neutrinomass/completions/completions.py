@@ -246,17 +246,13 @@ def partitions(operator: EffectiveOperator, verbose=False) -> List[dict]:
                 g = topology_data["graph"]
                 g = set_external_fields(perm, g, fields_and_counters)
 
-                partition_file = topology_data["partition_file"]
-                topology_classification = os.path.splitext(
-                    os.path.basename(partition_file)
-                )[0]
-
                 data = {
                     "operator": op,
                     "partition": perm,
                     "epsilons": epsilons,
                     "graph": g,
-                    "topology": topology_classification,
+                    "topology": topology_data["topology"],
+                    "canonical_topology": topology_data["canonical_topology"],
                 }
                 out.append(data)
 
@@ -1059,6 +1055,7 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
     graph = partition["graph"]
     op = partition["operator"]
     topo = partition["topology"]
+    canonical_topo = partition.get("canonical_topology", topo)
 
     # if args is a string, then it's the reason the completion failed
     args = construct_completion(
@@ -1090,6 +1087,7 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
         exotics=exotics,
         terms=terms,
         topology=topo,
+        canonical_topology=canonical_topo,
         derivative_edges=derivative_edges,
     )
 

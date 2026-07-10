@@ -405,6 +405,7 @@ class Completion:
         exotics,
         terms,
         topology=None,
+        canonical_topology=None,
         derivative_edges=None,
     ):
         self.operator = operator
@@ -413,6 +414,7 @@ class Completion:
         self.exotics = exotics
         self.terms = terms
         self.topology = topology
+        self.canonical_topology = canonical_topology or topology
         self.derivative_edges = tuple(derivative_edges or ())
 
     def __eq__(self, other):
@@ -435,6 +437,7 @@ class Completion:
             exotics=deepcopy(self.exotics, memo),
             terms=deepcopy(self.terms, memo),
             topology=self.topology,
+            canonical_topology=self.canonical_topology,
             derivative_edges=deepcopy(self.derivative_edges, memo),
         )
 

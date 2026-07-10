@@ -115,6 +115,7 @@ def export_completion(c: Completion, lazy=True):
     terms = export_terms(c.terms)
     exotics = export_exotics(c.exotics)
     topo = c.topology
+    canonical_topo = getattr(c, "canonical_topology", topo)
     derivative_edges = getattr(c, "derivative_edges", ())
 
     quantum_numbers = []
@@ -132,10 +133,11 @@ def export_completion(c: Completion, lazy=True):
         plain_terms.append(tuple(plain_term))
 
     head = (
-        "{'operator_name': '%s', 'quantum_numbers': %s, 'terms': %s, 'topology': '%s'}"
-        % (name, str(quantum_numbers), str(plain_terms), topo)
+        "{'operator_name': '%s', 'quantum_numbers': %s, 'terms': %s, "
+        "'topology': '%s', 'canonical_topology': '%s'}"
+        % (name, str(quantum_numbers), str(plain_terms), topo, canonical_topo)
     )
-    completion_string = f"Completion(operator={eff_op}, partition={part}, graph={graph}, exotics={exotics}, terms={terms}, topology='{topo}', derivative_edges={derivative_edges})"
+    completion_string = f"Completion(operator={eff_op}, partition={part}, graph={graph}, exotics={exotics}, terms={terms}, topology='{topo}', canonical_topology='{canonical_topo}', derivative_edges={derivative_edges})"
     export_string = f"""LazyCompletion(head={head}, tail="{completion_string}")"""
 
     return export_string if lazy else completion_string

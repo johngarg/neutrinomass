@@ -57,6 +57,7 @@ def test_export_completion():
         assert new.graph.__dict__["_adj"] == old.graph.__dict__["_adj"]
         assert new.terms == old.terms
         assert new.operator.__dict__ == old.operator.__dict__
+        assert new.canonical_topology == old.canonical_topology
         assert new.derivative_edges == old.derivative_edges
 
 

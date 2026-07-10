@@ -207,7 +207,8 @@ def test_d20_routes_derivative_to_internal_fermion(monkeypatch):
     ]
     assert matching
     assert all(c.derivative_edges for c in matching)
-    assert all(c.topology == "5s2f_11" for c in completions)
+    assert all(c.topology == "5s2f_3" for c in completions)
+    assert all(c.canonical_topology == "5s2f_11" for c in completions)
 
 
 def test_derivs_nlo_completions():
