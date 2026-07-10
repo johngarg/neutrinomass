@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from neutrinomass.database.database import *
+import pytest
 
 
 class DummyLazyCompletion:
@@ -58,3 +59,18 @@ def test_path_database_starts_unordered(tmp_path):
     database.filter()
 
     assert database.is_ordered is True
+
+
+def test_legacy_executable_formats_require_explicit_trust(tmp_path):
+    legacy = tmp_path / "op_test.dat"
+    legacy.write_text("not_python()\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="execute Python"):
+        read_completions(str(legacy))
+
+    completion = LazyCompletion(
+        head={"operator_name": "test", "quantum_numbers": []},
+        tail="not_python()",
+    )
+    with pytest.raises(ValueError, match="execute Python"):
+        completion.force()

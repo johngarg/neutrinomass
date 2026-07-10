@@ -7,6 +7,7 @@ from neutrinomass.tensormethod.core import D
 from neutrinomass.completions.operators import EFF_OPERATORS, DERIV_EFF_OPERATORS
 
 from sympy import Rational
+import networkx as nx
 
 from importlib import import_module
 from pathlib import Path
@@ -329,6 +330,22 @@ def test_d20_routes_derivative_to_internal_fermion(monkeypatch):
     assert all(c.topology == "5s2f_3" for c in completions)
     assert all(c.canonical_topology == "5s2f_11" for c in completions)
 
+    julian = matching[0]
+    assert {
+        tuple(sorted(stringify_qns(field) for field in term.fields))
+        for term in julian.terms
+    } == {
+        ("H", "H", "H", "S,00,3,-3/2,0"),
+        ("F,00,3,-1/2,0", "S,00,3,3/2,0", "eb.conj"),
+        ("H", "H.conj", "S,00,2,0,0"),
+        ("F,00,3,1/2,0", "L", "S,00,2,0,0"),
+    }
+    assert all(
+        is_singlet(term) and sum(field.mass_dim for field in term.fields) <= 4
+        for term in julian.terms
+    )
+    assert julian.derivative_routes[0].differentiated_field == "L"
+
 
 def test_derivative_routing_branches_and_is_order_independent(monkeypatch):
     completions_module = import_module("neutrinomass.completions.completions")
@@ -395,6 +412,19 @@ def test_derivative_routing_branches_and_is_order_independent(monkeypatch):
             any(are_equivalent_completions(right, left) for left in baseline)
             for right in comparison
         )
+
+
+def test_derivative_rerooting_enumerates_every_internal_vertex():
+    graph = nx.Graph([(0, 1), (1, 2), (0, 3), (2, 4)])
+    partition = (Leaf("S", 3), Leaf("F", 4))
+
+    rooted = canonical_rooted_partitions(partition, graph)
+
+    assert len(rooted) == 3
+    assert all(
+        sorted(leaf.node for leaf in partition_leaves(candidate)) == [3, 4]
+        for candidate in rooted
+    )
 
 
 def test_derivative_routing_support_is_explicit():

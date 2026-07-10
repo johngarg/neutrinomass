@@ -8,6 +8,7 @@ they give rise to radiative neutrino masses.
 
 from typing import Union, List
 
+import ast
 import math
 import sympy
 from functools import reduce
@@ -177,6 +178,40 @@ lc = [e, nu]
 qc = [d, u]
 eps = [[0, -1], [1, 0]]
 
+_COMPONENTS = {
+    symbol.name: symbol for symbol in (e, nu, u, d, h0, hp, db, ub, eb, W)
+}
+_DOUBLETS = {"h": h, "l": l, "q": q, "hc": hc, "lc": lc, "qc": qc}
+
+
+def _parse_component(expression):
+    """Parse the restricted field-component grammar emitted below."""
+
+    def parse(node):
+        if isinstance(node, ast.Name) and node.id in _COMPONENTS:
+            return _COMPONENTS[node.id]
+        if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name):
+            components = _DOUBLETS.get(node.value.id)
+            index = node.slice
+            if (
+                components is not None
+                and isinstance(index, ast.Constant)
+                and type(index.value) is int
+                and index.value in (0, 1)
+            ):
+                return components[index.value]
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "c"
+            and len(node.args) == 1
+            and not node.keywords
+        ):
+            return c(parse(node.args[0]))
+        raise ValueError(f"Invalid field component {expression!r}")
+
+    return parse(ast.parse(expression, mode="eval").body)
+
 
 def parse_operator(eff_op: Union[EffectiveOperator, Operator]):
     """Parse the operator `eff_op` into matchpy symbols with the SU(2) structure
@@ -256,7 +291,7 @@ def parse_operator(eff_op: Union[EffectiveOperator, Operator]):
         if not "eps" in new_elem:
             out.append(new_elem)
 
-    return [eval(f'Op({elem.replace("*", ",")})') for elem in out]
+    return [Op(*(_parse_component(field) for field in elem.split("*"))) for elem in out]
 
 
 def neutrino_mass_estimate(eff_op: Union[EffectiveOperator, List[Op]], verbose=False):

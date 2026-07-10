@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+"""Database access, including explicitly gated legacy executable formats."""
+
 from neutrinomass.tensormethod import D, L, Q, H, eb, ub, db, eps, delta
 from neutrinomass.tensormethod.core import IndexedField, Field
 from neutrinomass.completions.topologies import Leaf
@@ -60,7 +62,12 @@ class LazyCompletion:
         assert "operator_name" in self.head
         # assert "operator_dimension" in self.head
 
-    def force(self):
+    def force(self, trusted=False):
+        if not trusted and not getattr(self, "_trusted_legacy", False):
+            raise ValueError(
+                "Legacy completion tails execute Python; pass trusted=True only "
+                "for package-controlled data"
+            )
         return eval(self.tail)
 
     @property
@@ -92,13 +99,20 @@ class LazyCompletion:
     #     return self.head["operator_dimension"]
 
 
-def read_completions(filename: str):
-    """Do this as a context manager?"""
+def read_completions(filename: str, *, trusted=False):
+    """Read the legacy executable ``.dat`` format after explicit opt-in."""
+
+    if not trusted:
+        raise ValueError(
+            "Legacy completion files execute Python; pass trusted=True only "
+            "for package-controlled data, or use the JSONL serializer"
+        )
     completions = defaultdict(list)
     with open(filename, "r") as f:
         line = f.readline()
         while line:
             comp = eval(line)
+            comp._trusted_legacy = True
             completions[comp.operator_name].append(comp)
             line = f.readline()
 
@@ -133,7 +147,12 @@ class ModelDataFrame(pd.DataFrame):
 
         return df
 
-    def completion(self, index: int) -> Completion:
+    def completion(self, index: int, *, trusted=False) -> Completion:
+        if not trusted:
+            raise ValueError(
+                "Legacy dataframe completions execute Python; pass trusted=True "
+                "only for package-controlled data"
+            )
         return eval(self["completion"][index])
 
     def related_models(self, index: int) -> "ModelDataFrame":
@@ -156,6 +175,7 @@ class ModelDatabase:
         philosophy: str = "democratic",
         criterion: str = "mass",
         data=None,
+        trusted_legacy: bool = False,
     ):
         self.philosophy = philosophy
         self.criterion = criterion
@@ -170,7 +190,9 @@ class ModelDatabase:
 
             # print("Initialising database...")
             filenames = glob(os.path.join(self.path, "*.dat"))
-            mvdb_data = [dict(read_completions(f)) for f in filenames]
+            mvdb_data = [
+                dict(read_completions(f, trusted=trusted_legacy)) for f in filenames
+            ]
             mv_dict = {k: v for d in mvdb_data for k, v in d.items()}
             self.data = mv_dict
 
@@ -512,7 +534,14 @@ class ModelDatabase:
         self.filter()
 
 
-DATA = pickle.load(open(os.path.join(os.path.dirname(__file__), "democratic.p"), "rb"))
-EXOTICS = pickle.load(open(os.path.join(os.path.dirname(__file__), "exotics.p"), "rb"))
-TERMS = pickle.load(open(os.path.join(os.path.dirname(__file__), "terms.p"), "rb"))
+def _load_trusted_packaged_pickle(filename):
+    """Load a package-controlled legacy asset; never use for user input."""
+
+    with open(os.path.join(os.path.dirname(__file__), filename), "rb") as stream:
+        return pickle.load(stream)
+
+
+DATA = _load_trusted_packaged_pickle("democratic.p")
+EXOTICS = _load_trusted_packaged_pickle("exotics.p")
+TERMS = _load_trusted_packaged_pickle("terms.p")
 MVDF = ModelDataFrame.new(data=DATA, exotics=EXOTICS, terms=TERMS)

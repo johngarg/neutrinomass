@@ -3,6 +3,7 @@
 """Functions to read and parse topologies generated with Mathematica."""
 
 import os
+import ast
 from glob import glob
 from pathlib import Path
 import matplotlib.pyplot as plt
@@ -115,22 +116,33 @@ def read_topology_file(data_path) -> str:
 
 
 def eval_partition(partition: str):
-    S = lambda x: Leaf("S", x)
-    F = lambda x: Leaf("F", x)
+    """Parse the restricted ``List``/``S``/``F`` topology grammar safely."""
 
-    def List(*args):
-        return args
+    def parse(node):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+            raise ValueError("Invalid topology partition expression")
+        if node.keywords:
+            raise ValueError("Topology partition calls cannot have keywords")
 
-    structure = eval(partition)
+        name = node.func.id
+        if name == "List":
+            return tuple(parse(argument) for argument in node.args)
+        if name not in {"S", "F"} or len(node.args) != 1:
+            raise ValueError(f"Invalid topology partition constructor {name}")
+        argument = node.args[0]
+        if not isinstance(argument, ast.Constant) or type(argument.value) is not int:
+            raise ValueError("Topology leaf nodes must be integers")
+        return Leaf(name, argument.value)
 
-    # Take first element to simplify output but ensure not losing any info
-    return structure
+    return parse(ast.parse(partition, mode="eval").body)
 
 
 def eval_graph(graph: str):
     G = nx.Graph()
     for edge in graph.splitlines():
-        i, j = eval(edge)
+        i, j = ast.literal_eval(edge)
+        if type(i) is not int or type(j) is not int:
+            raise ValueError("Topology graph nodes must be integers")
         G.add_edge(i, j)
 
     return G

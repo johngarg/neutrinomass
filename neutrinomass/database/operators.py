@@ -748,9 +748,8 @@ def print_paper_table():
         "D22"
     ] = r"${\bar{e}^{\dagger}} {\bar{e}^{\dagger}} (DH)^{i} (DH)^{j} H^{k} H^{l}  \cdot  \epsilon_{i k} \epsilon_{j l}$"
 
-    models_dict = pickle.load(
-        open(os.path.join(os.path.dirname(__file__), "models.p"), "rb")
-    )
+    with open(os.path.join(os.path.dirname(__file__), "models.p"), "rb") as stream:
+        models_dict = pickle.load(stream)
     op_labels = set(models_dict.keys())
     filtered_dict = Counter(list(MVDF["op"]))
 

@@ -46,4 +46,18 @@ eb.charges["3b"] = 0
 ub.charges["3b"] = -1
 db.charges["3b"] = -1
 
-LNV_OPERATORS = {tuple([eval(field) for field in k]): v for k, v in BL_LIST.items()}
+_STANDARD_MODEL_FIELDS = {
+    field.label: field for field in (L, Q, eb, ub, db, H, G, Gb, W, Wb, B, Bb)
+}
+
+
+def _field_from_label(label):
+    if label.endswith(".conj"):
+        return _STANDARD_MODEL_FIELDS[label[:-5]].conj
+    return _STANDARD_MODEL_FIELDS[label]
+
+
+LNV_OPERATORS = {
+    tuple(_field_from_label(field) for field in labels): operator_number
+    for labels, operator_number in BL_LIST.items()
+}

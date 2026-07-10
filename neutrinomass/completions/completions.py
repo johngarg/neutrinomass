@@ -1024,7 +1024,7 @@ def partition_leaves(partition):
 
 
 def canonical_rooted_partitions(partition, graph):
-    """Reroot a recursive tree at every deterministic graph centre."""
+    """Reroot a recursive tree at every deterministic internal vertex."""
 
     leaves_by_node = {leaf.node: leaf for leaf in partition_leaves(partition)}
 
@@ -1036,9 +1036,9 @@ def canonical_rooted_partitions(partition, graph):
         )
         return tuple(rooted_branch(child, node) for child in children)
 
-    roots = sorted(nx.center(graph))
-    if any(root in leaves_by_node for root in roots):
-        raise ValueError("A completion tree cannot be rooted at an external leaf")
+    roots = sorted(node for node in graph if node not in leaves_by_node)
+    if not roots:
+        raise ValueError("A completion tree must have an internal vertex")
     return tuple(rooted_branch(root, None) for root in roots)
 
 

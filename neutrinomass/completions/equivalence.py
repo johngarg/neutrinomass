@@ -5,7 +5,7 @@
 from collections import Counter, OrderedDict
 
 import networkx as nx
-from sympy import sympify
+from sympy import Rational
 
 from neutrinomass.tensormethod.core import IndexedField
 
@@ -61,7 +61,7 @@ def _field_signature(field, label_mapping):
         label,
         field.dynkin,
         charges,
-        field.comm,
+        "fermi" if field.is_fermion else "bose",
         field.derivs,
     )
 
@@ -182,7 +182,7 @@ def _conjugated_field_signature(signature, self_conjugate_scalar=False):
     conjugated_label += "~" if is_dirac_partner else ""
     conjugated_dynkin = dynkin[1] + dynkin[0] + dynkin[3] + dynkin[2] + dynkin[4]
     conjugated_charges = tuple(
-        (name, str(-sympify(value))) for name, value in charges
+        (name, str(-Rational(value))) for name, value in charges
     )
     return (
         "field",

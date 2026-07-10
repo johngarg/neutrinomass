@@ -5,15 +5,45 @@
 from hashlib import sha256
 from typing import Iterable, Tuple
 
+import networkx as nx
+
 from neutrinomass.completions.core import Completion
-from neutrinomass.tensormethod.utils import safe_nocoeff
+from neutrinomass.completions.equivalence import (
+    conjugated_interaction_graph,
+    interaction_graph,
+)
 
 
 def interaction_fingerprint(term) -> str:
-    """Return an exact, coefficient-free tensor fingerprint for one interaction."""
+    """Return a stable structural hash of an interaction contraction graph.
 
-    canonical_term = term.fill_free_indices().safe_simplify()
-    return str(safe_nocoeff(canonical_term))
+    Exact equivalence decisions use graph isomorphism in ``equivalence.py``;
+    this collision-resistant digest is only a compact regression identifier.
+    """
+
+    def graph_hash(graph):
+        graph = graph.copy()
+        nx.set_node_attributes(
+            graph,
+            {
+                node: sha256(
+                    repr(data["signature"]).encode("utf-8")
+                ).hexdigest()
+                for node, data in graph.nodes(data=True)
+            },
+            "colour",
+        )
+        return nx.weisfeiler_lehman_graph_hash(
+            graph,
+            node_attr="colour",
+            iterations=max(3, graph.number_of_nodes()),
+            digest_size=32,
+        )
+
+    return min(
+        graph_hash(interaction_graph(term)),
+        graph_hash(conjugated_interaction_graph(term)),
+    )
 
 
 def democratic_model_fingerprint(completion: Completion) -> tuple:
@@ -23,7 +53,7 @@ def democratic_model_fingerprint(completion: Completion) -> tuple:
 
 
 def lagrangian_fingerprint(completion: Completion) -> Tuple[str, ...]:
-    """Return the sorted exact interaction fingerprints of a completion."""
+    """Return sorted structural interaction hashes for regression snapshots."""
 
     return tuple(sorted(interaction_fingerprint(term) for term in completion.terms))
 

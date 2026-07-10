@@ -1,12 +1,22 @@
 #!/usr/bin/env python3
 
 from pathlib import Path
+import pytest
 
 from neutrinomass.completions.topologies import (
     canonical_topology_name,
+    eval_graph,
+    eval_partition,
     get_topology_data,
     paper_topology_name,
 )
+
+
+def test_topology_parsers_reject_executable_input():
+    with pytest.raises(ValueError, match="Invalid topology partition"):
+        eval_partition("__import__('os').system('echo unsafe')")
+    with pytest.raises((ValueError, SyntaxError)):
+        eval_graph("__import__('os').system('echo unsafe')")
 
 
 def test_published_5s2f_topology_names():

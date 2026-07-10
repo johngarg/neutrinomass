@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 
+import pytest
+
 from neutrinomass.database.closures import *
+from neutrinomass.database.closures import _parse_component
 from neutrinomass.completions import EFF_OPERATORS, DERIV_EFF_OPERATORS
 from neutrinomass.database.utils import get_leading_mv, estimate_np_scale
 
@@ -14,6 +17,11 @@ yu = sympy.Symbol("yu")
 g2 = sympy.Symbol("g2")
 
 SEESAW = v ** 2 / Λ
+
+
+def test_component_parser_rejects_executable_input():
+    with pytest.raises(ValueError, match="Invalid field component"):
+        _parse_component("__import__('os').system('echo unsafe')")
 
 dGJ_RESULTS = {
     "1": SEESAW,

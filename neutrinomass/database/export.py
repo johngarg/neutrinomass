@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+"""Legacy executable export retained for trusted-data compatibility only."""
+
 from neutrinomass.completions.core import (
     Completion,
     DerivativeRoute,
