@@ -269,7 +269,7 @@ def test_quick_remove_equivalent_partitions_preserves_first_occurrence():
 
 
 def test_o9_completions():
-    assert operator_completions(EFF_OPERATORS["9"])
+    assert next(operator_completions(EFF_OPERATORS["9"]), None) is not None
 
 
 def test_deriv_completions():
@@ -589,7 +589,9 @@ def test_ibp():
                 model_dict[model].add(a)
                 model_dict[model].add(b)
 
-    return model_dict
+    represented_operators = set().union(*model_dict.values())
+    assert represented_operators == set(model_names)
+    assert all(len(names) >= 2 for names in model_dict.values())
 
 
 def test_symmetries():
@@ -647,7 +649,7 @@ def test_compare_terms():
     ]
 
     remapping = {"φ": "ω", "η": "φ", "ω": "η"}
-    return check_remapping_on_terms(terms_1, terms_2, remapping)
+    assert check_remapping_on_terms(terms_1, terms_2, remapping) == remapping
 
 
 def test_remove_duplicate_completions():

@@ -15,14 +15,14 @@ def export_tensor(tensor):
         # exotic field
         charges = {k: str(v) for k, v in tensor.charges.items()}
         kwargs = (
-            f"label='{tensor.label}'",
-            f"indices='{indices}'",
+            f"label={tensor.label!r}",
+            f"indices={indices!r}",
             f"symmetry={tensor.symmetry}",
             f"charges={charges}",
             f"nf={tensor.nf}",
-            f"dynkin='{tensor.dynkin}'",
-            f"comm='{tensor.comm}'",
-            f"latex='{tensor.latex}'",
+            f"dynkin={tensor.dynkin!r}",
+            f"comm={tensor.comm!r}",
+            f"latex={tensor.latex!r}",
             f"is_conj={tensor.is_conj}",
         )
 
@@ -46,16 +46,16 @@ def export_tensor(tensor):
 
             field = tensor.strip_derivs()
             label = field.label + (".conj" if tensor.is_conj else "")
-            return f"D({label}, '{dynkin_label}')('{indices}')"
+            return f"D({label}, {dynkin_label!r})({indices!r})"
 
         label = tensor.field.label + (".conj" if tensor.is_conj else "")
-        return f"{label}('{indices}')"
+        return f"{label}({indices!r})"
 
     if str(tensor).startswith("metric") or str(tensor).startswith("Eps"):
-        return f"eps('{indices}')"
+        return f"eps({indices!r})"
 
     if str(tensor).startswith("KD"):
-        return f"delta('{indices}')"
+        return f"delta({indices!r})"
 
     else:
         raise ValueError(f"Unrecognised tensor: {tensor}")
@@ -101,14 +101,15 @@ def export_terms(terms):
 
 
 def export_exotics(exotics: set):
-    return str(set([export_tensor(f) for f in exotics])).replace('"', "")
+    tensors = sorted(export_tensor(field) for field in exotics)
+    return "{" + ", ".join(tensors) + "}"
 
 
 def export_completion(c: Completion, lazy=True):
 
     name = c.operator.name
     op = export_operator(c.operator.operator)
-    eff_op = f"EffectiveOperator(name='{name}', operator={op})"
+    eff_op = f"EffectiveOperator(name={name!r}, operator={op})"
 
     graph = export_graph(c.graph)
     part = export_partition(c.partition)
@@ -132,12 +133,20 @@ def export_completion(c: Completion, lazy=True):
             plain_term.append(stringify_qns(f))
         plain_terms.append(tuple(plain_term))
 
-    head = (
-        "{'operator_name': '%s', 'quantum_numbers': %s, 'terms': %s, "
-        "'topology': '%s', 'canonical_topology': '%s'}"
-        % (name, str(quantum_numbers), str(plain_terms), topo, canonical_topo)
+    head = repr(
+        {
+            "operator_name": name,
+            "quantum_numbers": quantum_numbers,
+            "terms": plain_terms,
+            "topology": topo,
+            "canonical_topology": canonical_topo,
+        }
     )
-    completion_string = f"Completion(operator={eff_op}, partition={part}, graph={graph}, exotics={exotics}, terms={terms}, topology='{topo}', canonical_topology='{canonical_topo}', derivative_edges={derivative_edges})"
-    export_string = f"""LazyCompletion(head={head}, tail="{completion_string}")"""
+    completion_string = (
+        f"Completion(operator={eff_op}, partition={part}, graph={graph}, "
+        f"exotics={exotics}, terms={terms}, topology={topo!r}, "
+        f"canonical_topology={canonical_topo!r}, derivative_edges={derivative_edges})"
+    )
+    export_string = f"LazyCompletion(head={head}, tail={completion_string!r})"
 
     return export_string if lazy else completion_string
