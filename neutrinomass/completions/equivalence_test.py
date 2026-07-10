@@ -185,3 +185,12 @@ def test_graph_cache_preserves_custom_field_metadata():
     charged_term = charged * H("i1") * eps("-i0 -i1")
 
     assert not equivalent_lagrangians([neutral_term], [charged_term])
+
+
+def test_interactions_are_equivalent_to_their_hermitian_conjugates():
+    left = IndexedField("a", "u0", charges={"y": 1, "3b": 0})
+    right = IndexedField("b", "u1", charges={"y": -1, "3b": 0})
+    interaction = left * right * eps("-u0 -u1")
+    conjugate = left.conj * right.conj * eps("-d0 -d1")
+
+    assert equivalent_lagrangians([interaction], [conjugate])

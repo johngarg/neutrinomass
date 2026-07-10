@@ -324,9 +324,229 @@ def test_d20_routes_derivative_to_internal_fermion(monkeypatch):
         c for c in completions if tuple(sorted(c.exotic_info().values())) == expected
     ]
     assert matching
-    assert all(c.derivative_edges for c in matching)
+    assert all(len(c.derivative_edges) == 1 for c in matching)
+    assert all(len(c.derivative_routes) == 1 for c in matching)
     assert all(c.topology == "5s2f_3" for c in completions)
     assert all(c.canonical_topology == "5s2f_11" for c in completions)
+
+
+def test_derivative_routing_branches_and_is_order_independent(monkeypatch):
+    completions_module = import_module("neutrinomass.completions.completions")
+    topology_data = get_topology_data(5, 2)
+    topology_19 = [
+        data
+        for data in topology_data
+        if Path(data["partition_file"]).stem == "5s2f_19"
+    ]
+    monkeypatch.setattr(
+        completions_module, "get_topology_data", lambda **kwargs: topology_19
+    )
+
+    original_partitions = completions_module.partitions
+
+    def first_partition(operator, verbose=False):
+        return original_partitions(operator, verbose=verbose)[:1]
+
+    monkeypatch.setattr(completions_module, "partitions", first_partition)
+    baseline = completions_module.momentum_routed_completions(
+        DERIV_EFF_OPERATORS["D20"]
+    )
+
+    assert len(baseline) == 2
+    assert all(len(completion.derivative_routes) == 1 for completion in baseline)
+    assert all(len(completion.derivative_edges) == 1 for completion in baseline)
+    assert len({completion.derivative_edges[0] for completion in baseline}) == 2
+
+    original_candidates = completions_module.derivative_route_candidates
+    monkeypatch.setattr(
+        completions_module,
+        "derivative_route_candidates",
+        lambda fields: tuple(reversed(original_candidates(fields))),
+    )
+    reversed_candidates = completions_module.momentum_routed_completions(
+        DERIV_EFF_OPERATORS["D20"]
+    )
+
+    def reverse_children(partition):
+        if isinstance(partition, Leaf):
+            return partition
+        return tuple(reverse_children(branch) for branch in reversed(partition))
+
+    def rerooted_partition(operator, verbose=False):
+        partition = original_partitions(operator, verbose=verbose)[0]
+        roots = canonical_rooted_partitions(
+            partition["partition"], partition["graph"]
+        )
+        partition = dict(partition)
+        partition["partition"] = reverse_children(roots[-1])
+        return [partition]
+
+    monkeypatch.setattr(completions_module, "partitions", rerooted_partition)
+    rerooted = completions_module.momentum_routed_completions(
+        DERIV_EFF_OPERATORS["D20"]
+    )
+
+    for comparison in (reversed_candidates, rerooted):
+        assert all(
+            any(are_equivalent_completions(left, right) for right in comparison)
+            for left in baseline
+        )
+        assert all(
+            any(are_equivalent_completions(right, left) for left in baseline)
+            for right in comparison
+        )
+
+
+def test_derivative_routing_support_is_explicit():
+    supported = {
+        name
+        for name, operator in DERIV_EFF_OPERATORS.items()
+        if operator_strip_derivs(operator.operator)["n_derivs"] == 1
+        and unique_lorentz_completion_operator(operator) is not None
+    }
+    skipped = {
+        name
+        for name, operator in DERIV_EFF_OPERATORS.items()
+        if operator_strip_derivs(operator.operator)["n_derivs"] == 1
+        and unique_lorentz_completion_operator(operator) is None
+    }
+
+    assert supported == {
+        "D3",
+        "D5a",
+        "D5b",
+        "D5c",
+        "D5d",
+        "D10a",
+        "D10b",
+        "D10c",
+        "D20",
+    }
+    assert skipped == {
+        "D6a",
+        "D6b",
+        "D8a",
+        "D8b",
+        "D8c",
+        "D8d",
+        "D8e",
+        "D8f",
+        "D8g",
+        "D8h",
+        "D8i",
+        "D9a",
+        "D9b",
+        "D12a",
+        "D12b",
+        "D14a",
+        "D14b",
+        "D14c",
+        "D16a",
+        "D16b",
+        "D16c",
+        "D17",
+    }
+
+
+ROUTED_MODEL_CONTROLS = {
+    "D3": ("3s2f_3", {"F,00,1,1/2,0", "F,00,2,0,0"}),
+    "D5a": (
+        "2s4f_4",
+        {"F,00,2,0,0", "F,00,2,1,0", "S,00,2,1,0"},
+    ),
+    "D5b": (
+        "2s4f_4",
+        {"F,00,0,0,0", "F,00,0,1,0", "S,00,0,1,0"},
+    ),
+    "D5c": (
+        "2s4f_4",
+        {"F,00,2,0,0", "F,00,2,1,0", "S,00,2,1,0"},
+    ),
+    "D5d": (
+        "2s4f_4",
+        {"F,00,0,0,0", "F,00,2,1,0", "S,00,2,1,0"},
+    ),
+    "D10a": (
+        "2s4f_4",
+        {"F,00,2,0,0", "F,10,1,1/6,1", "S,10,1,1/6,1"},
+    ),
+    "D10b": (
+        "2s4f_4",
+        {"F,00,2,0,0", "F,10,1,1/6,1", "S,10,1,1/6,1"},
+    ),
+    "D10c": (
+        "2s4f_4",
+        {"F,00,2,1,0", "F,10,1,7/6,1", "S,10,1,1/6,1"},
+    ),
+    "D20": (
+        "5s2f_10",
+        {"F,00,2,0,0", "F,00,3,1/2,0", "S,00,3,3/2,0"},
+    ),
+}
+
+
+def completion_quantum_number_strings(completion):
+    quantum_numbers = set()
+    for lorentz, colour_up, colour_down, isospin, (_, baryon), (_, hypercharge) in (
+        completion.exotic_info().values()
+    ):
+        quantum_numbers.add(
+            f"{lorentz},{colour_up}{colour_down},{isospin},{hypercharge},{baryon}"
+        )
+    return quantum_numbers
+
+
+@pytest.mark.parametrize("operator_name", ROUTED_MODEL_CONTROLS)
+def test_supported_routing_has_physics_controls(operator_name, monkeypatch):
+    completions_module = import_module("neutrinomass.completions.completions")
+    topology, positive_model = ROUTED_MODEL_CONTROLS[operator_name]
+    operator = DERIV_EFF_OPERATORS[operator_name]
+    topology_data = [
+        data
+        for data in get_topology_data(**operator.topology_type)
+        if data["canonical_topology"] == topology
+    ]
+    monkeypatch.setattr(
+        completions_module, "get_topology_data", lambda **kwargs: topology_data
+    )
+
+    completions = completions_module.momentum_routed_completions(operator)
+    matching = [
+        completion
+        for completion in completions
+        if completion_quantum_number_strings(completion) == positive_model
+    ]
+
+    assert matching
+    assert all(len(completion.derivative_routes) == 1 for completion in matching)
+    assert all(
+        is_singlet(term)
+        and sum(field.mass_dim for field in term.fields) <= 4
+        for completion in matching
+        for term in completion.terms
+    )
+    for completion in matching:
+        route = completion.derivative_routes[0]
+        particle = completion.graph.edges[route.edge]["particle"]
+        assert base_exotic_label(particle) == base_exotic_label(
+            route.numerator_field
+        )
+
+    term = matching[0].terms[0]
+    field = term.indexed_fields[0]
+    shifted_charges = dict(field.charges)
+    shifted_charges["y"] += 1
+    non_singlet_field = IndexedField(
+        field.label,
+        " ".join(str(index) for index in field.indices),
+        charges=shifted_charges,
+        is_conj=field.is_conj,
+        comm=field.comm,
+    )
+    non_singlet = Operator(
+        *(non_singlet_field if tensor is field else tensor for tensor in term.tensors)
+    )
+    assert not is_singlet(non_singlet)
 
 
 def test_derivs_nlo_completions():

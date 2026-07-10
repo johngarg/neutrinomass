@@ -888,8 +888,8 @@ class IndexedField(tensor.Tensor, Field):
             return self
 
         field = self.strip_derivs()
-        undotted, dotted, colour, isospin, _ = self.indices_by_type.values()
-        indices = " ".join(str(i) for i in colour + isospin)
+        undotted, dotted, colour, isospin, generation = self.indices_by_type.values()
+        indices = " ".join(str(i) for i in colour + isospin + generation)
         lorentz = undotted + dotted
         if field.is_fermion and self.derivs % 2 == 0:
             lorentz = lorentz[0]

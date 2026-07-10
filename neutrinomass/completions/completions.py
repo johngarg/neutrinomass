@@ -25,6 +25,7 @@ from neutrinomass.tensormethod.utils import safe_nocoeff
 from neutrinomass.completions.equivalence import (
     equivalent_lagrangians,
     field_label_parts,
+    remapped_field_label,
 )
 from neutrinomass.completions.utils import (
     flatten,
@@ -35,6 +36,7 @@ from neutrinomass.completions.utils import (
 from neutrinomass.utils.functions import remove_equivalent, remove_equivalent_nopop
 from neutrinomass.completions.core import (
     Completion,
+    DerivativeRoute,
     Model,
     FailedCompletion,
     EffectiveOperator,
@@ -418,38 +420,77 @@ def differentiate_indexed_fermion(field: IndexedField) -> IndexedField:
     return derivative(" ".join(str(i) for i in indices))
 
 
-def route_derivative_to_internal_fermion(fields, derivative_state):
-    """Move one unresolved derivative to an internal fermion momentum.
+MAX_DERIVATIVE_ROUTE_CHOICES = 2
 
-    The derivative is preferentially placed on a non-exotic fermion.  This
-    leaves the existing ``process_derivative_term`` logic responsible for
-    selecting the appropriate conjugate/Dirac partner of the heavy fermion.
-    The state is consumed only after the resulting interaction is validated.
-    """
+
+def derivative_route_candidates(fields):
+    """Return a deterministic ordering of differentiable fermion fields."""
+
+    candidates = [field for field in fields if field.is_fermion and not field.derivs]
+    return sorted(
+        candidates,
+        key=lambda field: (
+            isinstance(field, FieldType),
+            field.label,
+            field.dynkin,
+            tuple(str(index) for index in field.indices),
+        ),
+    )
+
+
+def derivative_route_alternatives(fields):
+    """Return every admissible heavy-fermion numerator at a vector current."""
+
+    fields = tuple(fields)
+    if not is_vector_fermion_contraction(fields):
+        return ()
+
+    internal_fermions = tuple(
+        field
+        for field in fields
+        if isinstance(field, FieldType) and field.is_fermion
+    )
+    alternatives = []
+    selected_numerators = set()
+    for candidate in derivative_route_candidates(fields):
+        if isinstance(candidate, FieldType):
+            numerator = candidate
+        elif len(internal_fermions) == 1:
+            numerator = internal_fermions[0]
+        else:
+            continue
+
+        if numerator in selected_numerators:
+            continue
+
+        differentiated = differentiate_indexed_fermion(candidate)
+        routed_fields = tuple(
+            differentiated if field is candidate else field for field in fields
+        )
+        allowed, lorentz_epsilons = get_lorentz_epsilons(routed_fields)
+        if not allowed:
+            continue
+
+        selected_numerators.add(numerator)
+        alternatives.append(
+            (routed_fields, lorentz_epsilons, (numerator, candidate))
+        )
+
+    assert len(alternatives) <= MAX_DERIVATIVE_ROUTE_CHOICES
+    return tuple(alternatives)
+
+
+def route_derivative_to_internal_fermion(fields, derivative_state):
+    """Select one explicitly requested heavy-fermion momentum branch."""
 
     if derivative_state is None or derivative_state["remaining"] != 1:
         return None
 
-    fields = tuple(fields)
-    if not is_vector_fermion_contraction(fields):
+    alternatives = derivative_route_alternatives(fields)
+    route_choice = derivative_state.get("route_choice", 0)
+    if route_choice >= len(alternatives):
         return None
-
-    candidates = [f for f in fields if f.is_fermion and not f.derivs]
-    candidates.sort(key=lambda f: isinstance(f, FieldType))
-    internal_fermions = tuple(
-        f for f in fields if isinstance(f, FieldType) and f.is_fermion
-    )
-
-    for candidate in candidates:
-        differentiated = differentiate_indexed_fermion(candidate)
-        routed_fields = tuple(
-            differentiated if f is candidate else f for f in fields
-        )
-        allowed, lorentz_epsilons = get_lorentz_epsilons(routed_fields)
-        if allowed:
-            return routed_fields, lorentz_epsilons, internal_fermions
-
-    return None
+    return alternatives[route_choice]
 
 
 def prepare_lorentz_contraction(fields, derivative_state=None):
@@ -458,7 +499,7 @@ def prepare_lorentz_contraction(fields, derivative_state=None):
     fields = tuple(fields)
     allowed, lorentz_epsilons = get_lorentz_epsilons(fields)
     if allowed:
-        return fields, lorentz_epsilons, ()
+        return fields, lorentz_epsilons, None
 
     routed = route_derivative_to_internal_fermion(fields, derivative_state)
     if routed is not None:
@@ -467,24 +508,36 @@ def prepare_lorentz_contraction(fields, derivative_state=None):
     return None
 
 
-def consume_routed_derivative(derivative_state, internal_fermions):
-    """Consume a routed derivative and retain the fermion whose edge carried it."""
+def consume_routed_derivative(derivative_state, derivative_route):
+    """Consume a routed derivative after its interaction has been validated."""
 
-    if not internal_fermions:
+    if derivative_route is None:
         return
 
     derivative_state["remaining"] -= 1
-    derivative_state["pending_fermions"] += list(internal_fermions)
+    derivative_state["pending_route"] = derivative_route
 
 
 def record_routed_derivative_edges(derivative_state, edge_dict):
-    """Resolve routed heavy fermions to their graph edges."""
+    """Resolve one selected heavy fermion to its graph edge and metadata."""
 
-    for field in derivative_state["pending_fermions"]:
-        edge = edge_dict.get(field)
-        if edge is not None and edge not in derivative_state["edges"]:
-            derivative_state["edges"].append(edge)
-    derivative_state["pending_fermions"] = []
+    pending_route = derivative_state["pending_route"]
+    if pending_route is None:
+        return
+
+    numerator, differentiated_field = pending_route
+    edge = edge_dict.get(numerator)
+    assert edge is not None
+    derivative_state["routes"].append(
+        DerivativeRoute(
+            edge=edge,
+            numerator_field=numerator.label,
+            numerator_lorentz=numerator.dynkin[:2],
+            differentiated_field=differentiated_field.label,
+            differentiated_lorentz=differentiated_field.dynkin[:2],
+        )
+    )
+    derivative_state["pending_route"] = None
 
 
 def is_contracted_epsilon(eps: Tensor, indices: List[Index]) -> bool:
@@ -554,6 +607,16 @@ def check_singlet(operator: Operator, ignore=["3b"]) -> None:
     check_charges(operator, ignore=ignore)
     for free in operator.free_indices:
         assert free.index_type == "Generation"
+
+
+def is_singlet(operator: Operator, ignore=("3b",)) -> bool:
+    """Return whether an operator is a Lorentz and SM singlet."""
+
+    fields = [field for field in operator.tensors if isinstance(field, IndexedField)]
+    for charge in fields[0].charges:
+        if charge not in ignore and sum(field.charges[charge] for field in fields):
+            return False
+    return all(index.index_type == "Generation" for index in operator.free_indices)
 
 
 def exotic_field_and_term(
@@ -779,7 +842,7 @@ def contract(
         # Bad lorentz contraction
         return "Bad Lorentz contraction."
 
-    fields, lorentz_epsilons, routed_internal_fermions = prepared
+    fields, lorentz_epsilons, derivative_route = prepared
 
     # some gauge epsilons will be removed in the contraction, the others will
     # just watch
@@ -819,9 +882,11 @@ def contract(
         if no_deriv_maybe_term.safe_simplify() == 0:
             return f"Vanishing coupling at {maybe_term} after derivative processing."
 
+    if not is_singlet(no_deriv_maybe_term):
+        return f"Non-singlet coupling at {no_deriv_maybe_term}"
     check_singlet(no_deriv_maybe_term)
 
-    consume_routed_derivative(derivative_state, routed_internal_fermions)
+    consume_routed_derivative(derivative_state, derivative_route)
 
     return exotic, no_deriv_maybe_term, spectator_gauge_eps, lorentz_epsilons
 
@@ -919,7 +984,7 @@ def replace_and_mutate(
     exotic_edge = get_connecting_edge(graph, nodes)
     edge_dict[exotic_field] = exotic_edge
 
-    if derivative_state is not None and derivative_state["pending_fermions"]:
+    if derivative_state is not None and derivative_state["pending_route"] is not None:
         record_routed_derivative_edges(derivative_state, edge_dict)
 
     return Leaf(exotic_field, exotic_edge[0])
@@ -948,8 +1013,47 @@ def reduced_row(row, func):
     return func(tuple(map(lambda a: reduced_row(a, func), row)))
 
 
+def partition_leaves(partition):
+    """Return the external leaves in a recursive partition."""
+
+    if isinstance(partition, Leaf):
+        return (partition,)
+    return tuple(
+        leaf for branch in partition for leaf in partition_leaves(branch)
+    )
+
+
+def canonical_rooted_partitions(partition, graph):
+    """Reroot a recursive tree at every deterministic graph centre."""
+
+    leaves_by_node = {leaf.node: leaf for leaf in partition_leaves(partition)}
+
+    def rooted_branch(node, parent):
+        if node in leaves_by_node:
+            return leaves_by_node[node]
+        children = sorted(
+            neighbour for neighbour in graph.neighbors(node) if neighbour != parent
+        )
+        return tuple(rooted_branch(child, node) for child in children)
+
+    roots = sorted(nx.center(graph))
+    if any(root in leaves_by_node for root in roots):
+        raise ValueError("A completion tree cannot be rooted at an external leaf")
+    return tuple(rooted_branch(root, None) for root in roots)
+
+
+def canonical_rooted_partition(partition, graph):
+    """Return the first canonical rooting for single-result compatibility."""
+
+    return canonical_rooted_partitions(partition, graph)[0]
+
+
 def construct_completion(
-    partition, gauge_epsilons, graph, derivative_count=0
+    partition,
+    gauge_epsilons,
+    graph,
+    derivative_count=0,
+    derivative_route_choice=0,
 ) -> Union[str, tuple]:
     """Returns arguments needed to pass into Completion object contructor, or a
     string with the reason the completion failed.
@@ -958,8 +1062,9 @@ def construct_completion(
     lorentz_epsilons, terms, edge_dict, field_dict = [], [], {}, {}
     derivative_state = {
         "remaining": derivative_count,
-        "pending_fermions": [],
-        "edges": [],
+        "pending_route": None,
+        "routes": [],
+        "route_choice": derivative_route_choice,
     }
     more_fermion_symbols = ["f" + str(i) for i in range(10)]
     more_scalar_symbols = ["S" + str(i) for i in range(10)]
@@ -1000,7 +1105,7 @@ def construct_completion(
     if prepared is None:
         return "Bad Lorentz contraction."
 
-    fields, new_lorentz_epsilons, routed_internal_fermions = prepared
+    fields, new_lorentz_epsilons, derivative_route = prepared
     prod = reduce(lambda x, y: x * y, fields)
 
     _, eps_to_remove = separate_gauge_epsilons(fields, gauge_epsilons)
@@ -1030,23 +1135,28 @@ def construct_completion(
         if proc_term.safe_simplify() == 0:
             return f"Vanishing coupling at {prod} after derivative processing."
 
+    if not is_singlet(proc_term):
+        return f"Non-singlet coupling at {proc_term}"
+
     # make sure the term is a singlet
     check_singlet(proc_term)
 
     # append the processed term to terms
     terms.append(proc_term)
 
-    consume_routed_derivative(derivative_state, routed_internal_fermions)
+    consume_routed_derivative(derivative_state, derivative_route)
     record_routed_derivative_edges(derivative_state, edge_dict)
     if derivative_state["remaining"]:
         return "Unresolved derivative insertion."
+    if len(derivative_state["routes"]) != derivative_count:
+        return "Incorrect number of routed derivative insertions."
 
     return (
         terms,
         edge_dict,
         field_dict,
         lorentz_epsilons,
-        tuple(derivative_state["edges"]),
+        tuple(derivative_state["routes"]),
     )
 
 
@@ -1055,6 +1165,9 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
     part = partition["partition"]
     gauge_epsilons = partition["epsilons"]
     graph = partition["graph"]
+    derivative_count = partition.get("derivative_count", 0)
+    if derivative_count and not partition.get("derivative_partition_is_canonical"):
+        part = canonical_rooted_partition(part, graph)
     op = partition["operator"]
     topo = partition["topology"]
     canonical_topo = partition.get("canonical_topology", topo)
@@ -1064,10 +1177,11 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
         part,
         gauge_epsilons,
         graph,
-        derivative_count=partition.get("derivative_count", 0),
+        derivative_count=derivative_count,
+        derivative_route_choice=partition.get("derivative_route_choice", 0),
     )
     if not isinstance(args, str):
-        terms, edge_dict, field_dict, lorentz_epsilons, derivative_edges = args
+        terms, edge_dict, field_dict, lorentz_epsilons, derivative_routes = args
     else:
         return FailedCompletion(args)
 
@@ -1090,7 +1204,7 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
         terms=terms,
         topology=topo,
         canonical_topology=canonical_topo,
-        derivative_edges=derivative_edges,
+        derivative_routes=derivative_routes,
     )
 
 
@@ -1218,7 +1332,7 @@ def oriented_exotic_mappings(comp1, comp2, remapping):
     for source_label in source_labels:
         target_label = remapping[source_label]
         is_dirac = species1[source_label][0] == "dirac_fermion"
-        options = []
+        options = [(target_label, False, False)]
         for conjugate_flip in (False, True):
             for dirac_flip in ((False, True) if is_dirac else (False,)):
                 remapped_occurrences = Counter()
@@ -1231,9 +1345,9 @@ def oriented_exotic_mappings(comp1, comp2, remapping):
                     )
                     remapped_occurrences[remapped_signature] += multiplicity
                 if remapped_occurrences == occurrences2[target_label]:
-                    options.append((target_label, conjugate_flip, dirac_flip))
-        if not options:
-            return
+                    option = (target_label, conjugate_flip, dirac_flip)
+                    if option not in options:
+                        options.append(option)
         orientation_groups.append(options)
 
     for orientations in product(*orientation_groups):
@@ -1273,6 +1387,27 @@ def exotic_label_bijections(comp1: Completion, comp2: Completion):
         yield mapping
 
 
+def derivative_routes_equivalent(comp1, comp2, oriented_remapping):
+    """Compare explicit numerator choices under an exotic-field relabelling."""
+
+    routes1 = getattr(comp1, "derivative_routes", ())
+    routes2 = getattr(comp2, "derivative_routes", ())
+    if not routes1 or not routes2:
+        return True
+    if len(routes1) != len(routes2):
+        return False
+
+    def route_signature(route, label_mapping):
+        mapped_label = remapped_field_label(route.numerator_field, label_mapping)
+        return field_label_parts(mapped_label)[0]
+
+    signatures1 = Counter(
+        route_signature(route, oriented_remapping) for route in routes1
+    )
+    signatures2 = Counter(route_signature(route, {}) for route in routes2)
+    return signatures1 == signatures2
+
+
 def compare_terms(comp1: Completion, comp2: Completion) -> Dict[str, str]:
     """Returns a dictionary representing the field relabellings that would need to
     be applied to the terms of comp1 to make it equivalent to comp2. This
@@ -1290,6 +1425,8 @@ def compare_terms(comp1: Completion, comp2: Completion) -> Dict[str, str]:
         for oriented_remapping in oriented_exotic_mappings(comp1, comp2, remapping):
             if equivalent_lagrangians(
                 comp1.terms, comp2.terms, oriented_remapping
+            ) and derivative_routes_equivalent(
+                comp1, comp2, oriented_remapping
             ):
                 return remapping
 
@@ -1482,11 +1619,23 @@ def momentum_routed_completions(
     )
     routed = []
     for partition in partitions(stripped_operator, verbose=verbose):
-        partition["completion_operator"] = completion_operator
-        partition["derivative_count"] = n_derivs
-        completion = partition_completion(partition)
-        if not isinstance(completion, FailedCompletion):
-            routed.append(completion)
+        partition_branches = []
+        rooted_partitions = canonical_rooted_partitions(
+            partition["partition"], partition["graph"]
+        )
+        for rooted_partition in rooted_partitions:
+            for route_choice in range(MAX_DERIVATIVE_ROUTE_CHOICES):
+                branch = dict(partition)
+                branch["partition"] = rooted_partition
+                branch["graph"] = deepcopy(partition["graph"])
+                branch["completion_operator"] = completion_operator
+                branch["derivative_count"] = n_derivs
+                branch["derivative_route_choice"] = route_choice
+                branch["derivative_partition_is_canonical"] = True
+                completion = partition_completion(branch)
+                if not isinstance(completion, FailedCompletion):
+                    append_unique_completions(partition_branches, [completion])
+        routed.extend(partition_branches)
 
     return routed
 

@@ -3,7 +3,7 @@
 """Core classes and functions for completions code."""
 
 import sys
-from typing import Dict
+from typing import Dict, NamedTuple, Tuple
 from copy import deepcopy
 
 from functools import reduce
@@ -403,6 +403,16 @@ class FailedCompletion:
         self.reason = reason
 
 
+class DerivativeRoute(NamedTuple):
+    """The heavy-fermion numerator selected for one routed derivative."""
+
+    edge: Tuple[int, int]
+    numerator_field: str
+    numerator_lorentz: str
+    differentiated_field: str
+    differentiated_lorentz: str
+
+
 class Completion:
     def __init__(
         self,
@@ -414,6 +424,7 @@ class Completion:
         topology=None,
         canonical_topology=None,
         derivative_edges=None,
+        derivative_routes=None,
     ):
         self.operator = operator
         self.partition = partition
@@ -422,7 +433,15 @@ class Completion:
         self.terms = terms
         self.topology = topology
         self.canonical_topology = canonical_topology or topology
-        self.derivative_edges = tuple(derivative_edges or ())
+        self.derivative_routes = tuple(
+            route if isinstance(route, DerivativeRoute) else DerivativeRoute(*route)
+            for route in (derivative_routes or ())
+        )
+        route_edges = tuple(route.edge for route in self.derivative_routes)
+        supplied_edges = tuple(derivative_edges or ())
+        if route_edges and supplied_edges and route_edges != supplied_edges:
+            raise ValueError("Derivative routes and derivative edges disagree")
+        self.derivative_edges = route_edges or supplied_edges
 
     def __eq__(self, other):
         if not isinstance(other, Completion):
@@ -447,6 +466,7 @@ class Completion:
             topology=self.topology,
             canonical_topology=self.canonical_topology,
             derivative_edges=deepcopy(self.derivative_edges, memo),
+            derivative_routes=deepcopy(self.derivative_routes, memo),
         )
 
     @property

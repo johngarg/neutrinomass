@@ -5,6 +5,7 @@
 from collections import Counter, OrderedDict
 
 import networkx as nx
+from sympy import sympify
 
 from neutrinomass.tensormethod.core import IndexedField
 
@@ -70,6 +71,14 @@ def _invariant_signature(invariant):
     return "invariant", head, len(invariant.indices)
 
 
+def _set_coarse_key(graph):
+    node_counts = Counter(
+        (data["signature"], graph.degree[node])
+        for node, data in graph.nodes(data=True)
+    )
+    graph.graph["coarse_key"] = tuple(sorted(node_counts.items(), key=repr))
+
+
 def _mapping_items(label_mapping):
     return tuple(
         (source_label, *_normalise_relabeling(relabeling))
@@ -133,11 +142,7 @@ def _interaction_graph(term, mapping_items) -> nx.Graph:
             graph.add_edge(factor_node, port_node)
             graph.add_edge(port_node, index_node)
 
-    node_counts = Counter(
-        (data["signature"], graph.degree[node])
-        for node, data in graph.nodes(data=True)
-    )
-    graph.graph["coarse_key"] = tuple(sorted(node_counts.items(), key=repr))
+    _set_coarse_key(graph)
     _GRAPH_CACHE[cache_key] = (term, graph)
     if len(_GRAPH_CACHE) > _GRAPH_CACHE_MAXSIZE:
         _GRAPH_CACHE.popitem(last=False)
@@ -157,6 +162,79 @@ def interaction_graph(term, label_mapping=None) -> nx.Graph:
 
 _GRAPH_CACHE_MAXSIZE = 50_000
 _GRAPH_CACHE = OrderedDict()
+
+
+def _conjugated_index_type(index_type):
+    if index_type == "Undotted":
+        return "Dotted"
+    if index_type == "Dotted":
+        return "Undotted"
+    return index_type
+
+
+def _conjugated_field_signature(signature, self_conjugate_scalar=False):
+    _, label, dynkin, charges, comm, derivs = signature
+    base_label, is_conjugate, is_dirac_partner = field_label_parts(label)
+    if self_conjugate_scalar:
+        conjugated_label = base_label
+    else:
+        conjugated_label = base_label + ("" if is_conjugate else "†")
+    conjugated_label += "~" if is_dirac_partner else ""
+    conjugated_dynkin = dynkin[1] + dynkin[0] + dynkin[3] + dynkin[2] + dynkin[4]
+    conjugated_charges = tuple(
+        (name, str(-sympify(value))) for name, value in charges
+    )
+    return (
+        "field",
+        conjugated_label,
+        conjugated_dynkin,
+        conjugated_charges,
+        comm,
+        derivs,
+    )
+
+
+def conjugated_interaction_graph(term):
+    """Return the graph of an interaction's implicit Hermitian conjugate."""
+
+    cache_key = (id(term), "conjugate")
+    cached = _GRAPH_CACHE.get(cache_key)
+    if cached is not None and cached[0] is term:
+        _GRAPH_CACHE.move_to_end(cache_key)
+        return cached[1]
+
+    graph = interaction_graph(term).copy()
+    tensors = [tensor for tensor in term.tensors if hasattr(tensor, "indices")]
+    real_scalar_factors = {
+        ("factor", factor_number)
+        for factor_number, tensor in enumerate(tensors)
+        if tensor.__class__.__name__ == "RealScalar"
+    }
+    for node, data in graph.nodes(data=True):
+        signature = data["signature"]
+        if signature[0] == "field":
+            data["signature"] = _conjugated_field_signature(
+                signature, node in real_scalar_factors
+            )
+        elif signature[0] == "port":
+            _, index_type, is_up = signature
+            data["signature"] = (
+                "port",
+                _conjugated_index_type(index_type),
+                not is_up if index_type == "Colour" else is_up,
+            )
+        elif signature[0] == "index":
+            _, index_type, status = signature
+            data["signature"] = (
+                "index",
+                _conjugated_index_type(index_type),
+                status,
+            )
+    _set_coarse_key(graph)
+    _GRAPH_CACHE[cache_key] = (term, graph)
+    if len(_GRAPH_CACHE) > _GRAPH_CACHE_MAXSIZE:
+        _GRAPH_CACHE.popitem(last=False)
+    return graph
 
 
 _NODE_MATCH = nx.algorithms.isomorphism.categorical_node_match("signature", None)
@@ -185,15 +263,20 @@ def equivalent_lagrangians(terms1, terms2, label_mapping=None) -> bool:
     candidate_matches.add_nodes_from(right_nodes, bipartite=1)
 
     left_graphs = [interaction_graph(term, label_mapping) for term in terms1]
-    right_graphs = [interaction_graph(term) for term in terms2]
+    right_graphs = [
+        (interaction_graph(term), conjugated_interaction_graph(term))
+        for term in terms2
+    ]
     for left_number, left_graph in enumerate(left_graphs):
-        for right_number, right_graph in enumerate(right_graphs):
-            if left_graph.graph["coarse_key"] != right_graph.graph["coarse_key"]:
-                continue
-            if nx.is_isomorphic(left_graph, right_graph, node_match=_NODE_MATCH):
-                candidate_matches.add_edge(
-                    ("left", left_number), ("right", right_number)
-                )
+        for right_number, alternatives in enumerate(right_graphs):
+            for right_graph in alternatives:
+                if left_graph.graph["coarse_key"] != right_graph.graph["coarse_key"]:
+                    continue
+                if nx.is_isomorphic(left_graph, right_graph, node_match=_NODE_MATCH):
+                    candidate_matches.add_edge(
+                        ("left", left_number), ("right", right_number)
+                    )
+                    break
 
     matching = nx.algorithms.bipartite.maximum_matching(
         candidate_matches, top_nodes=left_nodes

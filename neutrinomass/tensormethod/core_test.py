@@ -109,8 +109,10 @@ def test_strip_derivs():
     from neutrinomass.tensormethod.sm import Q, H
     from neutrinomass.tensormethod.core import D
 
-    stripped_q = D(D(Q, "01"), "10")("u0 c0 i0").strip_derivs_with_indices()
-    expected_q = Q("u0 c0 i0")
+    stripped_q = D(D(Q, "01"), "10")(
+        "u0 c0 i0 g0"
+    ).strip_derivs_with_indices()
+    expected_q = Q("u0 c0 i0 g0")
     assert stripped_q.label == expected_q.label
     assert stripped_q.indices == expected_q.indices
     assert stripped_q.charges == expected_q.charges

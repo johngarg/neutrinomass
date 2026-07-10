@@ -6,6 +6,7 @@ from neutrinomass.completions.topologies import Leaf
 from neutrinomass.completions.core import (
     EffectiveOperator,
     Completion,
+    DerivativeRoute,
     cons_completion_field,
 )
 from neutrinomass.utils.functions import conjugate_field, conjugate_term
