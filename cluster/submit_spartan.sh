@@ -33,8 +33,12 @@ priority4_submit_spartan() (
     fi
 
     source "${repo_root}/cluster/load_spartan.sh"
-    python_cmd="${repo_root}/.venv/bin/python"
+    python_cmd="${NEUTRINOMASS_PYTHON:-${repo_root}/.venv/bin/python}"
     if [[ ! -x "${python_cmd}" ]]; then
+        if [[ -n "${NEUTRINOMASS_PYTHON:-}" ]]; then
+            echo "Configured Python is not executable: ${python_cmd}" >&2
+            return 2
+        fi
         python3 -m venv "${repo_root}/.venv"
         "${python_cmd}" -m pip install --upgrade pip
         "${python_cmd}" -m pip install -r "${repo_root}/requirements-test.lock"

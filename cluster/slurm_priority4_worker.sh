@@ -8,7 +8,7 @@ output_root="${NEUTRINOMASS_OUTPUT_ROOT:?NEUTRINOMASS_OUTPUT_ROOT is required}"
 legacy_dir="${NEUTRINOMASS_LEGACY_DIR:?NEUTRINOMASS_LEGACY_DIR is required}"
 
 source "${repo_root}/cluster/load_spartan.sh"
-python_cmd="${repo_root}/.venv/bin/python"
+python_cmd="${NEUTRINOMASS_PYTHON:-${repo_root}/.venv/bin/python}"
 if [[ ! -x "${python_cmd}" ]]; then
     echo "Missing cluster environment: ${python_cmd}" >&2
     exit 2

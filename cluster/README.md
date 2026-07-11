@@ -7,6 +7,11 @@ legacy `raw_completions/` directory beside the repository, and run:
 source cluster/submit_spartan.sh
 ```
 
+An already prepared Python environment can be selected with
+`NEUTRINOMASS_PYTHON=/absolute/path/to/python`. Set
+`NEUTRINOMASS_SKIP_MODULES=1` only when that environment does not require a
+Spartan Python module.
+
 That one command creates `.venv` when needed, verifies the 243-file legacy
 inventory, writes a 486-task manifest (243 operators times two hash seeds),
 submits a throttled Slurm array, and submits an `afterok` finalizer. Each array
