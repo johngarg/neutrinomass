@@ -15,7 +15,12 @@ from neutrinomass.completions.core import (
     RealScalar,
     VectorLikeDiracFermion,
 )
-from neutrinomass.completions.equivalence import equivalent_lagrangians
+from neutrinomass.completions.equivalence import (
+    _GRAPH_CACHE,
+    clear_interaction_graph_cache,
+    equivalent_lagrangians,
+    interaction_graph,
+)
 from neutrinomass.completions.operators import EFF_OPERATORS
 from neutrinomass.tensormethod import H, L, eps
 from neutrinomass.tensormethod.core import IndexedField
@@ -185,6 +190,16 @@ def test_graph_cache_preserves_custom_field_metadata():
     charged_term = charged * H("i1") * eps("-i0 -i1")
 
     assert not equivalent_lagrangians([neutral_term], [charged_term])
+
+
+def test_graph_cache_can_be_released_between_workloads():
+    term = H("i0") * H.conj("i1") * eps("-i0 -i1")
+    interaction_graph(term)
+    assert _GRAPH_CACHE
+
+    clear_interaction_graph_cache()
+
+    assert not _GRAPH_CACHE
 
 
 def test_equivalence_ignores_free_generation_labels():

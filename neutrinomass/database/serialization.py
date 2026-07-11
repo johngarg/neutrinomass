@@ -335,6 +335,14 @@ def write_completion_jsonl(path, completions):
 
 
 def read_completion_jsonl(path):
+    return list(iter_completion_jsonl(path))
+
+
+def iter_completion_jsonl(path):
+    """Yield completions from a JSONL artifact without retaining the full file."""
+
     path = Path(path)
     with path.open("r", encoding="utf-8") as stream:
-        return [loads_completion(line) for line in stream if line.strip()]
+        for line in stream:
+            if line.strip():
+                yield loads_completion(line)

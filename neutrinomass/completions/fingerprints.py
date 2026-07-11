@@ -88,7 +88,13 @@ def completion_fingerprint(completion: Completion) -> tuple:
 def completion_digest(completions: Iterable[Completion]) -> str:
     """Hash a completion multiset without depending on generation order."""
 
-    payload = "\n".join(
-        sorted(repr(completion_fingerprint(completion)) for completion in completions)
+    return completion_fingerprint_digest(
+        completion_fingerprint(completion) for completion in completions
     )
+
+
+def completion_fingerprint_digest(fingerprints: Iterable[tuple]) -> str:
+    """Hash precomputed completion fingerprints without retaining completions."""
+
+    payload = "\n".join(sorted(repr(fingerprint) for fingerprint in fingerprints))
     return sha256(payload.encode()).hexdigest()

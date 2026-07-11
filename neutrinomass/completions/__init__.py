@@ -8,6 +8,7 @@ from .completions import (
     collect_models,
     filter_completions,
     deriv_operator_completions,
+    exact_completions,
 )
 
 from .operators import EFF_OPERATORS, DERIV_EFF_OPERATORS

@@ -13,6 +13,7 @@ import networkx as nx
 from importlib import import_module
 from pathlib import Path
 from collections import Counter, defaultdict
+from types import SimpleNamespace
 import os
 import subprocess
 import sys
@@ -156,6 +157,20 @@ def test_completion_is_hashable():
     completion = next(operator_completions(EFF_OPERATORS["1"]))
 
     assert isinstance(hash(completion), int)
+
+
+def test_exact_completion_mode_matches_raw_equivalence_classes():
+    raw = list(operator_completions(EFF_OPERATORS["1"]))
+    expected = []
+    append_unique_completions(expected, raw)
+
+    exact = exact_completions(EFF_OPERATORS["1"])
+
+    assert len(exact) == len(expected)
+    assert all(
+        any(are_equivalent_completions(left, right) for right in exact)
+        for left in expected
+    )
 
 
 def test_completions_dispatches_on_derivatives(monkeypatch):
@@ -465,6 +480,27 @@ def test_derivative_rerooting_enumerates_every_internal_vertex():
     )
 
 
+def test_derivative_route_choice_count_uses_fermion_parity():
+    scalar = SimpleNamespace(is_fermion=False)
+    fermion = SimpleNamespace(is_fermion=True)
+
+    no_internal_fermion = (Leaf(fermion, 0), Leaf(fermion, 1), Leaf(scalar, 2))
+    one_internal_fermion = (
+        (Leaf(fermion, 0), Leaf(scalar, 1)),
+        Leaf(fermion, 2),
+        Leaf(scalar, 3),
+    )
+    two_internal_fermions = (
+        (Leaf(fermion, 0), Leaf(scalar, 1)),
+        (Leaf(fermion, 2), Leaf(scalar, 3)),
+        Leaf(scalar, 4),
+    )
+
+    assert derivative_route_choice_count(no_internal_fermion) == 0
+    assert derivative_route_choice_count(one_internal_fermion) == 1
+    assert derivative_route_choice_count(two_internal_fermions) == 2
+
+
 def test_derivative_routing_support_is_explicit():
     supported = {
         name
@@ -641,6 +677,10 @@ def test_d3_full_census_baseline_is_stable():
     assert completion_digest(unique) == (
         "db7f3b19d4a595b62bf008a98829030e9ae44c199764c70217bba39fb4db7ebf"
     )
+
+    canonical = exact_completions(DERIV_EFF_OPERATORS["D3"])
+    assert len(canonical) == len(unique)
+    assert completion_digest(canonical) == completion_digest(unique)
 
 
 ROUTED_MODEL_CONTROLS = {

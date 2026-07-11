@@ -3,6 +3,7 @@
 """Exact contraction-graph comparisons for completion interactions."""
 
 from collections import Counter, OrderedDict
+import weakref
 
 import networkx as nx
 from sympy import Rational
@@ -96,7 +97,7 @@ def _interaction_graph(term, mapping_items) -> nx.Graph:
 
     cache_key = (id(term), mapping_items)
     cached = _GRAPH_CACHE.get(cache_key)
-    if cached is not None and cached[0] is term:
+    if cached is not None and cached[0]() is term:
         _GRAPH_CACHE.move_to_end(cache_key)
         return cached[1]
 
@@ -151,9 +152,7 @@ def _interaction_graph(term, mapping_items) -> nx.Graph:
             graph.add_edge(port_node, index_node)
 
     _set_coarse_key(graph)
-    _GRAPH_CACHE[cache_key] = (term, graph)
-    if len(_GRAPH_CACHE) > _GRAPH_CACHE_MAXSIZE:
-        _GRAPH_CACHE.popitem(last=False)
+    _cache_interaction_graph(cache_key, term, graph)
     return graph
 
 
@@ -170,6 +169,23 @@ def interaction_graph(term, label_mapping=None) -> nx.Graph:
 
 _GRAPH_CACHE_MAXSIZE = 50_000
 _GRAPH_CACHE = OrderedDict()
+
+
+def _cache_interaction_graph(cache_key, term, graph):
+    def expire(term_reference):
+        cached = _GRAPH_CACHE.get(cache_key)
+        if cached is not None and cached[0] is term_reference:
+            _GRAPH_CACHE.pop(cache_key, None)
+
+    _GRAPH_CACHE[cache_key] = (weakref.ref(term, expire), graph)
+    if len(_GRAPH_CACHE) > _GRAPH_CACHE_MAXSIZE:
+        _GRAPH_CACHE.popitem(last=False)
+
+
+def clear_interaction_graph_cache():
+    """Release cached NetworkX graphs between independent workloads."""
+
+    _GRAPH_CACHE.clear()
 
 
 def _conjugated_index_type(index_type):
@@ -207,7 +223,7 @@ def conjugated_interaction_graph(term):
 
     cache_key = (id(term), "conjugate")
     cached = _GRAPH_CACHE.get(cache_key)
-    if cached is not None and cached[0] is term:
+    if cached is not None and cached[0]() is term:
         _GRAPH_CACHE.move_to_end(cache_key)
         return cached[1]
 
@@ -239,9 +255,7 @@ def conjugated_interaction_graph(term):
                 status,
             )
     _set_coarse_key(graph)
-    _GRAPH_CACHE[cache_key] = (term, graph)
-    if len(_GRAPH_CACHE) > _GRAPH_CACHE_MAXSIZE:
-        _GRAPH_CACHE.popitem(last=False)
+    _cache_interaction_graph(cache_key, term, graph)
     return graph
 
 

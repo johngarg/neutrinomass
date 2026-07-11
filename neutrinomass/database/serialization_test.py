@@ -18,6 +18,7 @@ from neutrinomass.database.serialization import (
     completion_from_record,
     completion_to_record,
     dumps_completion,
+    iter_completion_jsonl,
     loads_completion,
     operator_from_data,
     operator_to_data,
@@ -106,8 +107,12 @@ def test_completion_jsonl_round_trip(tmp_path):
 
     write_completion_jsonl(path, completions)
     restored = read_completion_jsonl(path)
+    streamed = list(iter_completion_jsonl(path))
 
     assert [completion_fingerprint(item) for item in restored] == [
+        completion_fingerprint(item) for item in completions
+    ]
+    assert [completion_fingerprint(item) for item in streamed] == [
         completion_fingerprint(item) for item in completions
     ]
 

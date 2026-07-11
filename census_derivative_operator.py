@@ -6,6 +6,7 @@ import argparse
 from collections import Counter, defaultdict
 from functools import reduce
 from hashlib import sha256
+from itertools import zip_longest
 import json
 from math import pi
 from operator import mul
@@ -22,16 +23,17 @@ from neutrinomass.completions.completions import (
     is_singlet,
 )
 from neutrinomass.completions.fingerprints import (
-    completion_digest,
     completion_fingerprint,
+    completion_fingerprint_digest,
     democratic_model_fingerprint,
 )
+from neutrinomass.completions.equivalence import clear_interaction_graph_cache
 from neutrinomass.completions.operators import DERIV_EFF_OPERATORS
 from neutrinomass.database import (
     MVDF,
     neutrino_mass_estimate,
     numerical_np_scale_estimate,
-    read_completion_jsonl,
+    iter_completion_jsonl,
     read_completions,
     write_completion_jsonl,
 )
@@ -118,22 +120,35 @@ def validate_physics(completions):
 
 
 def verify_round_trip(path, expected):
-    restored = read_completion_jsonl(path)
-    if [completion_fingerprint(item) for item in restored] != [
-        completion_fingerprint(item) for item in expected
-    ]:
-        raise ValueError(f"fingerprint changed across JSONL round trip: {path}")
-    if any(
-        not are_equivalent_completions(left, right)
-        for left, right in zip(expected, restored)
+    sentinel = object()
+    restored_fingerprints = []
+    clear_interaction_graph_cache()
+    for left, right in zip_longest(
+        expected, iter_completion_jsonl(path), fillvalue=sentinel
     ):
-        raise ValueError(f"equivalence changed across JSONL round trip: {path}")
-    if any(
-        left.derivative_routes != right.derivative_routes
-        for left, right in zip(expected, restored)
-    ):
-        raise ValueError(f"route metadata changed across JSONL round trip: {path}")
-    return restored
+        try:
+            if left is sentinel or right is sentinel:
+                raise ValueError(
+                    f"record count changed across JSONL round trip: {path}"
+                )
+            left_fingerprint = completion_fingerprint(left)
+            right_fingerprint = completion_fingerprint(right)
+            if left_fingerprint != right_fingerprint:
+                raise ValueError(
+                    f"fingerprint changed across JSONL round trip: {path}"
+                )
+            if not are_equivalent_completions(left, right):
+                raise ValueError(
+                    f"equivalence changed across JSONL round trip: {path}"
+                )
+            if left.derivative_routes != right.derivative_routes:
+                raise ValueError(
+                    f"route metadata changed across JSONL round trip: {path}"
+                )
+            restored_fingerprints.append(right_fingerprint)
+        finally:
+            clear_interaction_graph_cache()
+    return completion_fingerprint_digest(restored_fingerprints)
 
 
 def filter_models(operator, completions):
@@ -205,8 +220,8 @@ def run(operator_name, historical_path, output_dir):
     unique_path = output_dir / f"op_{operator_name}_remediated_unique.jsonl"
     write_completion_jsonl(raw_path, raw)
     write_completion_jsonl(unique_path, unique)
-    restored_raw = verify_round_trip(raw_path, raw)
-    restored_unique = verify_round_trip(unique_path, unique)
+    restored_raw_digest = verify_round_trip(raw_path, raw)
+    restored_unique_digest = verify_round_trip(unique_path, unique)
 
     scale, survivors = filter_models(operator, unique)
     routed_raw = [item for item in raw if item.derivative_routes]
@@ -243,8 +258,8 @@ def run(operator_name, historical_path, output_dir):
             "survivors": survivors,
         },
         "completion_digests": {
-            "generator": completion_digest(restored_raw),
-            "exact_classes": completion_digest(restored_unique),
+            "generator": restored_raw_digest,
+            "exact_classes": restored_unique_digest,
         },
         "artifacts": {
             "generator": {

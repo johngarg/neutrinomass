@@ -100,6 +100,14 @@ Models generating the Weinberg at tree-level can then be found with the
 #+BEGIN_SRC python
 >>> seesaw_1, seesaw_2, seesaw_3 = clean_completions(operator_completions(eff_o1))
 #+END_SRC
+Raw generation preserves every furnished completion record.  When only exact
+UV-Lagrangian classes are required, =exact_completions= removes isomorphic
+furnished diagrams before symbolic construction and applies exact contraction-
+graph equivalence afterward:
+#+BEGIN_SRC python
+>>> from neutrinomass.completions import exact_completions
+>>> seesaw_1, seesaw_2, seesaw_3 = exact_completions(eff_o1)
+#+END_SRC
 Each =Completion= object has an associated =Lagrangian=, which contains
 information about the lepton-number violating interaction terms, and can be
 called upon to generate the entire gauge and Lorentz invariant renormalisable

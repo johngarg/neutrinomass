@@ -34,7 +34,7 @@ from neutrinomass.completions.utils import (
     factors,
     allowed_lor_dyn,
 )
-from neutrinomass.utils.functions import remove_equivalent, remove_equivalent_nopop
+from neutrinomass.utils.functions import remove_equivalent
 from neutrinomass.completions.core import (
     Completion,
     DerivativeRoute,
@@ -131,7 +131,7 @@ def distribute_fields(fields, partition):
 
     """
     perms = permutations(fields)
-    parts = [replace_fields(fields, partition) for fields in perms]
+    parts = (replace_fields(permutation, partition) for permutation in perms)
     return quick_remove_equivalent_partitions(parts)
 
 
@@ -235,14 +235,13 @@ def partitions(operator: EffectiveOperator, verbose=False) -> List[dict]:
 
     out = []
     counter = 1
+    fields_and_counters = indexed_fields_with_counters(operator.operator)
+    fields = list(fields_and_counters)
     for topology_data in topology_data_list:
         if verbose:
             print(f"Furnishing topology {counter}...")
             counter += 1
 
-        # return counters as well for isomorphism filtering
-        fields_and_counters = indexed_fields_with_counters(operator.operator)
-        fields = [f for f, i in fields_and_counters.items()]
         perms = distribute_fields(fields, topology_data["partition"])
         for op in colour_ops:
             # col_out = []
@@ -293,7 +292,26 @@ def remove_isomorphic(partitions: List[dict]) -> List[dict]:
     isomorphic graphs (by side effect) to reduce double-ups of completions.
 
     """
-    return remove_equivalent_nopop(partitions, are_equivalent_partitions)
+    retained = []
+    by_coarse_key = defaultdict(list)
+    for partition in partitions:
+        graph = partition["graph"]
+        edge_particles = Counter(
+            nx.get_edge_attributes(graph, "particle").values()
+        )
+        coarse_key = (
+            partition.get("canonical_topology", partition.get("topology")),
+            tuple(sorted(dict(graph.degree()).values())),
+            tuple(sorted(edge_particles.items())),
+        )
+        if any(
+            are_equivalent_partitions(partition, known)
+            for known in by_coarse_key[coarse_key]
+        ):
+            continue
+        retained.append(partition)
+        by_coarse_key[coarse_key].append(partition)
+    return retained
 
 
 # The approach to finding the completions is the following: contract off fields
@@ -726,9 +744,6 @@ def exotic_field_and_term(
     if is_vanishing_interaction(term):
         return exotic_field, partner, f"Vanishing coupling at {term}"
 
-    # need to construct term again because sympy is annoying
-    term = reduce(lambda x, y: x * y, fix_su2_epsilons, op * partner)
-
     check_singlet(term)
 
     return exotic_field, partner, term
@@ -1065,6 +1080,35 @@ def canonical_rooted_partition(partition, graph):
     return canonical_rooted_partitions(partition, graph)[0]
 
 
+def derivative_route_choice_count(rooted_partition):
+    """Bound the possible heavy-fermion numerator choices in a rooted tree.
+
+    An internal tree edge carries a fermion only when the corresponding subtree
+    contains an odd number of external fermions.  At a given vertex, the number
+    of such child edges therefore bounds the number of distinct internal
+    fermions that can supply a routed momentum numerator.  This structural
+    preflight deliberately ignores Lorentz and gauge constraints: it only
+    removes branches which cannot possibly consume the derivative.
+    """
+
+    def subtree_data(branch):
+        if isinstance(branch, Leaf):
+            return int(branch.field.is_fermion), 0
+
+        children = [subtree_data(child) for child in branch]
+        fermion_count = sum(count for count, _ in children)
+        internal_fermions = sum(
+            count % 2
+            for child, (count, _) in zip(branch, children)
+            if not isinstance(child, Leaf)
+        )
+        child_maximum = max((maximum for _, maximum in children), default=0)
+        return fermion_count, max(internal_fermions, child_maximum)
+
+    _, maximum = subtree_data(rooted_partition)
+    return min(maximum, MAX_DERIVATIVE_ROUTE_CHOICES)
+
+
 def construct_completion(
     partition,
     gauge_epsilons,
@@ -1168,9 +1212,8 @@ def construct_completion(
     if len(derivative_state["routes"]) != derivative_count:
         return "Incorrect number of routed derivative insertions."
 
-    for term in terms:
-        if is_vanishing_interaction(term):
-            return f"Vanishing coupling at {term}"
+    if n_derivs == 0 and is_vanishing_interaction(proc_term):
+        return f"Vanishing coupling at {proc_term}"
 
     return (
         terms,
@@ -1375,16 +1418,16 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
 
 
 def operator_completions(
-    operator: EffectiveOperator, verbose=False
+    operator: EffectiveOperator, verbose=False, canonical_partitions=False
 ) -> List[Completion]:
     """Return a list of the completions of an effective operator."""
 
     parts = partitions(operator, verbose=verbose)
+    if canonical_partitions:
+        parts = remove_isomorphic(parts)
     if verbose:
-        print(f"Starting with {len(parts)} partitions, removing isomorphic ones...")
-
-    # if remove_isomorphic_diagrams:
-    #     parts = remove_isomorphic(parts)
+        mode = "canonical" if canonical_partitions else "raw"
+        print(f"Starting with {len(parts)} {mode} partitions...")
 
     if verbose:
         print(f"Finding completions of {len(parts)} partitions...")
@@ -1775,7 +1818,7 @@ def unique_lorentz_completion_operator(operator: EffectiveOperator):
 
 
 def momentum_routed_completions(
-    operator: EffectiveOperator, verbose=False
+    operator: EffectiveOperator, verbose=False, canonical_partitions=False
 ) -> List[Completion]:
     """Complete a single-derivative operator by routing momentum on heavy fermions.
 
@@ -1800,13 +1843,17 @@ def momentum_routed_completions(
         operator.name, construct_operator(fields, epsilons)
     )
     routed = []
-    for partition in partitions(stripped_operator, verbose=verbose):
-        partition_branches = []
+    routed_partitions = partitions(stripped_operator, verbose=verbose)
+    if canonical_partitions:
+        routed_partitions = remove_isomorphic(routed_partitions)
+    for partition in routed_partitions:
+        partition_candidates = []
         rooted_partitions = canonical_rooted_partitions(
             partition["partition"], partition["graph"]
         )
         for rooted_partition in rooted_partitions:
-            for route_choice in range(MAX_DERIVATIVE_ROUTE_CHOICES):
+            route_choice_count = derivative_route_choice_count(rooted_partition)
+            for route_choice in range(route_choice_count):
                 branch = dict(partition)
                 branch["partition"] = rooted_partition
                 branch["graph"] = deepcopy(partition["graph"])
@@ -1819,7 +1866,9 @@ def momentum_routed_completions(
                 branch["derivative_partition_is_canonical"] = True
                 completion = partition_completion(branch)
                 if not isinstance(completion, FailedCompletion):
-                    append_unique_completions(partition_branches, [completion])
+                    partition_candidates.append(completion)
+        partition_branches = []
+        append_unique_completions(partition_branches, partition_candidates)
         routed.extend(partition_branches)
 
     return routed
@@ -1829,7 +1878,23 @@ def append_unique_completions(completions, candidates):
     """Append candidates whose Lagrangians are not already represented."""
 
     by_model = defaultdict(list)
-    model_key = lambda c: tuple(sorted(set(c.exotic_info().values())))
+
+    def model_key(completion):
+        species = Counter(exotic_species(completion).values())
+        projection = getattr(completion, "lorentz_projection", None)
+        projection_key = None
+        if projection is not None:
+            projection_key = (
+                projection.basis_labels,
+                projection.coordinates,
+                projection.derivative_field,
+            )
+        return (
+            len(completion.terms),
+            tuple(sorted(species.items(), key=repr)),
+            projection_key,
+        )
+
     for completion in completions:
         by_model[model_key(completion)].append(completion)
 
@@ -1887,7 +1952,7 @@ def derivative_combinations(
 
 
 def deriv_operator_completions(
-    operator: EffectiveOperator, verbose=False
+    operator: EffectiveOperator, verbose=False, canonical_partitions=False
 ) -> List[Completion]:
     """Find the completions of a derivative operator. Differs from regular
     ``operator_completions`` in that it acts the derivatives in all possible
@@ -1903,12 +1968,47 @@ def deriv_operator_completions(
     for combo in deriv_combos:
         if combo.operator.simplify() == 0:
             continue
-        comps += list(operator_completions(combo, verbose=verbose))
+        comps += list(
+            operator_completions(
+                combo,
+                verbose=verbose,
+                canonical_partitions=canonical_partitions,
+            )
+        )
 
-    routed = momentum_routed_completions(operator, verbose=verbose)
+    routed = momentum_routed_completions(
+        operator,
+        verbose=verbose,
+        canonical_partitions=canonical_partitions,
+    )
     append_unique_completions(comps, routed)
 
     return comps
+
+
+def exact_completions(operator: EffectiveOperator, verbose=False) -> List[Completion]:
+    """Return exact UV-Lagrangian classes using canonical furnished partitions.
+
+    Raw generation remains the default public behaviour.  This explicit mode
+    removes isomorphic furnished diagrams before symbolic construction and then
+    applies the same exact interaction-graph equivalence used by the census.
+    """
+
+    if any(field.derivs for field in operator.fields):
+        candidates = deriv_operator_completions(
+            operator,
+            verbose=verbose,
+            canonical_partitions=True,
+        )
+    else:
+        candidates = operator_completions(
+            operator,
+            verbose=verbose,
+            canonical_partitions=True,
+        )
+    exact = []
+    append_unique_completions(exact, candidates)
+    return exact
 
 
 def completions(operator: EffectiveOperator, *args, **kwargs):
