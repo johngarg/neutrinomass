@@ -23,6 +23,7 @@ from neutrinomass.completions.completions import (
     base_exotic_label,
     deriv_operator_completions,
     exact_completion_bucket_key,
+    exotic_species,
     is_singlet,
     operator_completions,
     operator_strip_derivs,
@@ -145,6 +146,7 @@ def model_strings(completion):
 
 
 def validate_completion(completion, *, check_vanishing=True):
+    exotic_species(completion)
     if check_vanishing and any(
         term.safe_simplify() == 0 for term in completion.terms
     ):
@@ -273,6 +275,39 @@ def write_generated_artifact(path, completions, *, terms_prevalidated=False):
     }
 
 
+def _invalid_historical_class(completion, error):
+    return {
+        "fingerprint": repr(completion_fingerprint(completion)),
+        "topology": topology_key(completion),
+        "reason": str(error),
+        "vanishing_term_indices": [
+            index
+            for index, term in enumerate(completion.terms)
+            if term.safe_simplify() == 0
+        ],
+    }
+
+
+def partition_bucketable_historical_records(records):
+    """Separate records that cannot enter physical-equivalence bucketing."""
+
+    bucketable = []
+    invalid = []
+    for completion in records:
+        try:
+            exact_completion_bucket_key(completion)
+        except ValueError:
+            try:
+                validate_completion(completion)
+            except ValueError as error:
+                invalid.append(_invalid_historical_class(completion, error))
+            else:
+                raise
+        else:
+            bucketable.append(completion)
+    return bucketable, invalid
+
+
 def historical_classes(operator_name, historical_path):
     records = [
         item.force(trusted=True)
@@ -286,9 +321,10 @@ def historical_classes(operator_name, historical_path):
             completion.lorentz_projection = basis.project_existing_local(
                 completion.operator.operator
             )
+    bucketable, invalid = partition_bucketable_historical_records(records)
     classes = []
-    append_unique_completions(classes, records)
-    return records, classes
+    append_unique_completions(classes, bucketable)
+    return records, classes, invalid
 
 
 def classify_historical_classes(classes):
@@ -298,18 +334,7 @@ def classify_historical_classes(classes):
         try:
             validate_completion(completion)
         except ValueError as error:
-            invalid.append(
-                {
-                    "fingerprint": repr(completion_fingerprint(completion)),
-                    "topology": topology_key(completion),
-                    "reason": str(error),
-                    "vanishing_term_indices": [
-                        index
-                        for index, term in enumerate(completion.terms)
-                        if term.safe_simplify() == 0
-                    ],
-                }
-            )
+            invalid.append(_invalid_historical_class(completion, error))
         else:
             valid.append(completion)
     return valid, invalid
@@ -591,8 +616,11 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
     deduplication = deduplicate_completion_jsonl(
         raw_path, exact_path, work_dir=output_dir
     )
-    records, classes = historical_classes(operator_name, historical_path)
+    records, classes, unbucketable_historical = historical_classes(
+        operator_name, historical_path
+    )
     valid_historical, invalid_historical = classify_historical_classes(classes)
+    invalid_historical = unbucketable_historical + invalid_historical
     exact = audit_exact_artifact(
         exact_path,
         model_path,
@@ -640,7 +668,7 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
         "democratic_models": exact["democratic_models"],
         "historical": {
             "records": len(records),
-            "classes": len(classes),
+            "classes": len(classes) + len(unbucketable_historical),
             "valid_classes": len(valid_historical),
             "invalid_classes": len(invalid_historical),
             "invalid": invalid_historical,

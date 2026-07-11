@@ -12,6 +12,7 @@ from neutrinomass.database.rebuild import (
     filter_democratic_registry,
     operator_inventory,
     operator_registry,
+    partition_bucketable_historical_records,
     write_generated_artifact,
 )
 
@@ -122,3 +123,22 @@ def test_historical_audit_classifies_vanishing_legacy_classes():
     assert len(invalid) == 1
     assert invalid[0]["reason"] == "vanishing UV interaction"
     assert invalid[0]["vanishing_term_indices"] == [0]
+
+
+def test_historical_audit_classifies_inconsistent_exotic_labels():
+    completions = list(operator_completions(EFF_OPERATORS["1"]))
+    completion = completions[4]
+    completion.exotics = {
+        next(iter(completions[4].exotics)),
+        next(iter(completions[5].exotics)),
+    }
+    completion.terms = [completions[4].terms[0], completions[5].terms[0]]
+
+    bucketable, invalid = partition_bucketable_historical_records([completion])
+
+    assert bucketable == []
+    assert len(invalid) == 1
+    assert invalid[0]["reason"] == (
+        "Inconsistent quantum numbers for exotic species ψ"
+    )
+    assert invalid[0]["vanishing_term_indices"] == []
