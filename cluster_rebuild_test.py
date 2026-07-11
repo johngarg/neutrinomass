@@ -5,6 +5,7 @@ from pathlib import Path
 from cluster_rebuild import (
     build_task_manifest,
     package_report,
+    relocate_report_paths,
     validate_task_manifest,
 )
 from neutrinomass.database.rebuild import file_sha256
@@ -108,3 +109,49 @@ def test_package_report_is_deterministic_and_lossless(tmp_path):
         name: second["artifacts"][name]["sha256"]
         for name in ("generator", "exact_classes")
     }
+
+
+def test_relocate_report_paths_verifies_transferred_artifacts(tmp_path):
+    old_root = Path("/old/machine/rebuild/seed-0/operators/1")
+    artifacts = {}
+    for name in ("generator", "exact_classes", "democratic_models"):
+        path = tmp_path / f"{name}.jsonl"
+        path.write_text(name, encoding="utf-8")
+        artifacts[name] = {
+            "path": str(old_root / path.name),
+            "sha256": file_sha256(path),
+        }
+    legacy = tmp_path / "op_1.dat"
+    legacy.write_text("legacy", encoding="utf-8")
+    report_path = tmp_path / "report.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "operator": "1",
+                "artifacts": artifacts,
+                "historical": {
+                    "artifact": {
+                        "path": "/old/machine/raw_completions/op_1.dat",
+                        "sha256": file_sha256(legacy),
+                    }
+                },
+                "deduplication": {
+                    "source": str(old_root / "op_1_remediated.jsonl"),
+                    "destination": str(
+                        old_root / "op_1_remediated_unique.jsonl"
+                    ),
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert relocate_report_paths(report_path, legacy)
+    relocated = json.loads(report_path.read_text(encoding="utf-8"))
+    assert all(
+        Path(artifact["path"]).parent == tmp_path
+        for artifact in relocated["artifacts"].values()
+    )
+    assert relocated["historical"]["artifact"]["path"] == str(
+        legacy.resolve()
+    )

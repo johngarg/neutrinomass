@@ -240,6 +240,43 @@ def _report_source_is_valid(report_path, output_root, seed, source_commit):
     )
 
 
+def relocate_report_paths(report_path, legacy_path):
+    """Make a transferred self-contained report refer to its new directory."""
+
+    report_path = Path(report_path)
+    if not report_path.exists():
+        return False
+    report = load_json(report_path)
+    changed = False
+    for artifact in report["artifacts"].values():
+        recorded = Path(artifact["path"])
+        candidate = (report_path.parent / recorded.name).resolve()
+        if recorded != candidate and candidate.exists():
+            if file_sha256(candidate) != artifact["sha256"]:
+                raise ValueError(f"Relocated artifact checksum failed: {candidate}")
+            artifact["path"] = str(candidate)
+            changed = True
+
+    legacy_path = Path(legacy_path).resolve()
+    historical = report["historical"]["artifact"]
+    if Path(historical["path"]) != legacy_path:
+        historical["path"] = str(legacy_path)
+        changed = True
+
+    operator = report["operator"]
+    raw_path = report_path.parent / f"op_{operator}_remediated.jsonl"
+    exact_path = report_path.parent / f"op_{operator}_remediated_unique.jsonl"
+    if Path(report["deduplication"]["source"]) != raw_path:
+        report["deduplication"]["source"] = str(raw_path.resolve())
+        changed = True
+    if Path(report["deduplication"]["destination"]) != exact_path:
+        report["deduplication"]["destination"] = str(exact_path.resolve())
+        changed = True
+    if changed:
+        atomic_write_json(report_path, report)
+    return changed
+
+
 def run_task(manifest_path, task_id, output_root, legacy_dir, scratch_root):
     manifest = load_json(manifest_path)
     # The plan and final consolidation hash all 243 legacy inputs. A worker
@@ -266,6 +303,10 @@ def run_task(manifest_path, task_id, output_root, legacy_dir, scratch_root):
     report_path = operator_report_path(
         output_root, task["hash_seed"], task["operator"]
     )
+    legacy_path = Path(legacy_dir) / item["legacy_file"]
+    if file_sha256(legacy_path) != item["legacy_sha256"]:
+        raise ValueError(f"Legacy checksum mismatch: {legacy_path}")
+    relocate_report_paths(report_path, legacy_path)
     if completed_report_is_valid(
         report_path, inventory_item, task["hash_seed"]
     ) and _report_source_is_valid(
@@ -275,10 +316,6 @@ def run_task(manifest_path, task_id, output_root, legacy_dir, scratch_root):
         manifest["source_commit"],
     ):
         return {"status": "already_complete", "report": str(report_path)}
-
-    legacy_path = Path(legacy_dir) / item["legacy_file"]
-    if file_sha256(legacy_path) != item["legacy_sha256"]:
-        raise ValueError(f"Legacy checksum mismatch: {legacy_path}")
 
     scratch_root = Path(scratch_root)
     scratch_root.mkdir(parents=True, exist_ok=True)
