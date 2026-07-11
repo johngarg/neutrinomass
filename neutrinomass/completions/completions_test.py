@@ -5,13 +5,14 @@ from neutrinomass.tensormethod.sm import L, Q, H, eb, ub, db
 from neutrinomass.tensormethod.core import D
 
 from neutrinomass.completions.operators import EFF_OPERATORS, DERIV_EFF_OPERATORS
+from neutrinomass.completions.fingerprints import completion_digest
 
 from sympy import Rational
 import networkx as nx
 
 from importlib import import_module
 from pathlib import Path
-from collections import defaultdict
+from collections import Counter, defaultdict
 import os
 import subprocess
 import sys
@@ -476,6 +477,30 @@ def test_derivative_routing_support_is_explicit():
         "D16c",
         "D17",
     }
+
+
+def test_d3_full_census_baseline_is_stable():
+    completions = deriv_operator_completions(DERIV_EFF_OPERATORS["D3"])
+    unique = []
+    append_unique_completions(unique, completions)
+
+    assert len(completions) == 28
+    assert sum(bool(item.derivative_routes) for item in completions) == 4
+    assert Counter(
+        (item.topology, item.canonical_topology) for item in completions
+    ) == {
+        ("3s2f_3", "3s2f_3"): 18,
+        ("3s2f_4", "3s2f_4"): 10,
+    }
+    assert completion_digest(completions) == (
+        "a8121bb8167b5d4990f8edb4dcd72e70439b132c6abd4bbf11b26d5bd6197a30"
+    )
+
+    assert len(unique) == 9
+    assert sum(bool(item.derivative_routes) for item in unique) == 4
+    assert completion_digest(unique) == (
+        "48220973a2b60c30f9f83a5024745fa78bddf98419b611e2899900f9ce3f7918"
+    )
 
 
 ROUTED_MODEL_CONTROLS = {
