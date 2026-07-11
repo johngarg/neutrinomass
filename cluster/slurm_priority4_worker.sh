@@ -15,6 +15,8 @@ if [[ ! -x "${python_cmd}" ]]; then
 fi
 
 scratch_root="${SLURM_TMPDIR:-${TMPDIR:-/tmp}}"
+export MPLCONFIGDIR="${scratch_root}/matplotlib-priority4"
+mkdir -p "${MPLCONFIGDIR}"
 cd "${repo_root}"
 "${python_cmd}" cluster_rebuild.py worker \
     "${task_manifest}" \

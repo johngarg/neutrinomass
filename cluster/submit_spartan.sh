@@ -45,10 +45,11 @@ priority4_submit_spartan() (
         "${python_cmd}" -m pip install --no-deps -e "${repo_root}"
     fi
 
+    mkdir -p "${output_root}/logs" "${output_root}/.matplotlib-submit"
+    export MPLCONFIGDIR="${output_root}/.matplotlib-submit"
     "${python_cmd}" -m pytest -q \
         cluster_rebuild_test.py rebuild_completion_database_test.py
 
-    mkdir -p "${output_root}/logs"
     cd "${repo_root}"
     "${python_cmd}" cluster_rebuild.py plan \
         "${legacy_dir}" \

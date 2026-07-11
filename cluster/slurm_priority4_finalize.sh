@@ -10,6 +10,8 @@ source "${repo_root}/cluster/load_spartan.sh"
 python_cmd="${NEUTRINOMASS_PYTHON:-${repo_root}/.venv/bin/python}"
 manifest="${output_root}/migration_manifest.json"
 filtered_dir="${output_root}/filtered"
+export MPLCONFIGDIR="${output_root}/.matplotlib-finalize"
+mkdir -p "${MPLCONFIGDIR}"
 
 cd "${repo_root}"
 "${python_cmd}" cluster_rebuild.py consolidate \
