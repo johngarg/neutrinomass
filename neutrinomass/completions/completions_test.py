@@ -28,6 +28,24 @@ def lnv_completions(op):
 SIEVE = collect_completions(lnv_completions("1"))
 
 
+def test_distinct_fields_can_form_a_vanishing_interaction():
+    scalar = ComplexScalar("phi", "-c0 i0", charges={"y": 0, "3b": 0})
+    fermion = VectorLikeDiracFermion(
+        "psi", "u1 -c2 -c1", charges={"y": 0, "3b": 0}
+    )
+    term = (
+        scalar
+        * L("u0 i1")
+        * fermion
+        * eps("-u0 -u1")
+        * eps("-i0 -i1")
+        * eps("c0 c1 c2")
+    )
+
+    assert len({field.label for field in term.fields}) == 3
+    assert is_vanishing_interaction(term)
+
+
 def test_get_lorentz_epsilons():
     passes, epsilons = get_lorentz_epsilons((D(D(H, "11"), "00")("i0"), H("i1")))
     assert passes

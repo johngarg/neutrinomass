@@ -280,6 +280,30 @@ def historical_classes(operator_name, historical_path):
     return records, classes
 
 
+def classify_historical_classes(classes):
+    valid = []
+    invalid = []
+    for completion in classes:
+        try:
+            validate_completion(completion)
+        except ValueError as error:
+            invalid.append(
+                {
+                    "fingerprint": repr(completion_fingerprint(completion)),
+                    "topology": topology_key(completion),
+                    "reason": str(error),
+                    "vanishing_term_indices": [
+                        index
+                        for index, term in enumerate(completion.terms)
+                        if term.safe_simplify() == 0
+                    ],
+                }
+            )
+        else:
+            valid.append(completion)
+    return valid, invalid
+
+
 def _write_models(path, models):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -553,16 +577,17 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
         raw_path, exact_path, work_dir=output_dir
     )
     records, classes = historical_classes(operator_name, historical_path)
+    valid_historical, invalid_historical = classify_historical_classes(classes)
     exact = audit_exact_artifact(
         exact_path,
         model_path,
-        classes,
+        valid_historical,
         work_dir=output_dir,
     )
     if exact["missing_historical_fingerprints"]:
         raise ValueError(
             f"{len(exact['missing_historical_fingerprints'])} of "
-            f"{len(classes)} historical classes missing"
+            f"{len(valid_historical)} valid historical classes missing"
         )
     if generated["records"] != deduplication["input_records"]:
         raise ValueError("deduplication input count differs from generated count")
@@ -601,7 +626,10 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
         "historical": {
             "records": len(records),
             "classes": len(classes),
-            "reproduced": len(classes),
+            "valid_classes": len(valid_historical),
+            "invalid_classes": len(invalid_historical),
+            "invalid": invalid_historical,
+            "reproduced": len(valid_historical),
             "missing": 0,
             "exact_comparisons": exact["historical_comparisons"],
             "artifact": {

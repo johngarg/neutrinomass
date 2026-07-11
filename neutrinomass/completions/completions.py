@@ -989,11 +989,8 @@ def is_singlet(operator: Operator, ignore=("3b",)) -> bool:
 
 
 def is_vanishing_interaction(term: Operator) -> bool:
-    """Return whether identical fields make an interaction vanish."""
+    """Return whether tensor symmetries make an interaction vanish."""
 
-    labels = [field.label for field in term.fields]
-    if len(set(labels)) == len(labels):
-        return False
     return term.safe_simplify() == 0
 
 

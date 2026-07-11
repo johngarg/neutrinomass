@@ -1,10 +1,13 @@
 import pytest
 
 from neutrinomass.completions.completions import operator_completions
+from neutrinomass.completions.core import ComplexScalar, VectorLikeDiracFermion
 from neutrinomass.completions.operators import EFF_OPERATORS
+from neutrinomass.tensormethod import L, eps
 from neutrinomass.database.deduplication import deduplicate_completion_jsonl
 from neutrinomass.database.rebuild import (
     audit_exact_artifact,
+    classify_historical_classes,
     file_sha256,
     filter_democratic_registry,
     operator_inventory,
@@ -95,3 +98,27 @@ def test_regenerated_democratic_filter_uses_surviving_upstream_subsets():
     assert set(filtered["survivors"]["low"]) == {("X",)}
     assert filtered["removed_by_mass"] == {"low": 1}
     assert filtered["removed_by_one_loop_weinberg"] == {"low": 1}
+
+
+def test_historical_audit_classifies_vanishing_legacy_classes():
+    scalar = ComplexScalar("phi", "-c0 i0", charges={"y": 0, "3b": 0})
+    fermion = VectorLikeDiracFermion(
+        "psi", "u1 -c2 -c1", charges={"y": 0, "3b": 0}
+    )
+    vanishing = (
+        scalar
+        * L("u0 i1")
+        * fermion
+        * eps("-u0 -u1")
+        * eps("-i0 -i1")
+        * eps("c0 c1 c2")
+    )
+    completion = next(operator_completions(EFF_OPERATORS["1"]))
+    completion.terms = [vanishing]
+
+    valid, invalid = classify_historical_classes([completion])
+
+    assert valid == []
+    assert len(invalid) == 1
+    assert invalid[0]["reason"] == "vanishing UV interaction"
+    assert invalid[0]["vanishing_term_indices"] == [0]
