@@ -16,6 +16,20 @@ from neutrinomass.tensormethod.core import Index
 LORENTZ_TYPES = ("u", "d")
 
 
+def _perfect_pairings(ports):
+    ports = tuple(ports)
+    if not ports:
+        return ((),)
+    first = ports[0]
+    pairings = []
+    for position in range(1, len(ports)):
+        second = ports[position]
+        remaining = ports[1:position] + ports[position + 1 :]
+        for tail in _perfect_pairings(remaining):
+            pairings.append(((first, second), *tail))
+    return tuple(pairings)
+
+
 def _index_key(index):
     raised = index if index.is_up else -index
     return index.index_type, str(raised)
@@ -31,6 +45,31 @@ def _field_key(field):
         field.dynkin,
         tuple(sorted((name, str(value)) for name, value in field.charges.items())),
         tuple((index.index_type, str(index)) for index in field.gauge_indices),
+    )
+
+
+def lorentz_field_key(field):
+    """Return the stable external-field key used for Lorentz port ordering."""
+
+    return _field_key(field)
+
+
+def lorentz_field_port_layout(operator):
+    """Return sorted external fields and their numbered Lorentz ports."""
+
+    counts = {short_type: 0 for short_type in LORENTZ_TYPES}
+    layout = []
+    for field in sorted(operator.indexed_fields, key=_field_key):
+        ports = {}
+        for short_type in LORENTZ_TYPES:
+            index_type = Index.get_index_types()[short_type]
+            number = len(field.indices_by_type[index_type])
+            start = counts[short_type]
+            ports[short_type] = tuple(range(start, start + number))
+            counts[short_type] += number
+        layout.append((field, ports))
+    return tuple(layout), tuple(
+        (short_type, counts[short_type]) for short_type in LORENTZ_TYPES
     )
 
 
@@ -194,6 +233,43 @@ class LorentzBasis:
         if not selected_vectors:
             raise ValueError("Operator has no non-zero Lorentz singlet")
         port_counts = next(iter(candidates.values())).port_counts
+        return cls(tuple(selected_labels), tuple(selected_vectors), port_counts)
+
+    @classmethod
+    def from_port_counts(cls, port_counts):
+        """Construct the full singlet basis without field-statistics reduction."""
+
+        port_counts = tuple(port_counts)
+        counts = dict(port_counts)
+        candidates = {}
+        pairing_options = [
+            _perfect_pairings(range(counts[short_type]))
+            for short_type in LORENTZ_TYPES
+        ]
+        for choices in product(*pairing_options):
+            contraction = LorentzContraction(
+                coefficient=Rational(1),
+                pairings=tuple(zip(LORENTZ_TYPES, choices)),
+                port_counts=port_counts,
+            )
+            candidates[contraction.label] = contraction
+
+        selected_labels = []
+        selected_vectors = []
+        rank = 0
+        for label, contraction in sorted(candidates.items()):
+            vector = contraction.evaluation_vector()
+            trial = Matrix.hstack(
+                *(Matrix(item) for item in (*selected_vectors, vector))
+            )
+            trial_rank = trial.rank()
+            if trial_rank == rank:
+                continue
+            selected_labels.append(label)
+            selected_vectors.append(vector)
+            rank = trial_rank
+        if not selected_vectors:
+            raise ValueError("Lorentz port content has no singlet")
         return cls(tuple(selected_labels), tuple(selected_vectors), port_counts)
 
     @property

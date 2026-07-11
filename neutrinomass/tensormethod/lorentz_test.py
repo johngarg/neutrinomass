@@ -76,8 +76,20 @@ def test_d6a_lorentz_basis_has_rank_two_and_resolves_schouten_relation():
     assert coordinates == {(1, 0), (0, 1), (1, -1)}
 
 
+def test_ambient_port_basis_is_independent_of_field_statistics():
+    basis = LorentzBasis.from_port_counts((("u", 4), ("d", 2)))
+
+    assert basis.dimension == 2
+    assert basis.labels == (
+        "u:0-1,2-3|d:0-1",
+        "u:0-2,1-3|d:0-1",
+    )
+
+
 @pytest.mark.parametrize("operator_name", MULTIDIMENSIONAL_DERIVATIVE_OPERATORS)
-def test_every_gated_operator_has_a_resolved_rank_two_lorentz_basis(operator_name):
+def test_every_multidimensional_operator_has_a_resolved_rank_two_lorentz_basis(
+    operator_name,
+):
     operator = DERIV_EFF_OPERATORS[operator_name].operator
     singlets = lorentz_singlets(operator)
     basis = LorentzBasis.from_operator(operator)

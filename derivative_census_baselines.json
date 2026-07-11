@@ -288,6 +288,1030 @@
         "generator": "90187cb342e56be0d4bd5fb5fab81590caa749836c33df88a9a27c240997a2d1",
         "exact_classes": "366173cd9918e242f109391562b1cd228f652e48d46d960736776db666b2d5a1"
       }
+    },
+    "D6a": {
+      "records": {
+        "generator": 558,
+        "local": 432,
+        "routed": 126
+      },
+      "exact_classes": {
+        "all": 284,
+        "local": 158,
+        "routed": 126
+      },
+      "democratic_models": 19,
+      "historical_classes": {
+        "reproduced": 30,
+        "total": 30
+      },
+      "filtered_survivors": 2,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 120,
+          "exact_classes": 46
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 110,
+          "exact_classes": 66
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 84,
+          "exact_classes": 44
+        },
+        "2s4f_7|2s4f_7": {
+          "generator": 52,
+          "exact_classes": 16
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 192,
+          "exact_classes": 112
+        }
+      },
+      "completion_digests": {
+        "exact_classes": "9ff493583edcc10fd6d829b28a637decf6016b3c309f38b5c2454cc550cd18e9",
+        "generator": "2c74724669f2b658014c04947f4f76203e283f282382a081c63d128ba990d25e"
+      },
+      "artifact_sha256": {
+        "generator": "8e951f015de10e2a83bb8108eef310d01bee9dd5941ca6664b778fc4a9b96e20",
+        "exact_classes": "f8d433bde9d98d44a70b942051ad43c0b91021a4ec0b2cc7448e2e03fda9516e"
+      }
+    },
+    "D6b": {
+      "records": {
+        "generator": 156,
+        "local": 144,
+        "routed": 12
+      },
+      "exact_classes": {
+        "all": 68,
+        "local": 56,
+        "routed": 12
+      },
+      "democratic_models": 14,
+      "historical_classes": {
+        "reproduced": 16,
+        "total": 16
+      },
+      "filtered_survivors": 0,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 48,
+          "exact_classes": 12
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 36,
+          "exact_classes": 24
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 24,
+          "exact_classes": 12
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 48,
+          "exact_classes": 20
+        }
+      },
+      "completion_digests": {
+        "exact_classes": "429e83b82957c6cfde84f070d1b6fd631a57843ee6ddce6c36fc6a1e0a914b19",
+        "generator": "677777771e891fa7651a4cad4af094d47be675203f93cac821a208fa2787905b"
+      },
+      "artifact_sha256": {
+        "generator": "f714a7bcc353fe075d1e2835283644adae96c1b114de46f8dbceddb5ac1700af",
+        "exact_classes": "2bd4143e910a573413d7bc9cb5ebede03c674c1c61e788d68cc6b6b83c4dcd51"
+      }
+    },
+    "D8a": {
+      "records": {
+        "generator": 683,
+        "local": 432,
+        "routed": 251
+      },
+      "exact_classes": {
+        "all": 463,
+        "local": 212,
+        "routed": 251
+      },
+      "democratic_models": 53,
+      "historical_classes": {
+        "reproduced": 53,
+        "total": 53
+      },
+      "filtered_survivors": 11,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 128,
+          "exact_classes": 56
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 123,
+          "exact_classes": 83
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 108,
+          "exact_classes": 72
+        },
+        "2s4f_7|2s4f_7": {
+          "generator": 60,
+          "exact_classes": 24
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 264,
+          "exact_classes": 228
+        }
+      },
+      "completion_digests": {
+        "exact_classes": "9500739fccf5c7a7ecb921d924e95d5deb842370037e5c54737801b8cdeaf3d8",
+        "generator": "64690db0f3a5e1e13727a067cabe117c23b7e23c0601dd3c911302a8e3bed729"
+      },
+      "artifact_sha256": {
+        "generator": "c90a51dba365e617f0d6b34b4aa6f989ec2520c8bbd47aee0147c05bdf6d748d",
+        "exact_classes": "6c49652227d3fbccc3fb439f0f6b933b59d6f504e72c5ee89339ae1ea7a51cd5"
+      }
+    },
+    "D8b": {
+      "records": {
+        "generator": 677,
+        "local": 432,
+        "routed": 245
+      },
+      "exact_classes": {
+        "all": 447,
+        "local": 202,
+        "routed": 245
+      },
+      "democratic_models": 44,
+      "historical_classes": {
+        "reproduced": 44,
+        "total": 44
+      },
+      "filtered_survivors": 6,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 128,
+          "exact_classes": 54
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 117,
+          "exact_classes": 73
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 108,
+          "exact_classes": 68
+        },
+        "2s4f_7|2s4f_7": {
+          "generator": 60,
+          "exact_classes": 24
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 264,
+          "exact_classes": 228
+        }
+      },
+      "completion_digests": {
+        "exact_classes": "524d3591646605784dd3ca7ebdcfa4885ee29e364d8c3e5e77fff40065c63385",
+        "generator": "b485b85b4b4e25d62e58e8b47536922f690e685c9a2fcff575465a2c49236ec6"
+      },
+      "artifact_sha256": {
+        "generator": "86963b1d9fb07bc03dc8346e0a51d063afa6c8357eb0367131a9ba2d9aa0e20a",
+        "exact_classes": "4633c207284f79a8f5f80f16d6e5f1dd6bab2ef96dca7fa6abdb69b84ac39da9"
+      }
+    },
+    "D8c": {
+      "records": {
+        "generator": 224,
+        "local": 144,
+        "routed": 80
+      },
+      "exact_classes": {
+        "all": 148,
+        "local": 68,
+        "routed": 80
+      },
+      "democratic_models": 25,
+      "historical_classes": {
+        "reproduced": 25,
+        "total": 25
+      },
+      "filtered_survivors": 0,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 64,
+          "exact_classes": 28
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 44,
+          "exact_classes": 32
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 48,
+          "exact_classes": 36
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 68,
+          "exact_classes": 52
+        }
+      },
+      "completion_digests": {
+        "exact_classes": "e4960733c1322325d5b36bc8b711765edc4606922f8d615468f21ad85abfb44d",
+        "generator": "f845348895f0c7cbddb8a61a56705814f63dad01fd516b76f4fabf879fb6c030"
+      },
+      "artifact_sha256": {
+        "generator": "f7d235777757f4bac02bf5681b8d27b1bbe695e858131f1fbdc97ceb82fc743d",
+        "exact_classes": "3297499ff468afe542f372f3aeefe4e9aff2085f535391c0739af84345207cfd"
+      }
+    },
+    "D8d": {
+      "records": {
+        "generator": 683,
+        "local": 432,
+        "routed": 251
+      },
+      "exact_classes": {
+        "all": 463,
+        "local": 212,
+        "routed": 251
+      },
+      "democratic_models": 53,
+      "historical_classes": {
+        "reproduced": 53,
+        "total": 53
+      },
+      "filtered_survivors": 11,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 128,
+          "exact_classes": 56
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 123,
+          "exact_classes": 83
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 108,
+          "exact_classes": 72
+        },
+        "2s4f_7|2s4f_7": {
+          "generator": 60,
+          "exact_classes": 24
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 264,
+          "exact_classes": 228
+        }
+      },
+      "completion_digests": {
+        "exact_classes": "42db07a69989833c275acecf7c4e64b8b49fe377602c2023d794beae6e661eb7",
+        "generator": "a5b2b40b00ec3c832e1a1e27ca2d52cafbd71c86459a336e814c721f8a74a4db"
+      },
+      "artifact_sha256": {
+        "generator": "1aec57337ab5406c19ecdc3fc0d0994cc52f2e384f87927c163bcc7e568e07b6",
+        "exact_classes": "11e9fe05d611541a73131bb178d37b3068dcef81f92d155e6118fcfed9758e0f"
+      }
+    },
+    "D8e": {
+      "records": {
+        "generator": 677,
+        "local": 432,
+        "routed": 245
+      },
+      "exact_classes": {
+        "all": 447,
+        "local": 202,
+        "routed": 245
+      },
+      "democratic_models": 44,
+      "historical_classes": {
+        "reproduced": 44,
+        "total": 44
+      },
+      "filtered_survivors": 6,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 128,
+          "exact_classes": 54
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 117,
+          "exact_classes": 73
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 108,
+          "exact_classes": 68
+        },
+        "2s4f_7|2s4f_7": {
+          "generator": 60,
+          "exact_classes": 24
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 264,
+          "exact_classes": 228
+        }
+      },
+      "completion_digests": {
+        "exact_classes": "2b255bde6317603882d2147d15d305db00a862e7bdc482dbde668554edd8c826",
+        "generator": "1984a03405bf0ccb9a72971848abd51b3bd3dfb51beee3c62becdfb0fd519c10"
+      },
+      "artifact_sha256": {
+        "generator": "a36f5b8343da6a6a9d62fbe18ad380c54139d23bdc2016487e214c420ff14ac9",
+        "exact_classes": "219045e4188baa615aba1463cc1bcddc85cc4e59b86f00ce5085152e30a87a93"
+      }
+    },
+    "D8f": {
+      "records": {
+        "generator": 686,
+        "local": 432,
+        "routed": 254
+      },
+      "exact_classes": {
+        "all": 448,
+        "local": 194,
+        "routed": 254
+      },
+      "democratic_models": 30,
+      "historical_classes": {
+        "reproduced": 30,
+        "total": 30
+      },
+      "filtered_survivors": 5,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 128,
+          "exact_classes": 54
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 118,
+          "exact_classes": 74
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 108,
+          "exact_classes": 68
+        },
+        "2s4f_7|2s4f_7": {
+          "generator": 60,
+          "exact_classes": 24
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 272,
+          "exact_classes": 228
+        }
+      },
+      "completion_digests": {
+        "exact_classes": "0b6a412d6ddc4d200fd641bf42f7ba105aa27bca4e8fb2c7e7e8a644d460bafc",
+        "generator": "b090e430f1846f3b927f1aba6e65076693ba4f781155282c8d2bbcfdc69bae39"
+      },
+      "artifact_sha256": {
+        "generator": "a58f5346390cd02e71dbf06e2a47cd76151c7fc01b806953a92b4376ba64fbc3",
+        "exact_classes": "664980c0654967348685dd380a3edbba505036dda3765f707179153cf556f138"
+      }
+    },
+    "D8g": {
+      "records": {
+        "generator": 674,
+        "local": 432,
+        "routed": 242
+      },
+      "exact_classes": {
+        "all": 442,
+        "local": 200,
+        "routed": 242
+      },
+      "democratic_models": 35,
+      "historical_classes": {
+        "reproduced": 35,
+        "total": 35
+      },
+      "filtered_survivors": 7,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 128,
+          "exact_classes": 56
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 122,
+          "exact_classes": 82
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 108,
+          "exact_classes": 72
+        },
+        "2s4f_7|2s4f_7": {
+          "generator": 60,
+          "exact_classes": 24
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 256,
+          "exact_classes": 208
+        }
+      },
+      "completion_digests": {
+        "exact_classes": "d1a04ca16e12294fa13726522ace2c77a59b591364eafa90c399e062b3bbbf13",
+        "generator": "fac0e2ba674efc875dcde700f0a806763a233ef7ac3687cd4ed6060cc001867b"
+      },
+      "artifact_sha256": {
+        "generator": "0cc0db0e57bf7bd84ba080ff3985e8112ec09238b3a3a6023905a8082b0fce3b",
+        "exact_classes": "8a9988b3e15ac1dd3bbcd2405b6443b7c2204fa75e423fa223660dabe84f1444"
+      }
+    },
+    "D8h": {
+      "records": {
+        "generator": 674,
+        "local": 432,
+        "routed": 242
+      },
+      "exact_classes": {
+        "all": 442,
+        "local": 200,
+        "routed": 242
+      },
+      "democratic_models": 35,
+      "historical_classes": {
+        "reproduced": 35,
+        "total": 35
+      },
+      "filtered_survivors": 7,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 128,
+          "exact_classes": 56
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 122,
+          "exact_classes": 82
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 108,
+          "exact_classes": 72
+        },
+        "2s4f_7|2s4f_7": {
+          "generator": 60,
+          "exact_classes": 24
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 256,
+          "exact_classes": 208
+        }
+      },
+      "completion_digests": {
+        "exact_classes": "4eeee3ae63b16b48f247636c629e670c303b231eaebbecae979dc6a351056875",
+        "generator": "2b2c009dcc73813e9146c034319311bfa1d1c3f1603b37a16a91d85dd14555e4"
+      },
+      "artifact_sha256": {
+        "generator": "26b252a20b5607bc83c1d4b82e1c27d48bcf803531efa1b1e0e9bea7bf8fbab6",
+        "exact_classes": "2ac111017950c0482e7fcff76228757d8526bf47e26f97641b3ead16bc94016f"
+      }
+    },
+    "D8i": {
+      "records": {
+        "generator": 224,
+        "local": 144,
+        "routed": 80
+      },
+      "exact_classes": {
+        "all": 148,
+        "local": 68,
+        "routed": 80
+      },
+      "democratic_models": 16,
+      "historical_classes": {
+        "reproduced": 16,
+        "total": 16
+      },
+      "filtered_survivors": 3,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 64,
+          "exact_classes": 28
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 44,
+          "exact_classes": 32
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 48,
+          "exact_classes": 36
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 68,
+          "exact_classes": 52
+        }
+      },
+      "completion_digests": {
+        "exact_classes": "f3a852a2b9ca28dcaa9581a4ab2069c3a1aeda465b7690c8a1c2de311a4b678d",
+        "generator": "b1d2910e785cce301efdf634d04c9a5a16f3911b4b417272b0c769569aca213a"
+      },
+      "artifact_sha256": {
+        "generator": "2a69b2f26ea88ff361a56f1b8ac3c665611b543ee06e851c79b2e92ece37c28c",
+        "exact_classes": "ea489ac674c5209e7877c2f253692b1fc5d5d5684397c2ee7be89d3ad9eed637"
+      }
+    },
+    "D9a": {
+      "records": {
+        "generator": 686,
+        "local": 432,
+        "routed": 254
+      },
+      "exact_classes": {
+        "all": 448,
+        "local": 194,
+        "routed": 254
+      },
+      "democratic_models": 30,
+      "historical_classes": {
+        "reproduced": 30,
+        "total": 30
+      },
+      "filtered_survivors": 5,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 128,
+          "exact_classes": 54
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 118,
+          "exact_classes": 74
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 108,
+          "exact_classes": 68
+        },
+        "2s4f_7|2s4f_7": {
+          "generator": 60,
+          "exact_classes": 24
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 272,
+          "exact_classes": 228
+        }
+      },
+      "completion_digests": {
+        "exact_classes": "5b367aaf5ae74e6e3d2e9411edcf29c47c5d129ec04d7a9b7679304929786235",
+        "generator": "38feb418fdbf204afdd8b97e0dc28130f3e5ebe401a5a60eab23446f3493efc5"
+      },
+      "artifact_sha256": {
+        "generator": "3ba929f2ea0c075cdbc551f8608c05539c1c9c9ac0b4574c460425d47652c905",
+        "exact_classes": "c79a2635238b474454d9af18723a847fb5e2bfb2ccc92b5111940247340f73d3"
+      }
+    },
+    "D9b": {
+      "records": {
+        "generator": 224,
+        "local": 144,
+        "routed": 80
+      },
+      "exact_classes": {
+        "all": 148,
+        "local": 68,
+        "routed": 80
+      },
+      "democratic_models": 16,
+      "historical_classes": {
+        "reproduced": 16,
+        "total": 16
+      },
+      "filtered_survivors": 4,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 64,
+          "exact_classes": 28
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 44,
+          "exact_classes": 32
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 48,
+          "exact_classes": 36
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 68,
+          "exact_classes": 52
+        }
+      },
+      "completion_digests": {
+        "exact_classes": "869f6adbc773cc4de3f23e337131041e137b60da002e38103b586e454afe3f5f",
+        "generator": "1a8de7a8ccd15144183074b1fb09be08de7f08e56262d92d63bafd8aca27c397"
+      },
+      "artifact_sha256": {
+        "generator": "c684de5f945afafc0261063659b8f9fb455cc0972b0cfb57c3939691dd176795",
+        "exact_classes": "e432728a327b762cf78a52f87d573c063d519b4e145c864d1b27ca4231f1a4eb"
+      }
+    },
+    "D12a": {
+      "records": {
+        "generator": 686,
+        "local": 432,
+        "routed": 254
+      },
+      "exact_classes": {
+        "all": 448,
+        "local": 194,
+        "routed": 254
+      },
+      "democratic_models": 30,
+      "historical_classes": {
+        "reproduced": 30,
+        "total": 30
+      },
+      "filtered_survivors": 5,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 128,
+          "exact_classes": 54
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 118,
+          "exact_classes": 74
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 108,
+          "exact_classes": 68
+        },
+        "2s4f_7|2s4f_7": {
+          "generator": 60,
+          "exact_classes": 24
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 272,
+          "exact_classes": 228
+        }
+      },
+      "completion_digests": {
+        "exact_classes": "d719d42bc3472ac3f7bf385845475b04ebe17117d55861f8a7b8f17d4b52bd77",
+        "generator": "c5da6f7e143ada0357beb4e2eb200a7f9035ad57dbad8584d1a76ec1c2acc6ce"
+      },
+      "artifact_sha256": {
+        "generator": "472b9b577d4b25933b6f3f0c459e65010f2c9cbb3a4e50e756d3ec1ef782354b",
+        "exact_classes": "d93d10921f5405e814f88e266b8e6b870a0e9933e030c496edc522cf50747e4b"
+      }
+    },
+    "D12b": {
+      "records": {
+        "generator": 224,
+        "local": 144,
+        "routed": 80
+      },
+      "exact_classes": {
+        "all": 148,
+        "local": 68,
+        "routed": 80
+      },
+      "democratic_models": 16,
+      "historical_classes": {
+        "reproduced": 16,
+        "total": 16
+      },
+      "filtered_survivors": 4,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 64,
+          "exact_classes": 28
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 44,
+          "exact_classes": 32
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 48,
+          "exact_classes": 36
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 68,
+          "exact_classes": 52
+        }
+      },
+      "completion_digests": {
+        "exact_classes": "2b96854ec2c43a7b41f221419e53cb5e7c45acc477e8e7a33acdd27b4b3278b7",
+        "generator": "7c7b2eb070b8e1a1a5f141d1b6993a37cfe6b95b5dd65a39861e8a7e9eb74528"
+      },
+      "artifact_sha256": {
+        "generator": "2708a726fd2d2b788fca93a589d717e3045f7bf230c1f1cbb9482fa4e76a1d0a",
+        "exact_classes": "97dea2948d642726268e642d159ce7ca5b1e610c6a7d579a01397d4222f6ce29"
+      }
+    },
+    "D14a": {
+      "records": {
+        "generator": 676,
+        "local": 432,
+        "routed": 244
+      },
+      "exact_classes": {
+        "all": 458,
+        "local": 214,
+        "routed": 244
+      },
+      "democratic_models": 42,
+      "historical_classes": {
+        "reproduced": 53,
+        "total": 53
+      },
+      "filtered_survivors": 0,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 128,
+          "exact_classes": 54
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 114,
+          "exact_classes": 70
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 104,
+          "exact_classes": 64
+        },
+        "2s4f_7|2s4f_7": {
+          "generator": 58,
+          "exact_classes": 22
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 272,
+          "exact_classes": 248
+        }
+      },
+      "completion_digests": {
+        "exact_classes": "6058579d2d336a8853ffa4bb4efbaf8f9e109c46e6abbe6099fbca6c3d45c889",
+        "generator": "627aa26152a96421ebc81681a28eaf689b795354106e74946dd745d175d4ce2a"
+      },
+      "artifact_sha256": {
+        "generator": "cd9a2ef0af0512ce6ac289ceee7540a877da0a37a42d07ea5a4e3602244fdb3e",
+        "exact_classes": "6283e732ec3448967d9064f4cdd51c666e112ead52311c707d4ae3d674242485"
+      }
+    },
+    "D14b": {
+      "records": {
+        "generator": 676,
+        "local": 432,
+        "routed": 244
+      },
+      "exact_classes": {
+        "all": 458,
+        "local": 214,
+        "routed": 244
+      },
+      "democratic_models": 42,
+      "historical_classes": {
+        "reproduced": 53,
+        "total": 53
+      },
+      "filtered_survivors": 0,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 128,
+          "exact_classes": 54
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 114,
+          "exact_classes": 70
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 104,
+          "exact_classes": 64
+        },
+        "2s4f_7|2s4f_7": {
+          "generator": 58,
+          "exact_classes": 22
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 272,
+          "exact_classes": 248
+        }
+      },
+      "completion_digests": {
+        "exact_classes": "feffb6846631a12e9f02d6b78953ea8d6feeb8a9423abfd877ff742610324e7c",
+        "generator": "e926a05f9a1df2f939e1dcd9c8a180784755824381b8ed8abeeab03df3500898"
+      },
+      "artifact_sha256": {
+        "generator": "652a6de3f34b9fb58a558bfa889da08b739c248027757b589c647f0f486be81b",
+        "exact_classes": "c1065db944e8ac9a11e97367056b43e25fdecdc4ba2c671e4e9a176969962350"
+      }
+    },
+    "D14c": {
+      "records": {
+        "generator": 216,
+        "local": 144,
+        "routed": 72
+      },
+      "exact_classes": {
+        "all": 148,
+        "local": 76,
+        "routed": 72
+      },
+      "democratic_models": 25,
+      "historical_classes": {
+        "reproduced": 27,
+        "total": 27
+      },
+      "filtered_survivors": 0,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 60,
+          "exact_classes": 24
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 40,
+          "exact_classes": 28
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 44,
+          "exact_classes": 32
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 72,
+          "exact_classes": 64
+        }
+      },
+      "completion_digests": {
+        "exact_classes": "716d55f8e6e4e8c5f2b3c56a5846e57f6d8f5a2c274875cbd2f2ca77db1cb15d",
+        "generator": "3be0a9a6e68d88a5ea98656ba1c9ef4c3e7fd9e50418b986a3af7611ba4bde54"
+      },
+      "artifact_sha256": {
+        "generator": "e4c339f062808f30476cfea7a4419ceb3f6ca6ffa36fb144106e52d3059954ac",
+        "exact_classes": "4bb4c7d28c2c755f8f4ecd42e60987d09fee9a8985b7cfd80a4eb90108abd75f"
+      }
+    },
+    "D16a": {
+      "records": {
+        "generator": 683,
+        "local": 432,
+        "routed": 251
+      },
+      "exact_classes": {
+        "all": 475,
+        "local": 224,
+        "routed": 251
+      },
+      "democratic_models": 53,
+      "historical_classes": {
+        "reproduced": 58,
+        "total": 58
+      },
+      "filtered_survivors": 8,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 128,
+          "exact_classes": 56
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 121,
+          "exact_classes": 81
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 104,
+          "exact_classes": 68
+        },
+        "2s4f_7|2s4f_7": {
+          "generator": 58,
+          "exact_classes": 22
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 272,
+          "exact_classes": 248
+        }
+      },
+      "completion_digests": {
+        "exact_classes": "77d9636615b318cd0c29905f052895fbef2e2bf836b56a7bb9ca3691fe2f2775",
+        "generator": "5bc441a9f9f5208ce2a9d23001e5e5c33d5254230a4f48a00dc764daa05563cf"
+      },
+      "artifact_sha256": {
+        "generator": "de3bb7e23886c968fde191f05e31e89961d415288adfc79ddab0680fb0ff9c6e",
+        "exact_classes": "e8677468d621a6d2ddc28e108ea859272e9675661b6c351069669c588ee8862f"
+      }
+    },
+    "D16b": {
+      "records": {
+        "generator": 683,
+        "local": 432,
+        "routed": 251
+      },
+      "exact_classes": {
+        "all": 475,
+        "local": 224,
+        "routed": 251
+      },
+      "democratic_models": 53,
+      "historical_classes": {
+        "reproduced": 58,
+        "total": 58
+      },
+      "filtered_survivors": 8,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 128,
+          "exact_classes": 56
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 121,
+          "exact_classes": 81
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 104,
+          "exact_classes": 68
+        },
+        "2s4f_7|2s4f_7": {
+          "generator": 58,
+          "exact_classes": 22
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 272,
+          "exact_classes": 248
+        }
+      },
+      "completion_digests": {
+        "exact_classes": "121985797fe34a1400fb3782f078089f399b03d7ae0fbb5af7eec33833ba81e1",
+        "generator": "a49a116d23ba3fd1e24e0b1907c176385b95612218a2c5f7ac7ac1c4b293053f"
+      },
+      "artifact_sha256": {
+        "generator": "c15c818fbc8bb512053ce0ce86e93d395a329d0aba767476053f6f69de79d84f",
+        "exact_classes": "eac5a6ff886d3782549dfe3c3443c73913c20b79f149b137c2b14264615f5f02"
+      }
+    },
+    "D16c": {
+      "records": {
+        "generator": 216,
+        "local": 144,
+        "routed": 72
+      },
+      "exact_classes": {
+        "all": 148,
+        "local": 76,
+        "routed": 72
+      },
+      "democratic_models": 26,
+      "historical_classes": {
+        "reproduced": 27,
+        "total": 27
+      },
+      "filtered_survivors": 4,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 60,
+          "exact_classes": 24
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 40,
+          "exact_classes": 28
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 44,
+          "exact_classes": 32
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 72,
+          "exact_classes": 64
+        }
+      },
+      "completion_digests": {
+        "exact_classes": "13b1dfe04e7788deade27830ee136d2bcd99ab4c2cd13dae222dda057fcaeb6c",
+        "generator": "9d241a195b5e542754d0788ff602813b6309b143f364edad3fef290111db2dd5"
+      },
+      "artifact_sha256": {
+        "generator": "0e76f5e12c79423f68b7d281b39f7eac93021dd1f0d613a8d8ce349a047603ff",
+        "exact_classes": "c24b44df64206353277d53b43d6bb9ab0b992ec8693a354ea1d5bf45d8809b26"
+      }
+    },
+    "D17": {
+      "records": {
+        "generator": 224,
+        "local": 144,
+        "routed": 80
+      },
+      "exact_classes": {
+        "all": 152,
+        "local": 72,
+        "routed": 80
+      },
+      "democratic_models": 16,
+      "historical_classes": {
+        "reproduced": 16,
+        "total": 16
+      },
+      "filtered_survivors": 7,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 64,
+          "exact_classes": 28
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 44,
+          "exact_classes": 32
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 48,
+          "exact_classes": 36
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 68,
+          "exact_classes": 56
+        }
+      },
+      "completion_digests": {
+        "exact_classes": "19698f01767d97c208976597fd50e9b8bcd1f8ecbe51ad605f0c0316bf05dd44",
+        "generator": "20f36e6a15d2b523124713b554e864392ffa00c45b369f8d8838d68f9ab13147"
+      },
+      "artifact_sha256": {
+        "generator": "7fb2d402b42c6480b43c8c8d3b9d8367cb1aab92ad2b353447f33640aa0e7b94",
+        "exact_classes": "9947cd07c7cad19014eee88d3fc114d07582ccfafe2271f5eb0cad2c0e5d5825"
+      }
     }
   }
 }

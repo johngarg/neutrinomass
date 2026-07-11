@@ -16,6 +16,8 @@ import sys
 from time import perf_counter
 
 from neutrinomass.completions.completions import (
+    HistoricalDerivativeBasis,
+    PROJECTED_LORENTZ_OPERATORS,
     append_unique_completions,
     are_equivalent_completions,
     base_exotic_label,
@@ -216,6 +218,14 @@ def run(operator_name, historical_path, output_dir):
         item.force(trusted=True)
         for item in read_completions(historical_path, trusted=True)[operator_name]
     ]
+    if operator_name in PROJECTED_LORENTZ_OPERATORS:
+        historical_basis = HistoricalDerivativeBasis.from_operator(operator)
+        for completion in historical_records:
+            completion.lorentz_projection = (
+                historical_basis.project_existing_local(
+                    completion.operator.operator
+                )
+            )
     historical_classes = []
     append_unique_completions(historical_classes, historical_records)
     missing = [
