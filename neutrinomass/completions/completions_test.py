@@ -77,7 +77,6 @@ def test_process_derivative_term():
         H("i1") * D(Q, "01")("d0 c0 i0"), symbols, exotic_dict
     )
     assert process_derivative_term(term)
-
     # Dirac fermion, deriv on scalar
     _, _, term = exotic_field_and_term(
         D(H, "11")("u0 d0 i1") * Q("u1 c0 i0") * eps("-u0 -u1"), symbols, exotic_dict
@@ -124,6 +123,25 @@ def test_process_derivative_term():
         L("u0 i1") * L("u1 i0") * eps("-u0 -u1"), symbols, exotic_dict
     )
     assert process_derivative_term(term)
+
+
+def test_distinct_contraction_channels_get_distinct_exotic_labels():
+    symbols = {"fermion": ["ψ", "χ"], "boson": ["φ", "η"]}
+    field_dict = {}
+
+    triplet, *_ = contract(
+        (L("u0 i0"), H("i1")), symbols, [], field_dict
+    )
+    singlet, *_ = contract(
+        (L("u1 i2"), H("i3")),
+        symbols,
+        [eps("-i2 -i3")],
+        field_dict,
+    )
+
+    assert triplet.dynkin == "10002"
+    assert singlet.dynkin == "10000"
+    assert triplet.label != singlet.label
 
 
 def test_construct_completion():
@@ -493,13 +511,13 @@ def test_d3_full_census_baseline_is_stable():
         ("3s2f_4", "3s2f_4"): 10,
     }
     assert completion_digest(completions) == (
-        "a8121bb8167b5d4990f8edb4dcd72e70439b132c6abd4bbf11b26d5bd6197a30"
+        "4c2d25b9e0a21cb83a652dc2c1b4d7920e666ad31cffd80df574f4b3f629380e"
     )
 
     assert len(unique) == 9
     assert sum(bool(item.derivative_routes) for item in unique) == 4
     assert completion_digest(unique) == (
-        "48220973a2b60c30f9f83a5024745fa78bddf98419b611e2899900f9ce3f7918"
+        "82715951e9c1d0cd4bffad536db8b46a57042602a14b174ebc954f6fea990670"
     )
 
 

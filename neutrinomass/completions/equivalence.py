@@ -105,13 +105,21 @@ def _interaction_graph(term, mapping_items) -> nx.Graph:
         for source_label, target_label, conjugate_flip, dirac_flip in mapping_items
     }
     tensors = [tensor for tensor in term.tensors if hasattr(tensor, "indices")]
+    tensor_indices = [
+        tuple(
+            index
+            for index in tensor.indices
+            if index.index_type != "Generation"
+        )
+        for tensor in tensors
+    ]
     index_counts = Counter(
-        _index_key(index) for tensor in tensors for index in tensor.indices
+        _index_key(index) for indices in tensor_indices for index in indices
     )
     index_nodes = {}
     graph = nx.Graph()
 
-    for factor_number, tensor in enumerate(tensors):
+    for factor_number, (tensor, indices) in enumerate(zip(tensors, tensor_indices)):
         factor_node = ("factor", factor_number)
         if isinstance(tensor, IndexedField):
             signature = _field_signature(tensor, label_mapping)
@@ -119,7 +127,7 @@ def _interaction_graph(term, mapping_items) -> nx.Graph:
             signature = _invariant_signature(tensor)
         graph.add_node(factor_node, signature=signature)
 
-        for slot_number, index in enumerate(tensor.indices):
+        for slot_number, index in enumerate(indices):
             index_key = _index_key(index)
             index_node = index_nodes.get(index_key)
             if index_node is None:

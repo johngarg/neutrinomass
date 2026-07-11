@@ -662,14 +662,18 @@ def exotic_field_and_term(
     else:
         symbols_to_use = symbols["boson"]
 
-    fs = sorted([f.field for f in fields], key=lambda x: x.label_with_dagger)
-    fs = tuple(fs)
-    if fs in field_dict.keys():
-        symbol = field_dict[fs]
+    fs = tuple(sorted([f.field for f in fields], key=lambda x: x.label_with_dagger))
+    field_key = (
+        fs,
+        get_dynkin(exotic_indices),
+        tuple(sorted(exotic_charges.items())),
+    )
+    if field_key in field_dict:
+        symbol = field_dict[field_key]
     else:
         symbol = symbols_to_use.pop(0)
         # field_dict mutated here!
-        field_dict[fs] = symbol
+        field_dict[field_key] = symbol
 
     # for Dirac and Majorana fermions, always keep plain symbol left handed
     to_conj = False

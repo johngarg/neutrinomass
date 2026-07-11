@@ -39,5 +39,5 @@ def test_operator_one_completion_baseline():
     ) == Counter({("2s2f_1", "2s2f_1"): 4, ("2s2f_2", "2s2f_2"): 4})
     assert sorted(map(len, collected.values())) == [2, 2, 4]
     assert completion_digest(completions) == (
-        "7870cabf4e444ff946702b676463d7d497eb91b8da2a08aa91e07129c839d365"
+        "ec8ce9c9dc7c92e28c985d142b63b70440f8071d8d41ebbf85589513e5be8ce1"
     )

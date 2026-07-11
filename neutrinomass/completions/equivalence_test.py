@@ -17,7 +17,7 @@ from neutrinomass.completions.core import (
 )
 from neutrinomass.completions.equivalence import equivalent_lagrangians
 from neutrinomass.completions.operators import EFF_OPERATORS
-from neutrinomass.tensormethod import H, eps
+from neutrinomass.tensormethod import H, L, eps
 from neutrinomass.tensormethod.core import IndexedField
 
 
@@ -185,6 +185,15 @@ def test_graph_cache_preserves_custom_field_metadata():
     charged_term = charged * H("i1") * eps("-i0 -i1")
 
     assert not equivalent_lagrangians([neutral_term], [charged_term])
+
+
+def test_equivalence_ignores_free_generation_labels():
+    with_generation = (
+        L("u0 i0 g0") * H("i1") * eps("-i0 -i1")
+    )
+    without_generation = L("u1 i2") * H("i3") * eps("-i2 -i3")
+
+    assert equivalent_lagrangians([with_generation], [without_generation])
 
 
 def test_interactions_are_equivalent_to_their_hermitian_conjugates():
