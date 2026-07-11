@@ -46,6 +46,13 @@ def validate_source_checkout(source_commit, orchestration_commit):
 
     if git_output("rev-parse", "HEAD") != orchestration_commit:
         raise ValueError("Cluster task manifest targets a different checkout")
+    worktree = subprocess.run(
+        ["git", "diff", "--quiet", "HEAD", "--"], cwd=REPOSITORY
+    )
+    if worktree.returncode == 1:
+        raise ValueError("Cluster task checkout has modified tracked files")
+    if worktree.returncode > 1:
+        raise RuntimeError("Could not validate the cluster task checkout")
     result = subprocess.run(
         ["git", "diff", "--quiet", source_commit, "--", *SCIENTIFIC_PATHS],
         cwd=REPOSITORY,
@@ -92,10 +99,10 @@ def build_task_manifest(legacy_dir, source_commit, orchestration_commit):
     }
 
 
-def validate_task_manifest(manifest, legacy_dir):
+def validate_task_manifest(manifest, legacy_dir, *, verify_inventory=True):
     if manifest.get("schema_version") != SCHEMA_VERSION:
         raise ValueError("Unsupported cluster task manifest schema")
-    if manifest["inventory"] != portable_inventory(legacy_dir):
+    if verify_inventory and manifest["inventory"] != portable_inventory(legacy_dir):
         raise ValueError("Legacy inventory differs from the task manifest")
     expected = []
     for seed in (0, 1):
@@ -235,7 +242,9 @@ def _report_source_is_valid(report_path, output_root, seed, source_commit):
 
 def run_task(manifest_path, task_id, output_root, legacy_dir, scratch_root):
     manifest = load_json(manifest_path)
-    validate_task_manifest(manifest, legacy_dir)
+    # The plan and final consolidation hash all 243 legacy inputs. A worker
+    # hashes only its own input so 486 array jobs do not reread the archive.
+    validate_task_manifest(manifest, legacy_dir, verify_inventory=False)
     validate_source_checkout(
         manifest["source_commit"], manifest["orchestration_commit"]
     )

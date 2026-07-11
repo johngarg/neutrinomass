@@ -41,6 +41,31 @@ def test_task_manifest_is_seed_major_and_complete(tmp_path, monkeypatch):
     validate_task_manifest(manifest, tmp_path)
 
 
+def test_worker_manifest_validation_does_not_rehash_entire_legacy_archive(
+    tmp_path, monkeypatch
+):
+    manifest = {
+        "schema_version": 1,
+        "inventory": [
+            {
+                "operator": "1",
+                "kind": "regular",
+                "derivatives": 0,
+                "legacy_file": "op_1.dat",
+                "legacy_sha256": "one",
+            }
+        ],
+        "tasks": [{"task_id": 0, "hash_seed": "0", "operator": "1"},
+                  {"task_id": 1, "hash_seed": "1", "operator": "1"}],
+    }
+    monkeypatch.setattr(
+        "cluster_rebuild.portable_inventory",
+        lambda _: (_ for _ in ()).throw(AssertionError("rehash")),
+    )
+
+    validate_task_manifest(manifest, tmp_path, verify_inventory=False)
+
+
 def test_package_report_is_deterministic_and_lossless(tmp_path):
     artifacts = {}
     original_payloads = {}

@@ -63,7 +63,7 @@ priority4_submit_spartan() (
         --cpus-per-task 1 \
         --mem "${NEUTRINOMASS_MEMORY:-8G}" \
         --time "${NEUTRINOMASS_WALLTIME:-24:00:00}" \
-        --array "0-$((task_count - 1))%${NEUTRINOMASS_CONCURRENCY:-24}" \
+        --array "0-$((task_count - 1))%${NEUTRINOMASS_CONCURRENCY:-16}" \
         --output "${output_root}/logs/census_%A_%a.out" \
         --error "${output_root}/logs/census_%A_%a.err" \
         --export "ALL,NEUTRINOMASS_REPO_ROOT=${repo_root},NEUTRINOMASS_TASK_MANIFEST=${task_manifest},NEUTRINOMASS_OUTPUT_ROOT=${output_root},NEUTRINOMASS_LEGACY_DIR=${legacy_dir}" \

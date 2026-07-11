@@ -17,7 +17,7 @@ checksum and historical comparison, compares both seed reports, writes
 filtering artifacts.
 
 Defaults are suitable for the `punim0011` Spartan project: one CPU, 8 GiB,
-24 hours, and at most 24 simultaneous census jobs. Override them before
+24 hours, and at most 16 simultaneous census jobs. Override them before
 sourcing when required:
 
 ```bash
