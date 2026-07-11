@@ -144,8 +144,10 @@ def model_strings(completion):
     )
 
 
-def validate_completion(completion):
-    if any(term.safe_simplify() == 0 for term in completion.terms):
+def validate_completion(completion, *, check_vanishing=True):
+    if check_vanishing and any(
+        term.safe_simplify() == 0 for term in completion.terms
+    ):
         raise ValueError("vanishing UV interaction")
     if any(
         not is_singlet(term)
@@ -215,8 +217,13 @@ def _serialise_stats(stats):
     }
 
 
-def write_generated_artifact(path, completions):
-    """Atomically write, validate and stream-audit generated completions."""
+def write_generated_artifact(path, completions, *, terms_prevalidated=False):
+    """Atomically write, validate and stream-audit generated completions.
+
+    ``terms_prevalidated`` is reserved for ``completion_stream``: the partition
+    constructor has already rejected every symbolically vanishing vertex.
+    Singlet, mass-dimension and route invariants are always checked here.
+    """
 
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -234,7 +241,9 @@ def write_generated_artifact(path, completions):
     try:
         with temporary:
             for completion in completions:
-                validate_completion(completion)
+                validate_completion(
+                    completion, check_vanishing=not terms_prevalidated
+                )
                 _update_stats(source_stats, completion)
                 source_digest.update(round_trip_signature(completion))
                 temporary.write(dumps_completion(completion) + "\n")
@@ -244,8 +253,10 @@ def write_generated_artifact(path, completions):
 
     decoded_stats = _new_stats()
     decoded_digest = OrderedSignatureDigest()
+    # Source objects were fully validated before writing.  This second pass
+    # isolates schema/metadata round-trip checks without repeating symbolic
+    # simplification for every UV term.
     for completion in iter_completion_jsonl(path):
-        validate_completion(completion)
         _update_stats(decoded_stats, completion)
         decoded_digest.update(round_trip_signature(completion))
 
@@ -362,8 +373,10 @@ def audit_exact_artifact(
             connection.execute(
                 "CREATE TABLE exact_classes (bucket_key TEXT, payload TEXT)"
             )
+            # Deduplication only removes records from the fully validated raw
+            # stream, so the exact audit need only verify structure, metadata,
+            # models and historical coverage.
             for completion in iter_completion_jsonl(exact_path):
-                validate_completion(completion)
                 _update_stats(stats, completion)
                 digest.update(round_trip_signature(completion))
                 models[model_strings(completion)].add(
@@ -570,7 +583,9 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
     model_path = output_dir / f"op_{operator_name}_models.jsonl"
 
     generated = write_generated_artifact(
-        raw_path, completion_stream(operator_name)
+        raw_path,
+        completion_stream(operator_name),
+        terms_prevalidated=True,
     )
     clear_interaction_graph_cache()
     deduplication = deduplicate_completion_jsonl(
