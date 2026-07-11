@@ -144,6 +144,54 @@
         "generator": "cfac6a0768f8d4739fcaf0c14263204284bc80857ae0b1e33381d9509f05316a",
         "exact_classes": "43910ea3574f6a5cfd35c8eba1016186b2c902a0a630a240039c407a13a27614"
       }
+    },
+    "D10a": {
+      "records": {
+        "generator": 519,
+        "local": 432,
+        "routed": 87
+      },
+      "exact_classes": {
+        "all": 175,
+        "local": 88,
+        "routed": 87
+      },
+      "democratic_models": 53,
+      "historical_classes": {
+        "reproduced": 56,
+        "total": 56
+      },
+      "filtered_survivors": 13,
+      "topologies": {
+        "2s4f_4|2s4f_4": {
+          "generator": 112,
+          "exact_classes": 28
+        },
+        "2s4f_5|2s4f_5": {
+          "generator": 90,
+          "exact_classes": 38
+        },
+        "2s4f_6|2s4f_6": {
+          "generator": 96,
+          "exact_classes": 36
+        },
+        "2s4f_7|2s4f_7": {
+          "generator": 53,
+          "exact_classes": 9
+        },
+        "2s4f_8|2s4f_8": {
+          "generator": 168,
+          "exact_classes": 64
+        }
+      },
+      "completion_digests": {
+        "generator": "0794bbed09902f3eea2fc130e94c8245f516d0297d7ea960450f440868ef6afb",
+        "exact_classes": "dbb7ed0119350d2ae65d7bf2c57dd11feb2a6fc201abdfbca1752590d4357f43"
+      },
+      "artifact_sha256": {
+        "generator": "23c7d0ad7198a7b5c586172bffc2d43ce754fff6b70cece43837cc2250231281",
+        "exact_classes": "25d5f8ad87d5f98741a504f488f6eb960ea271b7f9dc309c61a43c6daf6f8166"
+      }
     }
   }
 }
