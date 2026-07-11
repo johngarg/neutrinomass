@@ -96,6 +96,8 @@ def topology_distribution(completions):
 
 def validate_physics(completions):
     for completion in completions:
+        if any(term.safe_simplify() == 0 for term in completion.terms):
+            raise ValueError("vanishing UV interaction")
         if any(
             not is_singlet(term)
             or sum(field.mass_dim for field in term.fields) > 4

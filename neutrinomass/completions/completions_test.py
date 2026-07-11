@@ -343,7 +343,26 @@ def test_d20_routes_derivative_to_internal_fermion(monkeypatch):
     matching = [
         c for c in completions if tuple(sorted(c.exotic_info().values())) == expected
     ]
+    forbidden_doublet_hhh = tuple(
+        sorted(
+            (
+                ("F", 0, 0, 0, ("3b", 0), ("y", 1)),
+                ("S", 0, 0, 0, ("3b", 0), ("y", 0)),
+                ("S", 0, 0, 1, ("3b", 0), ("y", Rational("3/2"))),
+            )
+        )
+    )
+
     assert matching
+    assert not any(
+        tuple(sorted(completion.exotic_info().values())) == forbidden_doublet_hhh
+        for completion in completions
+    )
+    assert all(
+        term.safe_simplify() != 0
+        for completion in completions
+        for term in completion.terms
+    )
     assert all(len(c.derivative_edges) == 1 for c in matching)
     assert all(len(c.derivative_routes) == 1 for c in matching)
     assert all(c.topology == "5s2f_3" for c in completions)
@@ -497,27 +516,38 @@ def test_derivative_routing_support_is_explicit():
     }
 
 
+def test_operator_strip_derivs_preserves_field_statistics():
+    stripped = operator_strip_derivs(DERIV_EFF_OPERATORS["D20"].operator)
+    higgs_fields = [
+        field for field, _ in stripped["fields"] if field.label == H.label
+    ]
+
+    assert len(higgs_fields) == 5
+    assert all(field.comm == H.comm for field in higgs_fields)
+    assert all(field.nf == H.nf for field in higgs_fields)
+
+
 def test_d3_full_census_baseline_is_stable():
     completions = deriv_operator_completions(DERIV_EFF_OPERATORS["D3"])
     unique = []
     append_unique_completions(unique, completions)
 
-    assert len(completions) == 28
-    assert sum(bool(item.derivative_routes) for item in completions) == 4
+    assert len(completions) == 26
+    assert sum(bool(item.derivative_routes) for item in completions) == 2
     assert Counter(
         (item.topology, item.canonical_topology) for item in completions
     ) == {
         ("3s2f_3", "3s2f_3"): 18,
-        ("3s2f_4", "3s2f_4"): 10,
+        ("3s2f_4", "3s2f_4"): 8,
     }
     assert completion_digest(completions) == (
-        "4c2d25b9e0a21cb83a652dc2c1b4d7920e666ad31cffd80df574f4b3f629380e"
+        "dd82599a00ecd0ed202fa9c677e66ae06801828fa7b2b723f275e3515f5e1d4b"
     )
 
-    assert len(unique) == 9
-    assert sum(bool(item.derivative_routes) for item in unique) == 4
+    assert len(unique) == 7
+    assert sum(bool(item.derivative_routes) for item in unique) == 2
     assert completion_digest(unique) == (
-        "82715951e9c1d0cd4bffad536db8b46a57042602a14b174ebc954f6fea990670"
+        "db7f3b19d4a595b62bf008a98829030e9ae44c199764c70217bba39fb4db7ebf"
     )
 
 
@@ -594,6 +624,7 @@ def test_supported_routing_has_physics_controls(operator_name, monkeypatch):
     assert all(len(completion.derivative_routes) == 1 for completion in matching)
     assert all(
         is_singlet(term)
+        and term.safe_simplify() != 0
         and sum(field.mass_dim for field in term.fields) <= 4
         for completion in matching
         for term in completion.terms

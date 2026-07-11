@@ -619,6 +619,15 @@ def is_singlet(operator: Operator, ignore=("3b",)) -> bool:
     return all(index.index_type == "Generation" for index in operator.free_indices)
 
 
+def is_vanishing_interaction(term: Operator) -> bool:
+    """Return whether identical fields make an interaction vanish."""
+
+    labels = [field.label for field in term.fields]
+    if len(set(labels)) == len(labels):
+        return False
+    return term.safe_simplify() == 0
+
+
 def exotic_field_and_term(
     op: Operator, symbols: Dict[str, List[str]], field_dict: Dict[tuple, str]
 ) -> Tuple[IndexedField, IndexedField, Union[Operator, str]]:
@@ -709,8 +718,7 @@ def exotic_field_and_term(
     # construct term and check to see if vanishes. This is a very costly step,
     # check first whether there are any doubled up fields in the term and only
     # run on those
-    set_fields = set([f.label for f in term.fields])
-    if len(set_fields) < len(term.fields) and term.safe_simplify() == 0:
+    if is_vanishing_interaction(term):
         return exotic_field, partner, f"Vanishing coupling at {term}"
 
     # need to construct term again because sympy is annoying
@@ -1155,6 +1163,10 @@ def construct_completion(
     if len(derivative_state["routes"]) != derivative_count:
         return "Incorrect number of routed derivative insertions."
 
+    for term in terms:
+        if is_vanishing_interaction(term):
+            return f"Vanishing coupling at {term}"
+
     return (
         terms,
         edge_dict,
@@ -1551,8 +1563,7 @@ def operator_strip_derivs(op: Operator) -> List[Operator]:
             if field.derivs:
                 assert field.derivs == 1
                 n_derivs += 1
-                data = field.stripped
-                new_field = Field(**data, is_conj=field.is_conj)
+                new_field = field.strip_derivs()
                 indices = field.gauge_indices
                 new_fields.append((new_field, " ".join(str(i) for i in indices)))
                 # new_fields.append((new_field, indices))
