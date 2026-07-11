@@ -1874,32 +1874,40 @@ def momentum_routed_completions(
     return routed
 
 
+def exact_completion_bucket_key(completion):
+    """Return a necessary physical-equivalence key for exact deduplication.
+
+    This deliberately retains particle kind and species multiplicity.  The
+    democratic filtering key is coarser and is not safe for exact classes.
+    """
+
+    species = Counter(exotic_species(completion).values())
+    projection = getattr(completion, "lorentz_projection", None)
+    projection_key = None
+    if projection is not None:
+        projection_key = (
+            projection.basis_labels,
+            projection.coordinates,
+            projection.derivative_field,
+        )
+    return (
+        completion.operator.name,
+        len(completion.terms),
+        tuple(sorted(species.items(), key=repr)),
+        projection_key,
+    )
+
+
 def append_unique_completions(completions, candidates):
     """Append candidates whose Lagrangians are not already represented."""
 
     by_model = defaultdict(list)
 
-    def model_key(completion):
-        species = Counter(exotic_species(completion).values())
-        projection = getattr(completion, "lorentz_projection", None)
-        projection_key = None
-        if projection is not None:
-            projection_key = (
-                projection.basis_labels,
-                projection.coordinates,
-                projection.derivative_field,
-            )
-        return (
-            len(completion.terms),
-            tuple(sorted(species.items(), key=repr)),
-            projection_key,
-        )
-
     for completion in completions:
-        by_model[model_key(completion)].append(completion)
+        by_model[exact_completion_bucket_key(completion)].append(completion)
 
     for candidate in candidates:
-        key = model_key(candidate)
+        key = exact_completion_bucket_key(candidate)
         if any(
             are_equivalent_completions(candidate, known)
             for known in by_model[key]

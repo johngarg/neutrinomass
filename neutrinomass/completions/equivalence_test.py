@@ -7,11 +7,13 @@ from neutrinomass.completions.completions import (
     are_equivalent_completions,
     check_remapping_on_terms,
     compare_terms,
+    exact_completion_bucket_key,
 )
 from neutrinomass.completions.core import (
     Completion,
     ComplexScalar,
     EffectiveOperator,
+    MajoranaFermion,
     RealScalar,
     VectorLikeDiracFermion,
 )
@@ -88,6 +90,9 @@ def test_equivalence_preserves_distinct_species_multiplicity():
     )
 
     assert not are_equivalent_completions(two_species, one_species)
+    assert exact_completion_bucket_key(two_species) != (
+        exact_completion_bucket_key(one_species)
+    )
 
 
 def test_term_comparison_preserves_inequivalent_su2_contractions():
@@ -181,6 +186,24 @@ def test_equivalence_distinguishes_real_and_complex_particles():
     complex_completion = make_completion([complex_], [complex_ * H("i3")])
 
     assert not are_equivalent_completions(real_completion, complex_completion)
+    assert exact_completion_bucket_key(real_completion) != (
+        exact_completion_bucket_key(complex_completion)
+    )
+
+
+def test_exact_bucket_distinguishes_majorana_and_vectorlike_fermions():
+    majorana = MajoranaFermion("m", "u0", charges={"y": 0, "3b": 0})
+    vectorlike = VectorLikeDiracFermion(
+        "v", "u1", charges={"y": 0, "3b": 0}
+    )
+    majorana_completion = make_completion([majorana], [majorana * H("i0")])
+    vectorlike_completion = make_completion(
+        [vectorlike], [vectorlike * H("i1")]
+    )
+
+    assert exact_completion_bucket_key(majorana_completion) != (
+        exact_completion_bucket_key(vectorlike_completion)
+    )
 
 
 def test_graph_cache_preserves_custom_field_metadata():

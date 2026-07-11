@@ -108,6 +108,23 @@ graph equivalence afterward:
 >>> from neutrinomass.completions import exact_completions
 >>> seesaw_1, seesaw_2, seesaw_3 = exact_completions(eff_o1)
 #+END_SRC
+Safe completion artifacts use versioned JSONL.  =iter_completion_jsonl= opens
+and decodes the file lazily, whereas =read_completion_jsonl= is an eager list
+wrapper intended only for small files:
+#+BEGIN_SRC python
+>>> from neutrinomass.database import iter_completion_jsonl, write_completion_jsonl
+>>> write_completion_jsonl("copy.jsonl", iter_completion_jsonl("completions.jsonl"))
+#+END_SRC
+For large raw artifacts, exact classes can be written with bounded Python
+memory.  The candidate hash only prioritises possible matches inside a full
+physical bucket; equality is always decided by exact contraction-graph
+isomorphism:
+#+BEGIN_SRC python
+>>> from neutrinomass.database import deduplicate_completion_jsonl
+>>> report = deduplicate_completion_jsonl(
+...     "completions.jsonl", "completions_unique.jsonl", work_dir="/tmp"
+... )
+#+END_SRC
 Each =Completion= object has an associated =Lagrangian=, which contains
 information about the lepton-number violating interaction terms, and can be
 called upon to generate the entire gauge and Lorentz invariant renormalisable

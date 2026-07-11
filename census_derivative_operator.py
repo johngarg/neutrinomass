@@ -31,9 +31,11 @@ from neutrinomass.completions.equivalence import clear_interaction_graph_cache
 from neutrinomass.completions.operators import DERIV_EFF_OPERATORS
 from neutrinomass.database import (
     MVDF,
+    deduplicate_completion_jsonl,
     neutrino_mass_estimate,
     numerical_np_scale_estimate,
     iter_completion_jsonl,
+    read_completion_jsonl,
     read_completions,
     write_completion_jsonl,
 )
@@ -193,8 +195,22 @@ def run(operator_name, historical_path, output_dir):
     raw = deriv_operator_completions(operator)
     validate_physics(raw)
 
-    unique = []
-    append_unique_completions(unique, raw)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    raw_path = output_dir / f"op_{operator_name}_remediated.jsonl"
+    unique_path = output_dir / f"op_{operator_name}_remediated_unique.jsonl"
+    write_completion_jsonl(raw_path, raw)
+    restored_raw_digest = verify_round_trip(raw_path, raw)
+    raw_record_count = len(raw)
+    routed_raw_count = sum(bool(item.derivative_routes) for item in raw)
+    raw_topologies = topology_distribution(raw)
+    del raw
+    clear_interaction_graph_cache()
+
+    deduplication = deduplicate_completion_jsonl(
+        raw_path, unique_path, work_dir=output_dir
+    )
+    unique = read_completion_jsonl(unique_path)
 
     historical_records = [
         item.force(trusted=True)
@@ -215,16 +231,9 @@ def run(operator_name, historical_path, output_dir):
             f"{len(missing)} of {len(historical_classes)} historical classes missing"
         )
 
-    output_dir = Path(output_dir)
-    raw_path = output_dir / f"op_{operator_name}_remediated.jsonl"
-    unique_path = output_dir / f"op_{operator_name}_remediated_unique.jsonl"
-    write_completion_jsonl(raw_path, raw)
-    write_completion_jsonl(unique_path, unique)
-    restored_raw_digest = verify_round_trip(raw_path, raw)
     restored_unique_digest = verify_round_trip(unique_path, unique)
 
     scale, survivors = filter_models(operator, unique)
-    routed_raw = [item for item in raw if item.derivative_routes]
     routed_unique = [item for item in unique if item.derivative_routes]
     report = {
         "operator": operator_name,
@@ -232,9 +241,9 @@ def run(operator_name, historical_path, output_dir):
         "wall_time_seconds": perf_counter() - started,
         "peak_memory_mib": peak_memory_mib(),
         "records": {
-            "generator": len(raw),
-            "local": len(raw) - len(routed_raw),
-            "routed": len(routed_raw),
+            "generator": raw_record_count,
+            "local": raw_record_count - routed_raw_count,
+            "routed": routed_raw_count,
         },
         "exact_classes": {
             "all": len(unique),
@@ -249,7 +258,7 @@ def run(operator_name, historical_path, output_dir):
             "missing": 0,
         },
         "topologies": {
-            "generator": topology_distribution(raw),
+            "generator": raw_topologies,
             "exact_classes": topology_distribution(unique),
         },
         "filtering": {
@@ -261,6 +270,7 @@ def run(operator_name, historical_path, output_dir):
             "generator": restored_raw_digest,
             "exact_classes": restored_unique_digest,
         },
+        "deduplication": deduplication,
         "artifacts": {
             "generator": {
                 "path": str(raw_path.resolve()),
