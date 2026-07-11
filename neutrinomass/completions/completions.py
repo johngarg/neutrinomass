@@ -19,6 +19,7 @@ from neutrinomass.tensormethod.contract import (
     invariants,
     contract_su2,
 )
+from neutrinomass.tensormethod.lorentz import LorentzBasis, primitive_coordinates
 
 from neutrinomass.utils import timeit
 from neutrinomass.tensormethod.utils import safe_nocoeff
@@ -37,6 +38,7 @@ from neutrinomass.utils.functions import remove_equivalent, remove_equivalent_no
 from neutrinomass.completions.core import (
     Completion,
     DerivativeRoute,
+    LorentzProjection,
     Model,
     FailedCompletion,
     EffectiveOperator,
@@ -421,6 +423,9 @@ def differentiate_indexed_fermion(field: IndexedField) -> IndexedField:
 
 
 MAX_DERIVATIVE_ROUTE_CHOICES = 2
+# Multidimensional operators remain gated until the project fixes one global
+# IBP/EOM convention for both local and momentum-routed completions.
+PROJECTED_LORENTZ_OPERATORS = frozenset()
 
 
 def derivative_route_candidates(fields):
@@ -1176,6 +1181,117 @@ def construct_completion(
     )
 
 
+def restore_routed_derivative_operator(
+    requested_operator: Operator,
+    stripped_operator: Operator,
+    lorentz_epsilons: list,
+) -> Operator:
+    """Restore the requested derivative on the UV-induced stripped contraction.
+
+    The heavy-fermion numerator leaves one undotted and one dotted external
+    Lorentz index.  Attaching those ports to the originally differentiated field
+    chooses the representative used by the derivative-operator archive.
+    """
+
+    explicit = reduce(
+        lambda left, right: left * right, lorentz_epsilons, stripped_operator
+    )
+    derivative = next(
+        field for field in requested_operator.indexed_fields if field.derivs
+    )
+    stripped_field = derivative.strip_derivs()
+    target = next(
+        field
+        for field in explicit.indexed_fields
+        if field.field == stripped_field
+        and tuple(map(str, field.gauge_indices))
+        == tuple(map(str, derivative.gauge_indices))
+    )
+
+    free_lorentz = {
+        short_type: [
+            index
+            for index in explicit.free_indices
+            if index.index_type == Index.get_index_types()[short_type]
+        ]
+        for short_type in ("u", "d")
+    }
+    if any(len(indices) != 1 for indices in free_lorentz.values()):
+        raise ValueError(
+            "A routed derivative must expose one undotted and one dotted port"
+        )
+
+    derivative_indices = []
+    restoring_epsilons = []
+    for short_type in ("u", "d"):
+        free_index = free_lorentz[short_type][0]
+        if not free_index.is_up:
+            derivative_indices.append(-free_index)
+            continue
+        fresh = Index.fresh(short_type)
+        derivative_indices.append(fresh)
+        restoring_epsilons.append(eps(f"{-free_index} {-fresh}"))
+
+    restored = derivative.field(
+        " ".join(map(str, (*derivative_indices, *target.gauge_indices)))
+    )
+    return Operator(
+        *(restored if tensor is target else tensor for tensor in explicit.tensors),
+        *restoring_epsilons,
+    )
+
+
+def routed_ibp_weight(
+    requested_operator: Operator,
+    partition,
+    graph: nx.Graph,
+    route: DerivativeRoute,
+) -> int:
+    """Reduce the routed momentum cut to the archived D6a derivative placement.
+
+    For the pilot operator there are two Higgs occurrences.  Fermion derivative
+    placements are EOM-redundant, while integration by parts identifies the two
+    scalar placements with opposite signs.  The two sides of the cut therefore
+    give opposite weights, as required by momentum conservation.
+    """
+
+    derivative = next(
+        field for field in requested_operator.indexed_fields if field.derivs
+    )
+    stripped_field = derivative.strip_derivs()
+    target_gauge_indices = tuple(map(str, derivative.gauge_indices))
+
+    cut_graph = graph.copy()
+    cut_graph.remove_edge(*route.edge)
+    external = {leaf.node: leaf.field for leaf in partition_leaves(partition)}
+    sides = []
+    for component in nx.connected_components(cut_graph):
+        nodes = tuple(sorted(node for node in component if node in external))
+        if nodes:
+            sides.append(nodes)
+    if len(sides) != 2:
+        raise ValueError("A routed propagator must split the external fields in two")
+    side = min(sides)
+
+    weight = 0
+    for node in side:
+        field = external[node]
+        if (
+            field.label != stripped_field.label
+            or field.dynkin != stripped_field.dynkin
+            or field.charges != stripped_field.charges
+            or field.comm != stripped_field.comm
+            or field.nf != stripped_field.nf
+            or field.is_conj != stripped_field.is_conj
+        ):
+            continue
+        if tuple(map(str, field.gauge_indices)) == target_gauge_indices:
+            weight += 1
+        else:
+            weight -= 1
+    return weight
+
+
 def partition_completion(partition) -> Union[Completion, FailedCompletion]:
     """Return the completion object associated with a partition."""
     part = partition["partition"]
@@ -1202,7 +1318,40 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
         return FailedCompletion(args)
 
     completion_operator = partition.get("completion_operator")
-    if completion_operator is None:
+    lorentz_basis = partition.get("lorentz_basis")
+    lorentz_projection = None
+    if lorentz_basis is not None:
+        requested_operator = partition["requested_operator"]
+        explicit_op = restore_routed_derivative_operator(
+            requested_operator.operator, op.operator, lorentz_epsilons
+        )
+        route = derivative_routes[0]
+        ibp_weight = routed_ibp_weight(
+            requested_operator.operator, part, graph, route
+        )
+        if not ibp_weight:
+            return FailedCompletion("Zero projection after the D6a IBP/EOM quotient.")
+        coordinates = lorentz_basis.project(explicit_op, primitive=False)
+        if coordinates is None:
+            return FailedCompletion("Routed contraction is outside the Lorentz basis.")
+        coordinates = primitive_coordinates(
+            tuple(ibp_weight * value for value in coordinates)
+        )
+        if not any(coordinates):
+            return FailedCompletion("Zero Lorentz-basis projection.")
+        derivative = next(
+            field
+            for field in requested_operator.operator.indexed_fields
+            if field.derivs
+        )
+        lorentz_projection = LorentzProjection(
+            basis_labels=lorentz_basis.labels,
+            coordinates=tuple(str(value) for value in coordinates),
+            derivative_field=derivative.label,
+            ibp_relation="D(H1) H2 + H1 D(H2) = 0 modulo a total derivative",
+            eom_relation="derivatives on external fermions are removed by their EOM",
+        )
+    elif completion_operator is None:
         explicit_op = reduce(lambda a, b: a * b, lorentz_epsilons, op.operator)
     else:
         explicit_op = completion_operator.operator
@@ -1221,6 +1370,7 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
         topology=topo,
         canonical_topology=canonical_topo,
         derivative_routes=derivative_routes,
+        lorentz_projection=lorentz_projection,
     )
 
 
@@ -1424,6 +1574,20 @@ def derivative_routes_equivalent(comp1, comp2, oriented_remapping):
     return signatures1 == signatures2
 
 
+def lorentz_projections_equivalent(comp1, comp2):
+    """Keep distinct effective Lorentz components as distinct exact classes."""
+
+    projection1 = getattr(comp1, "lorentz_projection", None)
+    projection2 = getattr(comp2, "lorentz_projection", None)
+    if projection1 is None or projection2 is None:
+        return projection1 is projection2
+    return (
+        projection1.basis_labels == projection2.basis_labels
+        and projection1.coordinates == projection2.coordinates
+        and projection1.derivative_field == projection2.derivative_field
+    )
+
+
 def compare_terms(comp1: Completion, comp2: Completion) -> Dict[str, str]:
     """Returns a dictionary representing the field relabellings that would need to
     be applied to the terms of comp1 to make it equivalent to comp2. This
@@ -1443,7 +1607,7 @@ def compare_terms(comp1: Completion, comp2: Completion) -> Dict[str, str]:
                 comp1.terms, comp2.terms, oriented_remapping
             ) and derivative_routes_equivalent(
                 comp1, comp2, oriented_remapping
-            ):
+            ) and lorentz_projections_equivalent(comp1, comp2):
                 return remapping
 
     return {}
@@ -1626,8 +1790,11 @@ def momentum_routed_completions(
         return []
 
     completion_operator = unique_lorentz_completion_operator(operator)
+    lorentz_basis = None
     if completion_operator is None:
-        return []
+        if operator.name not in PROJECTED_LORENTZ_OPERATORS:
+            return []
+        lorentz_basis = LorentzBasis.from_operator(operator.operator)
 
     stripped_operator = EffectiveOperator(
         operator.name, construct_operator(fields, epsilons)
@@ -1644,6 +1811,9 @@ def momentum_routed_completions(
                 branch["partition"] = rooted_partition
                 branch["graph"] = deepcopy(partition["graph"])
                 branch["completion_operator"] = completion_operator
+                if lorentz_basis is not None:
+                    branch["lorentz_basis"] = lorentz_basis
+                    branch["requested_operator"] = operator
                 branch["derivative_count"] = n_derivs
                 branch["derivative_route_choice"] = route_choice
                 branch["derivative_partition_is_canonical"] = True

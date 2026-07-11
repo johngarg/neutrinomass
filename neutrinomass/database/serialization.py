@@ -15,6 +15,7 @@ from neutrinomass.completions.core import (
     DerivativeRoute,
     EffectiveOperator,
     FieldType,
+    LorentzProjection,
     MajoranaFermion,
     RealScalar,
     VectorLikeDiracFermion,
@@ -227,6 +228,37 @@ def route_from_data(data):
     )
 
 
+def projection_to_data(projection):
+    if projection is None:
+        return None
+    return {
+        "basis_labels": list(projection.basis_labels),
+        "coordinates": list(projection.coordinates),
+        "derivative_field": projection.derivative_field,
+        "ibp_relation": projection.ibp_relation,
+        "eom_relation": projection.eom_relation,
+    }
+
+
+def projection_from_data(data):
+    if data is None:
+        return None
+    coordinates = tuple(data["coordinates"])
+    if any(
+        not isinstance(value, str)
+        or _RATIONAL_PATTERN.fullmatch(value) is None
+        for value in coordinates
+    ):
+        raise ValueError("Invalid Lorentz-projection coordinate")
+    return LorentzProjection(
+        basis_labels=tuple(data["basis_labels"]),
+        coordinates=coordinates,
+        derivative_field=data["derivative_field"],
+        ibp_relation=data["ibp_relation"],
+        eom_relation=data["eom_relation"],
+    )
+
+
 def completion_to_record(completion):
     return {
         "schema": SCHEMA_NAME,
@@ -247,6 +279,7 @@ def completion_to_record(completion):
         "derivative_routes": [
             route_to_data(route) for route in completion.derivative_routes
         ],
+        "lorentz_projection": projection_to_data(completion.lorentz_projection),
         "legacy_derivative_edges": [
             list(edge)
             for edge in completion.derivative_edges
@@ -278,6 +311,7 @@ def completion_from_record(record):
             tuple(edge) for edge in record["legacy_derivative_edges"]
         ),
         derivative_routes=routes,
+        lorentz_projection=projection_from_data(record.get("lorentz_projection")),
     )
 
 

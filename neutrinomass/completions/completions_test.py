@@ -470,13 +470,17 @@ def test_derivative_routing_support_is_explicit():
         name
         for name, operator in DERIV_EFF_OPERATORS.items()
         if operator_strip_derivs(operator.operator)["n_derivs"] == 1
-        and unique_lorentz_completion_operator(operator) is not None
+        and (
+            unique_lorentz_completion_operator(operator) is not None
+            or name in PROJECTED_LORENTZ_OPERATORS
+        )
     }
     skipped = {
         name
         for name, operator in DERIV_EFF_OPERATORS.items()
         if operator_strip_derivs(operator.operator)["n_derivs"] == 1
         and unique_lorentz_completion_operator(operator) is None
+        and name not in PROJECTED_LORENTZ_OPERATORS
     }
 
     assert supported == {
@@ -514,6 +518,94 @@ def test_derivative_routing_support_is_explicit():
         "D16c",
         "D17",
     }
+    assert momentum_routed_completions(DERIV_EFF_OPERATORS["D6a"]) == []
+
+
+def test_d6a_projected_routing_has_a_positive_uv_model(monkeypatch):
+    completions_module = import_module("neutrinomass.completions.completions")
+    original_partitions = completions_module.partitions
+    monkeypatch.setattr(
+        completions_module, "PROJECTED_LORENTZ_OPERATORS", frozenset({"D6a"})
+    )
+
+    def projected_partition(operator, verbose=False):
+        return original_partitions(operator, verbose=verbose)[144:145]
+
+    monkeypatch.setattr(completions_module, "partitions", projected_partition)
+    completions = completions_module.momentum_routed_completions(
+        DERIV_EFF_OPERATORS["D6a"]
+    )
+
+    assert len(completions) == 4
+    assert all(
+        completion.lorentz_projection.coordinates == ("1", "-1")
+        for completion in completions
+    )
+    assert all(
+        completion.lorentz_projection.basis_labels
+        == (
+            "u:0-1,2-3|d:0-1",
+            "u:0-2,1-3|d:0-1",
+        )
+        for completion in completions
+    )
+    assert all(
+        completion_quantum_number_strings(completion)
+        == {
+            "F,00,1,1/2,0",
+            "F,00,1,3/2,0",
+            "S,00,2,1,0",
+        }
+        for completion in completions
+    )
+    assert all(
+        is_singlet(term) and term.safe_simplify() != 0
+        for completion in completions
+        for term in completion.terms
+    )
+
+
+def test_d6a_ibp_eom_cut_weights_cover_equivalent_and_zero_projections():
+    operator = DERIV_EFF_OPERATORS["D6a"]
+    fields, epsilons, _ = operator_strip_derivs(operator.operator).values()
+    stripped = construct_operator(fields, epsilons)
+    derivative = next(
+        field for field in operator.operator.indexed_fields if field.derivs
+    )
+    target_gauge = tuple(map(str, derivative.gauge_indices))
+    target = next(
+        field
+        for field in stripped.indexed_fields
+        if field.field == derivative.strip_derivs()
+        and tuple(map(str, field.gauge_indices)) == target_gauge
+    )
+    other = next(
+        field
+        for field in stripped.indexed_fields
+        if field.label == target.label
+        and field.dynkin == target.dynkin
+        and field.charges == target.charges
+        and field is not target
+    )
+    spectators = [
+        field for field in stripped.indexed_fields if field not in (target, other)
+    ]
+    route = DerivativeRoute((6, 7), "F", "10", "L", "10")
+    graph = nx.Graph(
+        [(6, 7), (6, 0), (6, 1), (6, 2), (7, 3), (7, 4), (7, 5)]
+    )
+
+    def weight(left_higgs, right_higgs):
+        ordered = [left_higgs, *spectators[:2], right_higgs, *spectators[2:]]
+        partition = tuple(Leaf(field, node) for node, field in enumerate(ordered))
+        return routed_ibp_weight(operator.operator, partition, graph, route)
+
+    assert weight(target, other) == 1
+    assert weight(other, target) == -1
+
+    ordered = [target, other, *spectators]
+    partition = tuple(Leaf(field, node) for node, field in enumerate(ordered))
+    assert routed_ibp_weight(operator.operator, partition, graph, route) == 0
 
 
 def test_operator_strip_derivs_preserves_field_statistics():

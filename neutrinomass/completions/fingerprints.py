@@ -64,7 +64,15 @@ def completion_fingerprint(completion: Completion) -> tuple:
     derivative_edges = tuple(
         sorted(tuple(sorted(edge)) for edge in completion.derivative_edges)
     )
-    return (
+    projection = getattr(completion, "lorentz_projection", None)
+    projection_fingerprint = None
+    if projection is not None:
+        projection_fingerprint = (
+            projection.basis_labels,
+            projection.coordinates,
+            projection.derivative_field,
+        )
+    fingerprint = (
         completion.operator.name,
         completion.topology,
         completion.canonical_topology,
@@ -72,6 +80,9 @@ def completion_fingerprint(completion: Completion) -> tuple:
         lagrangian_fingerprint(completion),
         derivative_edges,
     )
+    if projection_fingerprint is not None:
+        return fingerprint + (projection_fingerprint,)
+    return fingerprint
 
 
 def completion_digest(completions: Iterable[Completion]) -> str:

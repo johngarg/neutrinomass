@@ -10,7 +10,7 @@ from neutrinomass.completions.completions import (
     base_exotic_label,
     operator_completions,
 )
-from neutrinomass.completions.core import Completion, DerivativeRoute
+from neutrinomass.completions.core import Completion, DerivativeRoute, LorentzProjection
 from neutrinomass.completions.fingerprints import completion_fingerprint
 from neutrinomass.completions.operators import EFF_OPERATORS, DERIV_EFF_OPERATORS
 from neutrinomass.database import dumps_completion as public_dumps_completion
@@ -81,6 +81,22 @@ def test_derivative_operator_round_trip_preserves_stripped_metadata():
     ]
 
 
+def test_lorentz_projection_round_trip_preserves_basis_metadata():
+    completion = completion_with_route()
+    completion.lorentz_projection = LorentzProjection(
+        basis_labels=("u:0-1,2-3|d:0-1", "u:0-2,1-3|d:0-1"),
+        coordinates=("1", "-1"),
+        derivative_field="DH",
+        ibp_relation="D(H1) H2 + H1 D(H2) = 0 modulo a total derivative",
+        eom_relation="derivatives on external fermions are removed by their EOM",
+    )
+
+    restored = loads_completion(dumps_completion(completion))
+
+    assert restored.lorentz_projection == completion.lorentz_projection
+    assert completion_fingerprint(restored) == completion_fingerprint(completion)
+
+
 def test_completion_jsonl_round_trip(tmp_path):
     completions = [
         completion_with_route(),
@@ -111,4 +127,20 @@ def test_completion_schema_rejects_executable_charge_expressions():
     )
 
     with pytest.raises(ValueError, match="Invalid rational charge"):
+        completion_from_record(record)
+
+
+def test_completion_schema_rejects_executable_projection_coordinates():
+    completion = completion_with_route()
+    completion.lorentz_projection = LorentzProjection(
+        basis_labels=("basis-0",),
+        coordinates=("1",),
+        derivative_field="DH",
+        ibp_relation="test relation",
+        eom_relation="test relation",
+    )
+    record = completion_to_record(completion)
+    record["lorentz_projection"]["coordinates"][0] = "__import__('os').system('x')"
+
+    with pytest.raises(ValueError, match="Invalid Lorentz-projection coordinate"):
         completion_from_record(record)

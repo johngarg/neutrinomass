@@ -413,6 +413,16 @@ class DerivativeRoute(NamedTuple):
     differentiated_lorentz: str
 
 
+class LorentzProjection(NamedTuple):
+    """Explicit coordinates in a named Lorentz basis after IBP/EOM reduction."""
+
+    basis_labels: Tuple[str, ...]
+    coordinates: Tuple[str, ...]
+    derivative_field: str
+    ibp_relation: str
+    eom_relation: str
+
+
 class Completion:
     def __init__(
         self,
@@ -425,6 +435,7 @@ class Completion:
         canonical_topology=None,
         derivative_edges=None,
         derivative_routes=None,
+        lorentz_projection=None,
     ):
         self.operator = operator
         self.partition = partition
@@ -442,6 +453,12 @@ class Completion:
         if route_edges and supplied_edges and route_edges != supplied_edges:
             raise ValueError("Derivative routes and derivative edges disagree")
         self.derivative_edges = route_edges or supplied_edges
+        self.lorentz_projection = (
+            lorentz_projection
+            if lorentz_projection is None
+            or isinstance(lorentz_projection, LorentzProjection)
+            else LorentzProjection(*lorentz_projection)
+        )
 
     def __eq__(self, other):
         if not isinstance(other, Completion):
@@ -450,11 +467,14 @@ class Completion:
             self.operator == other.operator
             and self.exotic_info() == other.exotic_info()
             and self.partition == other.partition
+            and self.lorentz_projection == other.lorentz_projection
         )
 
     def __hash__(self):
         exotic_info = tuple(sorted(self.exotic_info().values()))
-        return hash((self.operator, exotic_info, self.partition))
+        return hash(
+            (self.operator, exotic_info, self.partition, self.lorentz_projection)
+        )
 
     def __deepcopy__(self, memo):
         return self.__class__(
@@ -467,6 +487,7 @@ class Completion:
             canonical_topology=self.canonical_topology,
             derivative_edges=deepcopy(self.derivative_edges, memo),
             derivative_routes=deepcopy(self.derivative_routes, memo),
+            lorentz_projection=deepcopy(self.lorentz_projection, memo),
         )
 
     @property
