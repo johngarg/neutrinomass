@@ -31,6 +31,16 @@ SCHEMA_VERSION = 1
 _RATIONAL_PATTERN = re.compile(r"[+-]?\d+(?:/[1-9]\d*)?\Z")
 
 
+class CompletionJSONLError(ValueError):
+    """Report a malformed completion record at its physical JSONL line."""
+
+    def __init__(self, path, line_number, error):
+        self.path = Path(path)
+        self.line_number = line_number
+        self.error = error
+        super().__init__(f"{self.path}:{line_number}: {error}")
+
+
 def _decode_charge(value):
     """Decode the schema's deliberately restricted integer/rational grammar."""
 
@@ -343,6 +353,16 @@ def iter_completion_jsonl(path):
 
     path = Path(path)
     with path.open("r", encoding="utf-8") as stream:
-        for line in stream:
-            if line.strip():
+        for line_number, line in enumerate(stream, start=1):
+            if not line.strip():
+                continue
+            try:
                 yield loads_completion(line)
+            except (
+                AttributeError,
+                IndexError,
+                KeyError,
+                TypeError,
+                ValueError,
+            ) as error:
+                raise CompletionJSONLError(path, line_number, error) from error

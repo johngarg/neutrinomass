@@ -15,6 +15,7 @@ from neutrinomass.completions.fingerprints import completion_fingerprint
 from neutrinomass.completions.operators import EFF_OPERATORS, DERIV_EFF_OPERATORS
 from neutrinomass.database import dumps_completion as public_dumps_completion
 from neutrinomass.database.serialization import (
+    CompletionJSONLError,
     completion_from_record,
     completion_to_record,
     dumps_completion,
@@ -115,6 +116,117 @@ def test_completion_jsonl_round_trip(tmp_path):
     assert [completion_fingerprint(item) for item in streamed] == [
         completion_fingerprint(item) for item in completions
     ]
+
+
+def test_completion_jsonl_iterator_is_lazy(tmp_path):
+    missing = tmp_path / "missing.jsonl"
+
+    streamed = iter_completion_jsonl(missing)
+
+    with pytest.raises(FileNotFoundError):
+        next(streamed)
+
+
+def test_completion_jsonl_preserves_order_and_ignores_blank_lines(tmp_path):
+    first = completion_with_route()
+    second = next(operator_completions(EFF_OPERATORS["2"]))
+    path = tmp_path / "completions.jsonl"
+    path.write_text(
+        "\n  \n"
+        + dumps_completion(first)
+        + "\n\t\n"
+        + dumps_completion(second)
+        + "\n",
+        encoding="utf-8",
+    )
+
+    streamed = list(iter_completion_jsonl(path))
+
+    assert [completion_fingerprint(item) for item in streamed] == [
+        completion_fingerprint(first),
+        completion_fingerprint(second),
+    ]
+
+
+def test_completion_jsonl_reports_physical_line_for_invalid_json(tmp_path):
+    path = tmp_path / "completions.jsonl"
+    path.write_text("\n\n{not-json}\n", encoding="utf-8")
+
+    with pytest.raises(
+        CompletionJSONLError, match=r"completions\.jsonl:3:"
+    ) as exc:
+        list(iter_completion_jsonl(path))
+
+    assert exc.value.line_number == 3
+    assert isinstance(exc.value.__cause__, json.JSONDecodeError)
+
+
+def test_completion_jsonl_reports_line_for_invalid_schema(tmp_path):
+    path = tmp_path / "completions.jsonl"
+    path.write_text(
+        "\n" + json.dumps({"schema": "unknown", "version": 1}) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        CompletionJSONLError, match=r"completions\.jsonl:2:"
+    ) as exc:
+        list(iter_completion_jsonl(path))
+
+    assert "Not a neutrinomass completion record" in str(exc.value)
+
+
+def test_completion_jsonl_reports_line_for_structurally_invalid_record(tmp_path):
+    path = tmp_path / "completions.jsonl"
+    path.write_text("\n[]\n", encoding="utf-8")
+
+    with pytest.raises(CompletionJSONLError) as exc:
+        list(iter_completion_jsonl(path))
+
+    assert exc.value.line_number == 2
+    assert isinstance(exc.value.__cause__, AttributeError)
+
+
+def test_completion_jsonl_preserves_charge_validation(tmp_path):
+    record = completion_to_record(completion_with_route())
+    record["operator"]["tensors"][0]["charges"]["y"] = (
+        "__import__('os').system('echo unsafe')"
+    )
+    path = tmp_path / "completions.jsonl"
+    path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+    with pytest.raises(CompletionJSONLError, match="Invalid rational charge") as exc:
+        list(iter_completion_jsonl(path))
+
+    assert exc.value.line_number == 1
+
+
+def test_completion_jsonl_streamed_read_write_preserves_fingerprints(tmp_path):
+    completions = [
+        completion_with_route(),
+        next(operator_completions(EFF_OPERATORS["2"])),
+    ]
+    source = tmp_path / "source.jsonl"
+    destination = tmp_path / "destination.jsonl"
+    write_completion_jsonl(source, completions)
+
+    write_completion_jsonl(destination, iter_completion_jsonl(source))
+
+    assert [
+        completion_fingerprint(item)
+        for item in iter_completion_jsonl(destination)
+    ] == [completion_fingerprint(item) for item in completions]
+    assert destination.read_bytes() == source.read_bytes()
+
+
+def test_read_completion_jsonl_remains_a_list_wrapper(tmp_path):
+    path = tmp_path / "completion.jsonl"
+    write_completion_jsonl(path, [completion_with_route()])
+
+    restored = read_completion_jsonl(path)
+
+    assert isinstance(restored, list)
+    assert len(restored) == 1
 
 
 def test_completion_schema_rejects_unknown_versions():
