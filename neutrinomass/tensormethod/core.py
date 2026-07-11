@@ -229,6 +229,31 @@ class Index(tensor.TensorIndex):
         return {"label": self.label}
 
 
+def _latex_index_name(index: Index, index_dict: dict, style: dict) -> str:
+    """Return one display name for the contraction pair ``index`` and ``-index``."""
+    opposite = -index
+    if index in index_dict:
+        return index_dict[index]
+    if opposite in index_dict:
+        index_string = index_dict[opposite]
+    else:
+        type_ = Index.get_index_labels()[index.index_type]
+        index_string = style[type_].pop(0)
+
+    index_dict[index] = index_string
+    index_dict[opposite] = index_string
+    return index_string
+
+
+def _latex_with_indices(symbol: str, upper: list, lower: list) -> str:
+    """Attach upper and lower index groups to a LaTeX symbol."""
+    if upper:
+        symbol += rf"^{{{' '.join(upper)}}}"
+    if lower:
+        symbol += rf"_{{{' '.join(lower)}}}"
+    return symbol
+
+
 class Field:
     def __init__(
         self,
@@ -556,7 +581,7 @@ class Field:
 
     def get_latex(self):
         if self.is_conj:
-            # add twidle for doublets so that their SU2 indices are always raised
+            # Use the SU(2)-dual multiplet so that its isospin indices are raised.
             if self.isospin_irrep != (0,):
                 if self.derivs == 0:
                     return rf"\tilde{{{self.latex}}}"
@@ -845,19 +870,24 @@ class IndexedField(tensor.Tensor, Field):
             raise ValueError(f"No latex string assigned to {self}")
 
         # deal with indices
-        indices = []
+        upper_indices = []
+        lower_indices = []
         for index in self.indices:
             type_ = Index.get_index_labels()[index.index_type]
             # condition that style wants to be printed
             if type_ in style:
-                index_string = style[type_].pop(0)
-                index_dict[index] = index_string
-                indices.append(index_string)
+                index_string = _latex_index_name(index, index_dict, style)
+                if index.is_up:
+                    upper_indices.append(index_string)
+                else:
+                    lower_indices.append(index_string)
 
-        if not indices:
+        if not upper_indices and not lower_indices:
             return self.get_latex()
 
-        return rf"{self.get_latex()}^{{{' '.join(indices)}}}"
+        return _latex_with_indices(
+            self.get_latex(), upper_indices, lower_indices
+        )
 
     def strip_derivs(self):
         if self.derivs == 0:
@@ -1114,22 +1144,26 @@ class Operator(tensor.TensMul):
                 field_ordering.append(f.label.replace("~", ""))
                 field_ordering.append(fc.label.replace("~", ""))
 
-        # indices i, j, ... q used for isospin
-        isospin_indices = list(ascii_lowercase[8:])
-        isospin_indices.remove("o")  # remove o because it's unsightly
+        # Keep the conventional flavour labels distinct from isospin labels.
+        isospin_indices = [
+            char for char in ascii_lowercase[8:] if char not in "opqrst"
+        ]
+        generation_indices = list("pqrst") + [
+            rf"p_{{{number}}}" for number in range(1, 50)
+        ]
 
         style = {
             "i": isospin_indices,
             "c": list(ascii_lowercase[:8]),
             "u": copy(TEX_GREEK_LOWERCASE),
             "d": copy(DOTTED_TEX_GREEK_LOWERCASE),
-            # "g": list(ascii_lowercase[19:]),
+            "g": generation_indices,
         }
 
         # remove styles you don't care about
         if ignore is not None:
             for char in ignore:
-                style.pop(char)
+                style.pop(char, None)
 
         # extract first non D in field name e.g. H for DDH
         first_non_deriv = lambda f: str(f).split("D")[-1][0]
@@ -1151,27 +1185,27 @@ class Operator(tensor.TensMul):
             if str(epsilon)[0] == "K":
                 symb = r"\delta"
 
-            # If two epsilons contracted, they will have an additional index
-            # that isn't in index_dict, need to add it in manually. For now,
-            # disregard raised and lowered indices for SU(3)
-            eps_indices = []
+            type_ = Index.get_index_labels()[epsilon.indices[0].index_type]
+            if type_ not in style:
+                continue
+
+            upper_indices = []
+            lower_indices = []
             for idx in epsilon.indices:
-                if -idx not in index_dict.keys():
-                    type_ = Index.get_index_labels()[idx.index_type]
-                    index_string = style[type_].pop(0)
-                    index_dict[-idx] = index_string
-                    index_dict[idx] = index_string
+                index_string = _latex_index_name(idx, index_dict, style)
+                if idx.is_up:
+                    upper_indices.append(index_string)
+                else:
+                    lower_indices.append(index_string)
 
-                eps_indices.append(index_dict[-idx])
-
-            eps_indices.sort()
-            # eps_indices = sorted([index_dict[-idx] for idx in epsilon.indices])
-            eps_latex = rf"{symb}_{{{' '.join(eps_indices)}}}"
+            eps_latex = _latex_with_indices(
+                symb, upper_indices, lower_indices
+            )
             latex_epsilons.append(eps_latex)
 
         # add on epsilons
         if latex_epsilons:
-            latex_strings += [r" \cdot "] + sorted(latex_epsilons)
+            latex_strings += [r" \cdot "] + latex_epsilons
 
         return " ".join(latex_strings)
 

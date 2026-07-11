@@ -287,7 +287,19 @@ class VectorLikeDiracFermion(FieldType):
         )
 
         assert self.is_fermion
+        # Legacy records sometimes derived latex from a stateful ASCII label
+        # such as f~†. State is rendered explicitly below.
+        self.latex = self.latex.replace("~", "").replace("†", "")
         self.is_unbarred = is_unbarred
+
+    def get_latex(self):
+        """Render the two Weyl fields and their conjugates unambiguously."""
+        symbol = self.latex
+        if not self.is_unbarred:
+            symbol = rf"\widetilde{{{symbol}}}"
+        if self.is_conj:
+            symbol = "{" + symbol + r"^{\dagger}}"
+        return symbol
 
     @property
     def conj(self):
@@ -307,6 +319,7 @@ class VectorLikeDiracFermion(FieldType):
             is_unbarred=self.is_unbarred,
             symmetry=self.symmetry,
             comm=self.comm,
+            latex=self.latex,
         )
 
     @property
@@ -326,6 +339,7 @@ class VectorLikeDiracFermion(FieldType):
             is_unbarred=self.is_unbarred,
             symmetry=self.symmetry,
             comm=self.comm,
+            latex=self.latex,
         )
 
     def dirac_partner(self):

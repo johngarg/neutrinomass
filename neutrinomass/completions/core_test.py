@@ -50,6 +50,35 @@ def test_vectorlike_dirac_fermion():
     assert copied_partner.dirac_partner().label == f.label
 
 
+def test_vectorlike_dirac_partners_have_distinct_latex():
+    field = VectorLikeDiracFermion(
+        "ψ", "u0", charges={"y": 1}, latex=r"\Psi"
+    )
+    partner = field.dirac_partner()
+
+    assert field.get_latex() == r"\Psi"
+    assert partner.get_latex() == r"\widetilde{\Psi}"
+    assert field.conj.get_latex() == r"{\Psi^{\dagger}}"
+    assert partner.conj.get_latex() == r"{\widetilde{\Psi}^{\dagger}}"
+    assert field.conj.latex == field.latex
+    assert partner.conj.latex == partner.latex
+    assert field.mass_term.latex() == (
+        r"\widetilde{\Psi}^{\alpha} \Psi^{\beta}  \cdot  "
+        r"\epsilon_{\alpha \beta}"
+    )
+
+    legacy_partner = VectorLikeDiracFermion(
+        "f~†",
+        "d0",
+        charges={"y": -1},
+        latex="f~†",
+        is_unbarred=False,
+        is_conj=True,
+    )
+    assert legacy_partner.latex == "f"
+    assert legacy_partner.get_latex() == r"{\widetilde{f}^{\dagger}}"
+
+
 def test_effective_operator():
     assert EFF_OPERATORS["1"].mass_dimension == 5
     assert EFF_OPERATORS["2"].mass_dimension == 7

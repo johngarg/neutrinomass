@@ -77,7 +77,7 @@ ignored (as we want in our case)
 >>> o1
 L(u0, I_0)*L(u1, I_1)*H(I_2)*metric(-I_0, -I_2)*H(I_3)*metric(-I_3, -I_1)
 >>> o1.latex()
-'L^{i} L^{j} H^{k} H^{l} \\epsilon_{i k} \\epsilon_{j l}'
+'L^{\\alpha i p} L^{\\beta j q} H^{k} H^{l}  \\cdot  \\epsilon_{i k} \\epsilon_{l j}'
 #+END_SRC
 Currently algorithms removing operators equivalent up to certain kinds of index
 relabellings are implemented only for the contraction of one index type at a

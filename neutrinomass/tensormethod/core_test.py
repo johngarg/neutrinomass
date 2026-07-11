@@ -105,6 +105,66 @@ def test_indexed_field_conj():
     assert dd.conj.y == -2
 
 
+def test_latex_preserves_direct_colour_contractions_and_variance():
+    upper = IndexedField("A", "c0", latex="A")
+    lower = IndexedField("B", "-c0", latex="B")
+
+    assert (upper * lower).latex() == r"B_{a} A^{a}"
+
+
+def test_latex_preserves_delta_and_colour_epsilon_variance():
+    upper = IndexedField("A", "c0", latex="A")
+    lower = IndexedField("B", "-c1", latex="B")
+    with_delta = upper * lower * delta("c1 -c0")
+
+    assert with_delta.latex() == r"B_{a} A^{b}  \cdot  \delta^{a}_{b}"
+
+    three_upper = IndexedField("A", "c0 c1 c2", latex="A")
+    three_lower = IndexedField("A", "-c0 -c1 -c2", latex="A")
+    assert (three_upper * eps("-c0 -c1 -c2")).latex() == (
+        r"A^{a b c}  \cdot  \epsilon_{a b c}"
+    )
+    assert (three_lower * eps("c0 c1 c2")).latex() == (
+        r"A_{a b c}  \cdot  \epsilon^{a b c}"
+    )
+
+
+def test_latex_preserves_antisymmetric_index_order():
+    first = IndexedField("A", "u0", latex="A")
+    second = IndexedField("B", "u1", latex="B")
+    ordered = first * second * eps("-u0 -u1")
+
+    first = IndexedField("A", "u0", latex="A")
+    second = IndexedField("B", "u1", latex="B")
+    reversed_ = first * second * eps("-u1 -u0")
+
+    assert ordered.latex() == (
+        r"B^{\alpha} A^{\beta}  \cdot  \epsilon_{\beta \alpha}"
+    )
+    assert reversed_.latex() == (
+        r"B^{\alpha} A^{\beta}  \cdot  \epsilon_{\alpha \beta}"
+    )
+    assert ordered.latex() != reversed_.latex()
+
+
+def test_latex_ignore_skips_invariants_of_ignored_type():
+    upper = IndexedField("A", "c0", latex="A")
+    lower = IndexedField("B", "-c1", latex="B")
+    assert (upper * lower * delta("c1 -c0")).latex(ignore="c") == "B A"
+
+    first = IndexedField("A", "u0", latex="A")
+    second = IndexedField("B", "u1", latex="B")
+    assert (first * second * eps("-u0 -u1")).latex(ignore="u") == "B A"
+
+
+def test_latex_displays_generation_indices_by_default():
+    flavoured = IndexedField("A", "u0 g0", latex="A", nf=3)
+    singlet = IndexedField("B", "", latex="B")
+
+    assert (flavoured * singlet).latex() == r"B A^{\alpha p}"
+    assert (flavoured * singlet).latex(ignore="g") == r"B A^{\alpha}"
+
+
 def test_strip_derivs():
     from neutrinomass.tensormethod.sm import Q, H
     from neutrinomass.tensormethod.core import D
