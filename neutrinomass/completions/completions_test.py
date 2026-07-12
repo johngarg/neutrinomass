@@ -486,7 +486,8 @@ def test_derivative_routing_branches_and_is_order_independent(monkeypatch):
 
 
 def test_derivative_rerooting_enumerates_every_internal_vertex():
-    graph = nx.Graph([(0, 1), (1, 2), (0, 3), (2, 4)])
+    graph = nx.Graph()
+    graph.add_edges_from([(0, 1), (1, 2), (0, 3), (2, 4)])
     partition = (Leaf("S", 3), Leaf("F", 4))
 
     rooted = canonical_rooted_partitions(partition, graph)
