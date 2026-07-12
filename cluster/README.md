@@ -40,6 +40,12 @@ Python/3.12.3`; Python must be loaded after its compiler dependencies. Override
 the complete ordered list with `NEUTRINOMASS_MODULES` if Spartan changes the
 available versions.
 
+The bootstrap explicitly installs `setuptools==69.5.1`. Python 3.12 no longer
+ships `distutils`, but pinned SymPy 1.2 imports it; this setuptools release
+provides the same compatibility shim as the validated local environment. The
+install is deliberately repeated on submission so a partially created `.venv`
+is repaired without manual deletion.
+
 The workflow is restartable: sourcing the submitter again creates a new array,
 but valid completed task reports are checksum-verified and skipped. The source
 commit for the scientific census is pinned to

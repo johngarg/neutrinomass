@@ -45,6 +45,12 @@ priority4_submit_spartan() (
         "${python_cmd}" -m pip install --no-deps -e "${repo_root}"
     fi
 
+    # Python 3.12 removed stdlib distutils, but the validated SymPy 1.2 stack
+    # imports it. This exact setuptools version supplies the compatibility shim
+    # used by the validated local Python 3.12 environment. Run this outside the
+    # creation guard so an already-created Spartan .venv is repaired in place.
+    "${python_cmd}" -m pip install "setuptools==69.5.1"
+
     mkdir -p "${output_root}/logs" "${output_root}/.matplotlib-submit"
     export MPLCONFIGDIR="${output_root}/.matplotlib-submit"
     "${python_cmd}" -m pytest -q \
