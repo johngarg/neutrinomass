@@ -35,6 +35,11 @@ export NEUTRINOMASS_OUTPUT_ROOT=/data/gpfs/projects/punim0011/garj/exploding-ope
 source cluster/submit_spartan.sh
 ```
 
+The default Spartan module stack is `GCC/13.3.0 OpenBLAS/0.3.27
+Python/3.12.3`; Python must be loaded after its compiler dependencies. Override
+the complete ordered list with `NEUTRINOMASS_MODULES` if Spartan changes the
+available versions.
+
 The workflow is restartable: sourcing the submitter again creates a new array,
 but valid completed task reports are checksum-verified and skipped. The source
 commit for the scientific census is pinned to

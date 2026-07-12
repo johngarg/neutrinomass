@@ -13,7 +13,7 @@ if ! command -v module >/dev/null 2>&1; then
     return 1 2>/dev/null || exit 1
 fi
 
-read -r -a priority4_modules <<< "${NEUTRINOMASS_MODULES:-Python/3.12.3}"
+read -r -a priority4_modules <<< "${NEUTRINOMASS_MODULES:-GCC/13.3.0 OpenBLAS/0.3.27 Python/3.12.3}"
 for priority4_module in "${priority4_modules[@]}"; do
     if ! module is-loaded "${priority4_module}" >/dev/null 2>&1; then
         module load "${priority4_module}"
