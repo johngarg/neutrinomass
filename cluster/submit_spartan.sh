@@ -23,10 +23,6 @@ priority4_submit_spartan() (
         echo "Refusing to submit from a dirty tracked worktree." >&2
         return 2
     fi
-    if [[ ! -d "${legacy_dir}" ]]; then
-        echo "Legacy database directory does not exist: ${legacy_dir}" >&2
-        return 2
-    fi
     if ! command -v sbatch >/dev/null 2>&1; then
         echo "sbatch is unavailable; run this on a Spartan login node." >&2
         return 2
@@ -53,10 +49,13 @@ priority4_submit_spartan() (
 
     mkdir -p "${output_root}/logs" "${output_root}/.matplotlib-submit"
     export MPLCONFIGDIR="${output_root}/.matplotlib-submit"
-    "${python_cmd}" -m pytest -q \
-        cluster_rebuild_test.py rebuild_completion_database_test.py
-
     cd "${repo_root}"
+    "${python_cmd}" -m pytest -q \
+        cluster_rebuild_test.py \
+        cluster_legacy_archive_test.py \
+        rebuild_completion_database_test.py
+    "${python_cmd}" cluster/fetch_legacy_archive.py "${legacy_dir}"
+
     "${python_cmd}" cluster_rebuild.py plan \
         "${legacy_dir}" \
         --source-commit "${source_commit}" \

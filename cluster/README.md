@@ -1,7 +1,6 @@
 # Priority-4 Spartan rebuild
 
-On a Spartan login node, check out `cluster-rebuild`, place the preserved
-legacy `raw_completions/` directory beside the repository, and run:
+On a Spartan login node, check out `cluster-rebuild` and run:
 
 ```bash
 source cluster/submit_spartan.sh
@@ -12,8 +11,10 @@ An already prepared Python environment can be selected with
 `NEUTRINOMASS_SKIP_MODULES=1` only when that environment does not require a
 Spartan Python module.
 
-That one command creates `.venv` when needed, verifies the 243-file legacy
-inventory, writes a 486-task manifest (243 operators times two hash seeds),
+That one command creates `.venv` when needed, downloads and verifies the
+published 199 MB Zenodo `raw_completions.zip` when the legacy directory is
+absent, safely extracts its 243 inputs (about 4.4 GB), writes a 486-task
+manifest (243 operators times two hash seeds),
 submits a throttled Slurm array, and submits an `afterok` finalizer. Each array
 job uses node-local scratch, gzip-packages the large raw and exact JSONL files,
 and publishes only its own operator directory. The finalizer validates every
@@ -34,6 +35,11 @@ export NEUTRINOMASS_LEGACY_DIR=/data/gpfs/projects/punim0011/garj/exploding-oper
 export NEUTRINOMASS_OUTPUT_ROOT=/data/gpfs/projects/punim0011/garj/exploding-operators/priority4-rebuild-v4
 source cluster/submit_spartan.sh
 ```
+
+The download is pinned to Zenodo record `4054618`, byte size `198689883`, and
+published MD5 `f7a199f7718607e3740137e85c1d488b`. A cached archive is reused only
+after both checks pass. An existing complete 243-file directory is reused; a
+partial directory is never overwritten automatically.
 
 The default Spartan module stack is `GCC/13.3.0 OpenBLAS/0.3.27
 Python/3.12.3`; Python must be loaded after its compiler dependencies. Override
