@@ -18,20 +18,25 @@ from time import perf_counter
 from neutrinomass.completions.completions import (
     HistoricalDerivativeBasis,
     PROJECTED_LORENTZ_OPERATORS,
+    UnreducedSecondDerivativeBasis,
     append_unique_completions,
     are_equivalent_completions,
     base_exotic_label,
+    canonical_propagator_cut,
     deriv_operator_completions,
     exact_completion_bucket_key,
     exotic_species,
     is_singlet,
     operator_completions,
     operator_strip_derivs,
+    unique_multi_derivative_projection,
 )
 from neutrinomass.completions.equivalence import clear_interaction_graph_cache
 from neutrinomass.completions.fingerprints import (
     completion_fingerprint,
     democratic_model_fingerprint,
+    propagator_model_fingerprint,
+    species_model_fingerprint,
 )
 from neutrinomass.completions.operators import (
     DERIV_EFF_OPERATORS,
@@ -158,23 +163,73 @@ def validate_completion(completion, *, check_vanishing=True):
     ):
         raise ValueError("non-renormalisable or non-singlet UV interaction")
 
-    if not completion.derivative_routes:
+    contributions = getattr(completion, "momentum_contributions", ())
+    if not contributions:
         return
-    if len(completion.derivative_routes) != 1:
-        raise ValueError("routed completion does not have exactly one route")
-    route = completion.derivative_routes[0]
-    if not completion.graph.has_edge(*route.edge):
-        raise ValueError(f"recorded route edge is absent: {route.edge}")
-    particle = completion.graph.edges[route.edge]["particle"]
-    if base_exotic_label(particle) != base_exotic_label(route.numerator_field):
-        raise ValueError("route numerator does not match the edge particle")
+    for contribution in contributions:
+        if contribution.derivative_degree <= 0:
+            raise ValueError("recorded propagator contribution has degree zero")
+        if not completion.graph.has_edge(*contribution.edge):
+            raise ValueError(
+                f"recorded contribution edge is absent: {contribution.edge}"
+            )
+        particle = completion.graph.edges[contribution.edge]["particle"]
+        if base_exotic_label(particle) != base_exotic_label(
+            contribution.particle
+        ):
+            raise ValueError(
+                "propagator contribution does not match the edge particle"
+            )
+        exact_matches = [
+            field
+            for field in completion.exotics
+            if field.label == contribution.particle
+        ]
+        matching_fields = exact_matches or [
+            field
+            for field in completion.exotics
+            if base_exotic_label(field.label)
+            == base_exotic_label(contribution.particle)
+        ]
+        if (
+            not matching_fields
+            or len({field.is_fermion for field in matching_fields}) != 1
+        ):
+            raise ValueError("propagator contribution has ambiguous particle")
+        field = matching_fields[0]
+        if contribution.numerator_kind == "scalar" and not field.is_boson:
+            raise ValueError("scalar numerator recorded on a fermion edge")
+        if (
+            contribution.numerator_kind in {"mass", "momentum"}
+            and not field.is_fermion
+        ):
+            raise ValueError("fermion numerator recorded on a scalar edge")
+        if (
+            contribution.cut_side
+            and contribution.cut_side
+            != canonical_propagator_cut(
+                completion.partition, completion.graph, contribution.edge
+            )
+        ):
+            raise ValueError("propagator contribution has a noncanonical cut")
+
+    operator = DERIV_EFF_OPERATORS.get(completion.operator.name)
+    if operator is not None:
+        requested_degree = operator_strip_derivs(operator.operator)["n_derivs"]
+        generated_degree = sum(
+            contribution.derivative_degree for contribution in contributions
+        )
+        if generated_degree != requested_degree:
+            raise ValueError(
+                "propagator contribution degree does not match the operator"
+            )
 
 
 def round_trip_signature(completion):
     projection = getattr(completion, "lorentz_projection", None)
     return (
         completion_fingerprint(completion),
-        tuple(completion.derivative_routes),
+        tuple(completion.momentum_contributions),
         tuple(projection) if projection is not None else None,
     )
 
@@ -205,7 +260,7 @@ def _new_stats():
 
 def _update_stats(stats, completion):
     stats["records"] += 1
-    routed = bool(completion.derivative_routes)
+    routed = bool(completion.momentum_contributions)
     stats["routed" if routed else "local"] += 1
     stats["topologies"][topology_key(completion)] += 1
 
@@ -321,6 +376,26 @@ def historical_classes(operator_name, historical_path):
             completion.lorentz_projection = basis.project_existing_local(
                 completion.operator.operator
             )
+    else:
+        derivative_operator = DERIV_EFF_OPERATORS.get(operator_name)
+        projection = (
+            unique_multi_derivative_projection(derivative_operator)
+            if derivative_operator is not None
+            else None
+        )
+        if projection is not None:
+            for completion in records:
+                completion.lorentz_projection = projection
+        elif derivative_operator is not None and operator_strip_derivs(
+            derivative_operator.operator
+        )["n_derivs"] == 2:
+            basis = UnreducedSecondDerivativeBasis.from_operator(
+                derivative_operator
+            )
+            for completion in records:
+                completion.lorentz_projection = basis.project_existing_local(
+                    completion.operator.operator
+                )
     bucketable, invalid = partition_bucketable_historical_records(records)
     classes = []
     append_unique_completions(classes, bucketable)
@@ -387,6 +462,8 @@ def audit_exact_artifact(
     stats = _new_stats()
     digest = OrderedSignatureDigest()
     models = defaultdict(set)
+    species_models = set()
+    propagator_models = set()
     comparisons = 0
     missing = []
 
@@ -406,6 +483,10 @@ def audit_exact_artifact(
                 digest.update(round_trip_signature(completion))
                 models[model_strings(completion)].add(
                     (completion.topology, completion.canonical_topology)
+                )
+                species_models.add(species_model_fingerprint(completion))
+                propagator_models.add(
+                    propagator_model_fingerprint(completion)
                 )
                 connection.execute(
                     "INSERT INTO exact_classes(bucket_key, payload) VALUES (?, ?)",
@@ -440,6 +521,8 @@ def audit_exact_artifact(
         **_serialise_stats(stats),
         "round_trip_digest": digest.hexdigest(),
         "democratic_models": len(models),
+        "species_models": len(species_models),
+        "propagator_models": len(propagator_models),
         "model_artifact": {
             "path": str(Path(model_path).resolve()),
             "sha256": model_sha256,
@@ -666,6 +749,8 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
             "routed": exact["routed"],
         },
         "democratic_models": exact["democratic_models"],
+        "species_models": exact["species_models"],
+        "propagator_models": exact["propagator_models"],
         "historical": {
             "records": len(records),
             "classes": len(classes) + len(unbucketable_historical),

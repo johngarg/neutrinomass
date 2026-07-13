@@ -6,11 +6,19 @@ import networkx as nx
 import pytest
 
 from neutrinomass.completions.completions import (
+    UnreducedSecondDerivativeBasis,
     are_equivalent_completions,
     base_exotic_label,
+    expand_propagator_denominators,
     operator_completions,
 )
-from neutrinomass.completions.core import Completion, DerivativeRoute, LorentzProjection
+from neutrinomass.completions.core import (
+    Completion,
+    DerivativeRoute,
+    LorentzProjection,
+    MultiDerivativeProjection,
+    PropagatorContribution,
+)
 from neutrinomass.completions.fingerprints import completion_fingerprint
 from neutrinomass.completions.operators import EFF_OPERATORS, DERIV_EFF_OPERATORS
 from neutrinomass.database import dumps_completion as public_dumps_completion
@@ -25,6 +33,7 @@ from neutrinomass.database.serialization import (
     operator_to_data,
     read_completion_jsonl,
     write_completion_jsonl,
+    route_to_data,
 )
 
 
@@ -68,6 +77,7 @@ def test_completion_json_round_trip_is_exact_and_non_executable():
     assert are_equivalent_completions(restored, completion)
     assert dumps_completion(restored) == payload
     assert restored.derivative_routes == completion.derivative_routes
+    assert restored.momentum_contributions == completion.momentum_contributions
     assert nx.to_dict_of_dicts(restored.graph) == nx.to_dict_of_dicts(
         completion.graph
     )
@@ -97,6 +107,70 @@ def test_lorentz_projection_round_trip_preserves_basis_metadata():
 
     assert restored.lorentz_projection == completion.lorentz_projection
     assert completion_fingerprint(restored) == completion_fingerprint(completion)
+
+
+def test_multi_derivative_projection_round_trip_preserves_fields():
+    completion = completion_with_route()
+    completion.lorentz_projection = MultiDerivativeProjection(
+        basis_labels=("u:0-1|d:0-1",),
+        coordinates=("1",),
+        derivative_fields=("DL", "DH"),
+        ibp_relation="retain the named placement",
+        eom_relation="No equation-of-motion reduction is applied",
+    )
+
+    restored = loads_completion(dumps_completion(completion))
+
+    assert restored.lorentz_projection == completion.lorentz_projection
+    assert restored.lorentz_projection.derivative_field == "DL,DH"
+    assert completion_fingerprint(restored) == completion_fingerprint(completion)
+
+
+def test_unreduced_d_squared_field_round_trip_preserves_derivative_count():
+    basis = UnreducedSecondDerivativeBasis.from_operator(
+        DERIV_EFF_OPERATORS["D15"]
+    )
+    operator = basis.placement_by_indices[(0, 0)].operator.operator
+
+    restored = operator_from_data(operator_to_data(operator))
+    boxed = next(field for field in restored.indexed_fields if field.derivs)
+
+    assert boxed.derivs == 2
+    assert boxed.strip_derivs().dynkin == boxed.dynkin
+
+
+def test_multiple_propagator_contributions_round_trip():
+    base = next(operator_completions(EFF_OPERATORS["2"]))
+    completion = next(
+        item
+        for item in expand_propagator_denominators(base, 2)
+        if len(item.momentum_contributions) == 2
+    )
+
+    restored = loads_completion(dumps_completion(completion))
+
+    assert restored.momentum_contributions == completion.momentum_contributions
+    assert restored.derivative_routes == completion.derivative_routes
+    assert [item.derivative_degree for item in restored.momentum_contributions] == [
+        2,
+        2,
+    ]
+
+
+def test_version_one_derivative_route_is_upgraded_on_read():
+    completion = completion_with_route()
+    route = completion.derivative_routes[0]
+    record = completion_to_record(completion)
+    record["version"] = 1
+    record["derivative_routes"] = [route_to_data(route)]
+    del record["momentum_contributions"]
+
+    restored = completion_from_record(record)
+
+    assert restored.derivative_routes == (route,)
+    assert restored.momentum_contributions == (
+        PropagatorContribution.from_derivative_route(route),
+    )
 
 
 def test_completion_jsonl_round_trip(tmp_path):

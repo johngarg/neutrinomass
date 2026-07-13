@@ -10,6 +10,7 @@ import networkx as nx
 from neutrinomass.completions.core import Completion
 from neutrinomass.completions.equivalence import (
     conjugated_interaction_graph,
+    field_label_parts,
     interaction_graph,
 )
 
@@ -52,6 +53,30 @@ def democratic_model_fingerprint(completion: Completion) -> tuple:
     return tuple(sorted(set(completion.exotic_info().values())))
 
 
+def species_model_fingerprint(completion: Completion) -> tuple:
+    """Return distinct physical heavy species, preserving representation repeats."""
+
+    return tuple(sorted(completion.exotic_info().values()))
+
+
+def propagator_model_fingerprint(completion: Completion) -> tuple:
+    """Return the heavy representation on every internal propagator edge."""
+
+    exotic_info = completion.exotic_info()
+    by_label = {
+        field_label_parts(field.label)[0]: information
+        for field, information in exotic_info.items()
+    }
+    propagators = []
+    for _, particle in nx.get_edge_attributes(
+        completion.graph, "particle"
+    ).items():
+        information = by_label.get(field_label_parts(particle)[0])
+        if information is not None:
+            propagators.append(information)
+    return tuple(sorted(propagators))
+
+
 def lagrangian_fingerprint(completion: Completion) -> Tuple[str, ...]:
     """Return sorted structural interaction hashes for regression snapshots."""
 
@@ -80,6 +105,26 @@ def completion_fingerprint(completion: Completion) -> tuple:
         lagrangian_fingerprint(completion),
         derivative_edges,
     )
+    contributions = getattr(completion, "momentum_contributions", ())
+    has_higher_propagator_order = any(
+        contribution.numerator_kind != "momentum"
+        or contribution.denominator_order
+        for contribution in contributions
+    )
+    if has_higher_propagator_order:
+        contribution_fingerprint = tuple(
+            sorted(
+                (
+                    tuple(sorted(contribution.edge)),
+                    field_label_parts(contribution.particle)[0],
+                    contribution.numerator_kind,
+                    contribution.denominator_order,
+                    tuple(sorted(contribution.cut_side)),
+                )
+                for contribution in contributions
+            )
+        )
+        fingerprint += (("propagator_expansion", contribution_fingerprint),)
     if projection_fingerprint is not None:
         return fingerprint + (projection_fingerprint,)
     return fingerprint

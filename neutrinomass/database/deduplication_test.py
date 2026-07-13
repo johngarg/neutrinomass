@@ -8,6 +8,7 @@ from sympy import Rational
 
 from neutrinomass.completions.completions import (
     are_equivalent_completions,
+    expand_propagator_denominators,
     exact_completion_bucket_key,
     operator_completions,
 )
@@ -19,6 +20,7 @@ from neutrinomass.completions.core import (
     LorentzProjection,
 )
 from neutrinomass.completions.fingerprints import (
+    completion_fingerprint,
     completion_digest,
     lagrangian_fingerprint,
 )
@@ -159,6 +161,22 @@ def test_disk_deduplication_keeps_distinct_lorentz_projections(tmp_path):
     source = tmp_path / "projections.jsonl"
     destination = tmp_path / "unique.jsonl"
     write_completion_jsonl(source, [first, second])
+
+    report = deduplicate_completion_jsonl(source, destination, work_dir=tmp_path)
+
+    assert report["exact_classes"] == 2
+
+
+def test_disk_deduplication_keeps_distinct_propagator_orders(tmp_path):
+    base = next(operator_completions(EFF_OPERATORS["1"]))
+    first = expand_propagator_denominators(base, 1)[0]
+    second = expand_propagator_denominators(base, 2)[0]
+    source = tmp_path / "propagator-orders.jsonl"
+    destination = tmp_path / "unique.jsonl"
+    write_completion_jsonl(source, [first, second])
+
+    assert completion_fingerprint(first) != completion_fingerprint(second)
+    assert not are_equivalent_completions(first, second)
 
     report = deduplicate_completion_jsonl(source, destination, work_dir=tmp_path)
 

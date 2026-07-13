@@ -249,6 +249,8 @@ def stable_report_data(report):
         "records": report["records"],
         "exact_classes": report["exact_classes"],
         "democratic_models": report["democratic_models"],
+        "species_models": report["species_models"],
+        "propagator_models": report["propagator_models"],
         "historical": historical,
         "topologies": report["topologies"],
         "completion_digests": report["completion_digests"],

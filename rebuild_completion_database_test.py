@@ -32,6 +32,8 @@ def sample_report(directory, seed):
         "records": {"generator": 8, "local": 8, "routed": 0},
         "exact_classes": {"all": 3, "local": 3, "routed": 0},
         "democratic_models": 3,
+        "species_models": 3,
+        "propagator_models": 3,
         "historical": {
             "records": 3,
             "classes": 3,

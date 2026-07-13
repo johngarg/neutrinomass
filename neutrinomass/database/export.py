@@ -5,6 +5,9 @@
 from neutrinomass.completions.core import (
     Completion,
     DerivativeRoute,
+    LorentzProjection,
+    MultiDerivativeProjection,
+    PropagatorContribution,
     cons_completion_field,
 )
 from neutrinomass.completions.topologies import Leaf
@@ -125,6 +128,8 @@ def export_completion(c: Completion, lazy=True):
     canonical_topo = getattr(c, "canonical_topology", topo)
     derivative_edges = getattr(c, "derivative_edges", ())
     derivative_routes = getattr(c, "derivative_routes", ())
+    momentum_contributions = getattr(c, "momentum_contributions", ())
+    lorentz_projection = getattr(c, "lorentz_projection", None)
 
     quantum_numbers = []
     # lorentz irrep (string), colour dynkins, isospin dynkin, 3 * B, hypercharge
@@ -153,7 +158,9 @@ def export_completion(c: Completion, lazy=True):
         f"Completion(operator={eff_op}, partition={part}, graph={graph}, "
         f"exotics={exotics}, terms={terms}, topology={topo!r}, "
         f"canonical_topology={canonical_topo!r}, derivative_edges={derivative_edges}, "
-        f"derivative_routes={derivative_routes!r})"
+        f"derivative_routes={derivative_routes!r}, "
+        f"momentum_contributions={momentum_contributions!r}, "
+        f"lorentz_projection={lorentz_projection!r})"
     )
     export_string = f"LazyCompletion(head={head}, tail={completion_string!r})"
 

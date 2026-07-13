@@ -5,7 +5,13 @@ from neutrinomass.tensormethod.sm import L, Q, H, eb, ub, db
 from neutrinomass.tensormethod.core import D
 
 from neutrinomass.completions.operators import EFF_OPERATORS, DERIV_EFF_OPERATORS
-from neutrinomass.completions.fingerprints import completion_digest
+from neutrinomass.completions.fingerprints import (
+    completion_digest,
+    propagator_model_fingerprint,
+    species_model_fingerprint,
+)
+from neutrinomass.database.serialization import dumps_completion, loads_completion
+from neutrinomass.database.rebuild import validate_completion
 
 from sympy import Rational
 import networkx as nx
@@ -169,6 +175,141 @@ def test_construct_completion():
 
     assert not isinstance(result, str)
     assert len(result) == 5
+
+
+def test_weak_compositions_enumerate_denominator_orders():
+    assert list(weak_compositions(2, 3)) == [
+        (0, 0, 2),
+        (0, 1, 1),
+        (0, 2, 0),
+        (1, 0, 1),
+        (1, 1, 0),
+        (2, 0, 0),
+    ]
+
+
+def test_denominator_expansion_records_degree_and_cut():
+    completion = next(operator_completions(EFF_OPERATORS["1"]))
+    exotic_labels = {
+        base_exotic_label(field.label) for field in completion.exotics
+    }
+    internal_edges = {
+        edge: particle
+        for edge, particle in nx.get_edge_attributes(
+            completion.graph, "particle"
+        ).items()
+        if base_exotic_label(particle) in exotic_labels
+    }
+
+    expanded = expand_propagator_denominators(completion, 1)
+
+    assert len(expanded) == len(internal_edges)
+    assert all(len(item.momentum_contributions) == 1 for item in expanded)
+    assert all(
+        item.momentum_contributions[0].derivative_degree == 2
+        for item in expanded
+    )
+    assert all(
+        item.momentum_contributions[0].cut_side
+        for item in expanded
+    )
+    assert species_model_fingerprint(completion) == tuple(
+        sorted(completion.exotic_info().values())
+    )
+    assert len(propagator_model_fingerprint(completion)) == len(internal_edges)
+
+
+def test_multidimensional_second_derivative_spaces_use_unreduced_placements():
+    projection = unique_multi_derivative_projection(
+        DERIV_EFF_OPERATORS["D18d"]
+    )
+
+    assert isinstance(projection, MultiDerivativeProjection)
+    assert projection.coordinates == ("1",)
+    assert projection.derivative_fields == ("DH", "DL")
+    expected = {"D15": (15, 21), "D22": (4, 8)}
+    for operator_name, (placement_count, coordinate_count) in expected.items():
+        operator = DERIV_EFF_OPERATORS[operator_name]
+        assert unique_multi_derivative_projection(operator) is None
+        basis = UnreducedSecondDerivativeBasis.from_operator(operator)
+        assert len(basis.placements) == placement_count
+        assert len(basis.labels) == coordinate_count
+
+
+def test_unreduced_second_derivative_basis_retains_d_squared_fields():
+    operator = DERIV_EFF_OPERATORS["D15"]
+    basis = UnreducedSecondDerivativeBasis.from_operator(operator)
+    placement = basis.placement_by_indices[(0, 0)]
+    boxed = next(
+        field
+        for field in placement.operator.operator.indexed_fields
+        if field.derivs
+    )
+
+    assert boxed.derivs == 2
+    assert boxed.strip_derivs().dynkin == boxed.dynkin
+    assert operator_strip_derivs(placement.operator.operator)["n_derivs"] == 2
+
+    explicit = next(
+        singlet
+        for singlet in lorentz_singlets(placement.operator.operator)
+        if singlet.safe_simplify() != 0
+    )
+    projection = basis.project_local(explicit)
+    nonzero = {
+        index for index, value in enumerate(projection.coordinates) if value != "0"
+    }
+    assert nonzero == {placement.coordinate_start}
+    assert projection.eom_relation == "No equation-of-motion reduction is applied"
+
+
+@pytest.mark.parametrize(
+    "operator_name,topology",
+    (("D15", "1s4f_1"), ("D22", "4s2f_1")),
+)
+def test_multidimensional_second_derivative_routing_is_projected(
+    operator_name, topology, monkeypatch
+):
+    completions_module = import_module("neutrinomass.completions.completions")
+    operator = DERIV_EFF_OPERATORS[operator_name]
+    topology_data = [
+        data
+        for data in get_topology_data(**operator.topology_type)
+        if data["canonical_topology"] == topology
+    ]
+    monkeypatch.setattr(
+        completions_module, "get_topology_data", lambda **kwargs: topology_data
+    )
+
+    completions = completions_module.momentum_routed_completions(operator)
+
+    assert completions
+    assert all(
+        isinstance(completion.lorentz_projection, MultiDerivativeProjection)
+        and any(
+            value != "0"
+            for value in completion.lorentz_projection.coordinates
+        )
+        and completion.lorentz_projection.eom_relation
+        == "No equation-of-motion reduction is applied"
+        for completion in completions
+    )
+    assert all(
+        len(completion.momentum_contributions) == 1
+        and completion.momentum_contributions[0].denominator_order == 1
+        and completion.momentum_contributions[0].derivative_degree == 2
+        for completion in completions
+    )
+    if operator_name == "D15":
+        assert any(
+            abs(int(value)) == 2
+            for completion in completions
+            for value in completion.lorentz_projection.coordinates
+        )
+    for completion in completions:
+        validate_completion(completion)
+        restored = loads_completion(dumps_completion(completion))
+        assert restored.lorentz_projection == completion.lorentz_projection
 
 
 def test_completion_is_hashable():
@@ -735,6 +876,139 @@ def test_d3_full_census_baseline_is_stable():
     canonical = exact_completions(DERIV_EFF_OPERATORS["D3"])
     assert len(canonical) == len(unique)
     assert completion_digest(canonical) == completion_digest(unique)
+
+
+def completion_occurrence_model(completion):
+    """Retain each distinct heavy species represented in a completion."""
+
+    return tuple(sorted(completion.exotic_info().values()))
+
+
+D18_PROPAGATOR_WITNESSES = {
+    "D18d": (
+        "4s2f_5",
+        "scalar",
+        tuple(
+            sorted(
+                (
+                    ("S", 0, 0, 0, ("3b", 0), ("y", Rational(0))),
+                    ("S", 0, 0, 1, ("3b", 0), ("y", Rational(1, 2))),
+                    ("S", 0, 0, 0, ("3b", 0), ("y", Rational(1))),
+                )
+            )
+        ),
+    ),
+    "D18e": (
+        "4s2f_7",
+        "mass",
+        tuple(
+            sorted(
+                (
+                    ("F", 0, 0, 0, ("3b", 0), ("y", Rational(0))),
+                    ("F", 0, 0, 1, ("3b", 0), ("y", Rational(1, 2))),
+                    ("F", 0, 0, 0, ("3b", 0), ("y", Rational(1))),
+                )
+            )
+        ),
+    ),
+}
+
+
+@pytest.mark.parametrize("operator_name", D18_PROPAGATOR_WITNESSES)
+def test_d18_propagator_expansion_contains_julian_witnesses(
+    operator_name, monkeypatch
+):
+    completions_module = import_module("neutrinomass.completions.completions")
+    topology, numerator_kind, witness = D18_PROPAGATOR_WITNESSES[operator_name]
+    operator = DERIV_EFF_OPERATORS[operator_name]
+    topology_data = [
+        data
+        for data in get_topology_data(**operator.topology_type)
+        if data["canonical_topology"] == topology
+    ]
+    monkeypatch.setattr(
+        completions_module, "get_topology_data", lambda **kwargs: topology_data
+    )
+
+    matches = [
+        completion
+        for completion in exact_completions(operator)
+        if completion_occurrence_model(completion) == witness
+    ]
+
+    assert matches
+    assert all(completion.momentum_contributions for completion in matches)
+    assert all(
+        isinstance(completion.lorentz_projection, MultiDerivativeProjection)
+        and completion.lorentz_projection.coordinates == ("1",)
+        for completion in matches
+    )
+    assert all(
+        sum(
+            contribution.derivative_degree
+            for contribution in completion.momentum_contributions
+        )
+        == 2
+        for completion in matches
+    )
+    assert any(
+        contribution.numerator_kind == numerator_kind
+        and contribution.denominator_order == 1
+        for completion in matches
+        for contribution in completion.momentum_contributions
+    )
+    assert all(
+        is_singlet(term)
+        and term.safe_simplify() != 0
+        and sum(field.mass_dim for field in term.fields) <= 4
+        for completion in matches
+        for term in completion.terms
+    )
+    for completion in matches:
+        validate_completion(completion)
+        restored = loads_completion(dumps_completion(completion))
+        assert (
+            restored.momentum_contributions
+            == completion.momentum_contributions
+        )
+
+
+def test_d21_model_topology_set_matches_d3():
+    d3 = exact_completions(DERIV_EFF_OPERATORS["D3"])
+    d21 = exact_completions(DERIV_EFF_OPERATORS["D21"])
+
+    d3_models = {
+        (completion.topology, completion_occurrence_model(completion))
+        for completion in d3
+    }
+    d21_models = {
+        (completion.topology, completion_occurrence_model(completion))
+        for completion in d21
+    }
+    generated = [
+        completion for completion in d21 if completion.momentum_contributions
+    ]
+
+    assert d21_models == d3_models
+    assert len(d21_models) == 4
+    assert {
+        topology for topology, _ in d21_models
+    } == {"3s2f_3", "3s2f_4"}
+    assert all(
+        sum(
+            contribution.derivative_degree
+            for contribution in completion.momentum_contributions
+        )
+        == 3
+        for completion in generated
+    )
+    assert all(
+        isinstance(completion.lorentz_projection, MultiDerivativeProjection)
+        and completion.lorentz_projection.coordinates == ("1",)
+        for completion in d21
+    )
+    for completion in d21:
+        validate_completion(completion)
 
 
 ROUTED_MODEL_CONTROLS = {

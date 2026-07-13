@@ -63,6 +63,26 @@ def test_export_completion():
         assert new.canonical_topology == old.canonical_topology
         assert new.derivative_edges == old.derivative_edges
         assert new.derivative_routes == old.derivative_routes
+        assert new.momentum_contributions == (
+            PropagatorContribution.from_derivative_route(
+                old.derivative_routes[0]
+            ),
+        )
+
+
+def test_export_completion_preserves_multi_derivative_projection():
+    comp = list(operator_completions(EFF_OPERATORS["1"]))[0]
+    comp.lorentz_projection = MultiDerivativeProjection(
+        ("basis",),
+        ("1",),
+        ("DL", "DH"),
+        "IBP",
+        "EOM",
+    )
+
+    restored = eval(export_completion(comp, lazy=False))
+
+    assert restored.lorentz_projection == comp.lorentz_projection
 
 
 def test_lazy_completion():
