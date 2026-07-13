@@ -55,5 +55,7 @@ is repaired without manual deletion.
 The workflow is restartable: sourcing the submitter again creates a new array,
 but valid completed task reports are checksum-verified and skipped. The source
 commit for the scientific census is pinned to
-`ce3caefd8fdba1535f9b7e373423d9c933e057b9`; the cluster branch may add only
+`179c20e33b601765b2a17dbd2c7d3527bc0afb1c`. This incorporates the repaired
+propagator expansion and the unreduced, no-EOM second-derivative placement
+bases for D15 and D22. Later commits on the cluster branch may add only
 orchestration around those unchanged scientific sources.
