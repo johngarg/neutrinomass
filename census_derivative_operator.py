@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Reproducible census for a supported one-derivative operator."""
+"""Reproducible census for a supported derivative operator."""
 
 import argparse
 from collections import Counter, defaultdict
@@ -18,16 +18,21 @@ from time import perf_counter
 from neutrinomass.completions.completions import (
     HistoricalDerivativeBasis,
     PROJECTED_LORENTZ_OPERATORS,
+    UnreducedSecondDerivativeBasis,
     append_unique_completions,
     are_equivalent_completions,
     base_exotic_label,
     deriv_operator_completions,
     is_singlet,
+    operator_strip_derivs,
+    unique_multi_derivative_projection,
 )
 from neutrinomass.completions.fingerprints import (
     completion_fingerprint,
     completion_fingerprint_digest,
     democratic_model_fingerprint,
+    propagator_model_fingerprint,
+    species_model_fingerprint,
 )
 from neutrinomass.completions.equivalence import clear_interaction_graph_cache
 from neutrinomass.completions.operators import DERIV_EFF_OPERATORS
@@ -111,16 +116,26 @@ def validate_physics(completions):
         ):
             raise ValueError("non-renormalisable or non-singlet UV interaction")
 
-        if not completion.derivative_routes:
+        contributions = getattr(completion, "momentum_contributions", ())
+        if not contributions:
             continue
-        if len(completion.derivative_routes) != 1:
-            raise ValueError("routed completion does not have exactly one route")
-        route = completion.derivative_routes[0]
-        if not completion.graph.has_edge(*route.edge):
-            raise ValueError(f"recorded route edge is absent: {route.edge}")
-        particle = completion.graph.edges[route.edge]["particle"]
-        if base_exotic_label(particle) != base_exotic_label(route.numerator_field):
-            raise ValueError("route numerator does not match the edge particle")
+        for contribution in contributions:
+            if contribution.derivative_degree <= 0:
+                raise ValueError(
+                    "recorded propagator contribution has degree zero"
+                )
+            if not completion.graph.has_edge(*contribution.edge):
+                raise ValueError(
+                    "recorded contribution edge is absent: "
+                    f"{contribution.edge}"
+                )
+            particle = completion.graph.edges[contribution.edge]["particle"]
+            if base_exotic_label(particle) != base_exotic_label(
+                contribution.particle
+            ):
+                raise ValueError(
+                    "propagator contribution does not match the edge particle"
+                )
 
 
 def verify_round_trip(path, expected):
@@ -145,9 +160,10 @@ def verify_round_trip(path, expected):
                 raise ValueError(
                     f"equivalence changed across JSONL round trip: {path}"
                 )
-            if left.derivative_routes != right.derivative_routes:
+            if left.momentum_contributions != right.momentum_contributions:
                 raise ValueError(
-                    f"route metadata changed across JSONL round trip: {path}"
+                    "momentum metadata changed across JSONL round trip: "
+                    f"{path}"
                 )
             restored_fingerprints.append(right_fingerprint)
         finally:
@@ -204,7 +220,7 @@ def run(operator_name, historical_path, output_dir):
     write_completion_jsonl(raw_path, raw)
     restored_raw_digest = verify_round_trip(raw_path, raw)
     raw_record_count = len(raw)
-    routed_raw_count = sum(bool(item.derivative_routes) for item in raw)
+    routed_raw_count = sum(bool(item.momentum_contributions) for item in raw)
     raw_topologies = topology_distribution(raw)
     del raw
     clear_interaction_graph_cache()
@@ -226,6 +242,17 @@ def run(operator_name, historical_path, output_dir):
                     completion.operator.operator
                 )
             )
+    else:
+        projection = unique_multi_derivative_projection(operator)
+        if projection is not None:
+            for completion in historical_records:
+                completion.lorentz_projection = projection
+        elif operator_strip_derivs(operator.operator)["n_derivs"] == 2:
+            basis = UnreducedSecondDerivativeBasis.from_operator(operator)
+            for completion in historical_records:
+                completion.lorentz_projection = basis.project_existing_local(
+                    completion.operator.operator
+                )
     historical_classes = []
     append_unique_completions(historical_classes, historical_records)
     missing = [
@@ -244,7 +271,7 @@ def run(operator_name, historical_path, output_dir):
     restored_unique_digest = verify_round_trip(unique_path, unique)
 
     scale, survivors = filter_models(operator, unique)
-    routed_unique = [item for item in unique if item.derivative_routes]
+    routed_unique = [item for item in unique if item.momentum_contributions]
     report = {
         "operator": operator_name,
         "hash_seed": __import__("os").environ.get("PYTHONHASHSEED"),
@@ -261,6 +288,12 @@ def run(operator_name, historical_path, output_dir):
             "routed": len(routed_unique),
         },
         "democratic_models": len({model_strings(item) for item in unique}),
+        "species_models": len(
+            {species_model_fingerprint(item) for item in unique}
+        ),
+        "propagator_models": len(
+            {propagator_model_fingerprint(item) for item in unique}
+        ),
         "historical": {
             "records": len(historical_records),
             "classes": len(historical_classes),

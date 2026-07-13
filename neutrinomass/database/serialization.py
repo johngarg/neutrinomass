@@ -17,6 +17,8 @@ from neutrinomass.completions.core import (
     FieldType,
     LorentzProjection,
     MajoranaFermion,
+    MultiDerivativeProjection,
+    PropagatorContribution,
     RealScalar,
     VectorLikeDiracFermion,
 )
@@ -25,7 +27,7 @@ from neutrinomass.tensormethod.core import IndexedField, Operator, delta, eps
 
 
 SCHEMA_NAME = "neutrinomass.completion"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 _RATIONAL_PATTERN = re.compile(r"[+-]?\d+(?:/[1-9]\d*)?\Z")
@@ -238,16 +240,48 @@ def route_from_data(data):
     )
 
 
+def contribution_to_data(contribution):
+    return {
+        "edge": list(contribution.edge),
+        "particle": contribution.particle,
+        "numerator_kind": contribution.numerator_kind,
+        "denominator_order": contribution.denominator_order,
+        "numerator_lorentz": contribution.numerator_lorentz,
+        "differentiated_field": contribution.differentiated_field,
+        "differentiated_lorentz": contribution.differentiated_lorentz,
+        "cut_side": list(contribution.cut_side),
+    }
+
+
+def contribution_from_data(data):
+    return PropagatorContribution(
+        edge=tuple(data["edge"]),
+        particle=data["particle"],
+        numerator_kind=data["numerator_kind"],
+        denominator_order=data["denominator_order"],
+        numerator_lorentz=data["numerator_lorentz"],
+        differentiated_field=data["differentiated_field"],
+        differentiated_lorentz=data["differentiated_lorentz"],
+        cut_side=tuple(data["cut_side"]),
+    )
+
+
 def projection_to_data(projection):
     if projection is None:
         return None
-    return {
+    data = {
         "basis_labels": list(projection.basis_labels),
         "coordinates": list(projection.coordinates),
-        "derivative_field": projection.derivative_field,
         "ibp_relation": projection.ibp_relation,
         "eom_relation": projection.eom_relation,
     }
+    if isinstance(projection, MultiDerivativeProjection):
+        data["kind"] = "multi_derivative"
+        data["derivative_fields"] = list(projection.derivative_fields)
+    else:
+        data["kind"] = "single_derivative"
+        data["derivative_field"] = projection.derivative_field
+    return data
 
 
 def projection_from_data(data):
@@ -260,12 +294,19 @@ def projection_from_data(data):
         for value in coordinates
     ):
         raise ValueError("Invalid Lorentz-projection coordinate")
+    common = {
+        "basis_labels": tuple(data["basis_labels"]),
+        "coordinates": coordinates,
+        "ibp_relation": data["ibp_relation"],
+        "eom_relation": data["eom_relation"],
+    }
+    if data.get("kind", "single_derivative") == "multi_derivative":
+        return MultiDerivativeProjection(
+            derivative_fields=tuple(data["derivative_fields"]),
+            **common,
+        )
     return LorentzProjection(
-        basis_labels=tuple(data["basis_labels"]),
-        coordinates=coordinates,
-        derivative_field=data["derivative_field"],
-        ibp_relation=data["ibp_relation"],
-        eom_relation=data["eom_relation"],
+        derivative_field=data["derivative_field"], **common
     )
 
 
@@ -286,8 +327,9 @@ def completion_to_record(completion):
         "terms": [operator_to_data(term) for term in completion.terms],
         "topology": completion.topology,
         "canonical_topology": completion.canonical_topology,
-        "derivative_routes": [
-            route_to_data(route) for route in completion.derivative_routes
+        "momentum_contributions": [
+            contribution_to_data(contribution)
+            for contribution in completion.momentum_contributions
         ],
         "lorentz_projection": projection_to_data(completion.lorentz_projection),
         "legacy_derivative_edges": [
@@ -301,14 +343,25 @@ def completion_to_record(completion):
 def completion_from_record(record):
     if record.get("schema") != SCHEMA_NAME:
         raise ValueError("Not a neutrinomass completion record")
-    if record.get("version") != SCHEMA_VERSION:
+    version = record.get("version")
+    if version not in {1, SCHEMA_VERSION}:
         raise ValueError(f"Unsupported completion schema {record.get('version')}")
 
     operator = EffectiveOperator(
         record["operator"]["name"],
         operator_from_data(record["operator"]["tensors"]),
     )
-    routes = tuple(route_from_data(route) for route in record["derivative_routes"])
+    if version == 1:
+        routes = tuple(
+            route_from_data(route) for route in record["derivative_routes"]
+        )
+        contributions = ()
+    else:
+        routes = ()
+        contributions = tuple(
+            contribution_from_data(contribution)
+            for contribution in record["momentum_contributions"]
+        )
     return Completion(
         operator=operator,
         partition=partition_from_data(record["partition"]),
@@ -321,6 +374,7 @@ def completion_from_record(record):
             tuple(edge) for edge in record["legacy_derivative_edges"]
         ),
         derivative_routes=routes,
+        momentum_contributions=contributions,
         lorentz_projection=projection_from_data(record.get("lorentz_projection")),
     )
 

@@ -427,6 +427,65 @@ class DerivativeRoute(NamedTuple):
     differentiated_lorentz: str
 
 
+class PropagatorContribution(NamedTuple):
+    """One non-constant term in a heavy-propagator momentum expansion.
+
+    ``numerator_kind`` is ``"scalar"`` for a scalar propagator,
+    ``"mass"`` for the mass numerator of a fermion propagator, and
+    ``"momentum"`` for a fermion momentum numerator.  ``denominator_order``
+    is the power of :math:`p^2/M^2` selected from the propagator denominator.
+    The resulting derivative degree is therefore ``2 k`` for scalar and mass
+    numerators and ``2 k + 1`` for momentum numerators.
+
+    The final three Lorentz fields retain the provenance exposed by the legacy
+    :class:`DerivativeRoute`.  They are empty for contributions that do not
+    contain a fermion momentum numerator.
+    """
+
+    edge: Tuple[int, int]
+    particle: str
+    numerator_kind: str
+    denominator_order: int
+    numerator_lorentz: str
+    differentiated_field: str
+    differentiated_lorentz: str
+    cut_side: Tuple[int, ...]
+
+    @property
+    def derivative_degree(self):
+        return 2 * self.denominator_order + (
+            1 if self.numerator_kind == "momentum" else 0
+        )
+
+    @classmethod
+    def from_derivative_route(cls, route):
+        """Lift a version-one fermion route into the general representation."""
+
+        return cls(
+            edge=route.edge,
+            particle=route.numerator_field,
+            numerator_kind="momentum",
+            denominator_order=0,
+            numerator_lorentz=route.numerator_lorentz,
+            differentiated_field=route.differentiated_field,
+            differentiated_lorentz=route.differentiated_lorentz,
+            cut_side=(),
+        )
+
+    def derivative_route(self):
+        """Return the backwards-compatible route for a momentum numerator."""
+
+        if self.numerator_kind != "momentum":
+            return None
+        return DerivativeRoute(
+            edge=self.edge,
+            numerator_field=self.particle,
+            numerator_lorentz=self.numerator_lorentz,
+            differentiated_field=self.differentiated_field,
+            differentiated_lorentz=self.differentiated_lorentz,
+        )
+
+
 class LorentzProjection(NamedTuple):
     """Explicit coordinates in a named Lorentz basis after IBP/EOM reduction."""
 
@@ -435,6 +494,22 @@ class LorentzProjection(NamedTuple):
     derivative_field: str
     ibp_relation: str
     eom_relation: str
+
+
+class MultiDerivativeProjection(NamedTuple):
+    """Coordinates for a named operator with several explicit derivatives."""
+
+    basis_labels: Tuple[str, ...]
+    coordinates: Tuple[str, ...]
+    derivative_fields: Tuple[str, ...]
+    ibp_relation: str
+    eom_relation: str
+
+    @property
+    def derivative_field(self):
+        """Compatibility key used by version-one projection consumers."""
+
+        return ",".join(self.derivative_fields)
 
 
 class Completion:
@@ -449,6 +524,7 @@ class Completion:
         canonical_topology=None,
         derivative_edges=None,
         derivative_routes=None,
+        momentum_contributions=None,
         lorentz_projection=None,
     ):
         self.operator = operator
@@ -458,19 +534,66 @@ class Completion:
         self.terms = terms
         self.topology = topology
         self.canonical_topology = canonical_topology or topology
-        self.derivative_routes = tuple(
+        supplied_routes = tuple(
             route if isinstance(route, DerivativeRoute) else DerivativeRoute(*route)
             for route in (derivative_routes or ())
         )
-        route_edges = tuple(route.edge for route in self.derivative_routes)
+        supplied_contributions = tuple(
+            contribution
+            if isinstance(contribution, PropagatorContribution)
+            else PropagatorContribution(*contribution)
+            for contribution in (momentum_contributions or ())
+        )
+        for contribution in supplied_contributions:
+            if contribution.numerator_kind not in {"scalar", "mass", "momentum"}:
+                raise ValueError(
+                    f"Unknown propagator numerator {contribution.numerator_kind!r}"
+                )
+            if contribution.denominator_order < 0:
+                raise ValueError("Propagator denominator order must be nonnegative")
+
+        if supplied_contributions:
+            derived_routes = tuple(
+                route
+                for route in (
+                    contribution.derivative_route()
+                    for contribution in supplied_contributions
+                )
+                if route is not None
+            )
+            if supplied_routes and supplied_routes != derived_routes:
+                raise ValueError(
+                    "Derivative routes and propagator contributions disagree"
+                )
+            self.momentum_contributions = supplied_contributions
+            self.derivative_routes = derived_routes
+        else:
+            self.derivative_routes = supplied_routes
+            self.momentum_contributions = tuple(
+                PropagatorContribution.from_derivative_route(route)
+                for route in supplied_routes
+            )
+
+        contribution_edges = tuple(
+            contribution.edge for contribution in self.momentum_contributions
+        )
         supplied_edges = tuple(derivative_edges or ())
-        if route_edges and supplied_edges and route_edges != supplied_edges:
-            raise ValueError("Derivative routes and derivative edges disagree")
-        self.derivative_edges = route_edges or supplied_edges
+        if (
+            contribution_edges
+            and supplied_edges
+            and contribution_edges != supplied_edges
+        ):
+            raise ValueError(
+                "Propagator contributions and derivative edges disagree"
+            )
+        self.derivative_edges = contribution_edges or supplied_edges
         self.lorentz_projection = (
             lorentz_projection
             if lorentz_projection is None
-            or isinstance(lorentz_projection, LorentzProjection)
+            or isinstance(
+                lorentz_projection,
+                (LorentzProjection, MultiDerivativeProjection),
+            )
             else LorentzProjection(*lorentz_projection)
         )
 
@@ -501,6 +624,9 @@ class Completion:
             canonical_topology=self.canonical_topology,
             derivative_edges=deepcopy(self.derivative_edges, memo),
             derivative_routes=deepcopy(self.derivative_routes, memo),
+            momentum_contributions=deepcopy(
+                self.momentum_contributions, memo
+            ),
             lorentz_projection=deepcopy(self.lorentz_projection, memo),
         )
 

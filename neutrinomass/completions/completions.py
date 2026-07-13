@@ -47,6 +47,8 @@ from neutrinomass.completions.core import (
     Completion,
     DerivativeRoute,
     LorentzProjection,
+    MultiDerivativeProjection,
+    PropagatorContribution,
     Model,
     FailedCompletion,
     EffectiveOperator,
@@ -68,7 +70,12 @@ from copy import copy, deepcopy
 from alive_progress import alive_bar
 
 from collections import Counter, defaultdict
-from itertools import permutations, combinations, product
+from itertools import (
+    permutations,
+    combinations,
+    combinations_with_replacement,
+    product,
+)
 from sympy.tensor.tensor import Tensor
 from sympy import Matrix, Rational, prime
 
@@ -482,6 +489,14 @@ HISTORICAL_IBP_RELATION = (
     "lexicographically first side of the cut without quotienting placements"
 )
 HISTORICAL_EOM_RELATION = "No equation-of-motion reduction is applied"
+UNIQUE_MULTI_DERIVATIVE_IBP_RELATION = (
+    "The named derivative placement is retained; each propagator momentum is "
+    "the lexicographically first side of its cut"
+)
+UNREDUCED_SECOND_DERIVATIVE_IBP_RELATION = (
+    "All explicit second-derivative placements generated from the "
+    "lexicographically first side of each propagator cut are retained"
+)
 _MOMENTUM_FIELD_LABEL = "Pmomentum"
 
 
@@ -503,33 +518,76 @@ def _normalised_pair(left, right):
     return (right, left), Rational(-1)
 
 
-def _embed_derivative_contraction(
-    contraction, derivative_operator, ambient_operator, momentum_label
+def _box_derivative_field(field):
+    """Return the unreduced scalar :math:`D^2` component acting on ``field``."""
+
+    base = field.strip_derivs() if field.derivs else field
+    stripped = base.stripped
+    if stripped is None:
+        stripped = {
+            "label": base.label,
+            "dynkin": base.dynkin,
+            "symmetry": base.symmetry,
+            "charges": base.charges,
+            "latex": base.latex,
+        }
+    boxed = Field(
+        "D2" + base.label,
+        dynkin=base.dynkin,
+        charges=base.charges,
+        comm=base.comm,
+        is_conj=base.is_conj,
+        nf=base.nf,
+        derivs=2,
+        stripped=stripped,
+    )
+    boxed.latex = f"(D^2 {base.get_latex()})"
+    return boxed
+
+
+def _embed_multi_derivative_contraction(
+    contraction,
+    derivative_operator,
+    ambient_operator,
+    momentum_assignments,
 ):
-    """Embed one historical derivative contraction into momentum space."""
+    """Embed explicit derivative irreps into labelled momentum space.
+
+    ``momentum_assignments`` maps each stripped external-field occurrence to
+    the momentum-spurion labels acting on it.  One label represents an
+    ordinary derivative.  Two labels represent the unreduced scalar
+    :math:`D^2` component.
+    """
 
     derivative_layout, _ = lorentz_field_port_layout(derivative_operator)
     ambient_layout, ambient_counts = lorentz_field_port_layout(ambient_operator)
+    momentum_labels = {
+        label
+        for labels in momentum_assignments.values()
+        for label in labels
+    }
     ambient_fields = {
         lorentz_field_key(field): ports
         for field, ports in ambient_layout
-        if field.label != momentum_label
+        if field.label not in momentum_labels
     }
-    momentum_ports = next(
-        ports for field, ports in ambient_layout if field.label == momentum_label
-    )
+    momentum_ports = {
+        field.label: ports
+        for field, ports in ambient_layout
+        if field.label in momentum_labels
+    }
 
     port_mapping = {short_type: {} for short_type in LORENTZ_TYPES}
     added_pairs = {short_type: [] for short_type in LORENTZ_TYPES}
-    derivative_fields = [
-        (field, ports) for field, ports in derivative_layout if field.derivs
-    ]
-    if len(derivative_fields) != 1:
-        raise ValueError("Historical placement must contain exactly one derivative")
 
     for field, derivative_ports in derivative_layout:
         occurrence_key = _stripped_occurrence_key(field)
         ambient_ports = ambient_fields[occurrence_key]
+        assigned = tuple(momentum_assignments.get(occurrence_key, ()))
+        if field.derivs != len(assigned):
+            raise ValueError(
+                "Derivative count does not match the momentum assignment"
+            )
         for short_type in LORENTZ_TYPES:
             new_ports = derivative_ports[short_type]
             old_ports = ambient_ports[short_type]
@@ -541,14 +599,26 @@ def _embed_derivative_contraction(
                 if len(new_ports) != len(old_ports):
                     raise ValueError("Non-derivative Lorentz ports changed")
                 continue
-            if len(new_ports) == len(old_ports) + 1:
-                port_mapping[short_type][new_ports[-1]] = momentum_ports[
-                    short_type
-                ][0]
-            elif len(old_ports) == len(new_ports) + 1:
+            if field.derivs == 2:
+                if len(new_ports) != len(old_ports):
+                    raise ValueError(
+                        "The retained D^2 component must preserve Lorentz ports"
+                    )
+                left, right = assigned
                 added_pairs[short_type].append(
-                    (momentum_ports[short_type][0], old_ports[-1])
+                    (
+                        momentum_ports[left][short_type][0],
+                        momentum_ports[right][short_type][0],
+                    )
                 )
+                continue
+            if field.derivs != 1:
+                raise ValueError("Only one or two explicit derivatives are supported")
+            momentum = momentum_ports[assigned[0]][short_type][0]
+            if len(new_ports) == len(old_ports) + 1:
+                port_mapping[short_type][new_ports[-1]] = momentum
+            elif len(old_ports) == len(new_ports) + 1:
+                added_pairs[short_type].append((momentum, old_ports[-1]))
             elif len(new_ports) != len(old_ports):
                 raise ValueError("Derivative changes more than one Lorentz port")
 
@@ -580,6 +650,22 @@ def _embed_derivative_contraction(
             for short_type in LORENTZ_TYPES
         ),
         port_counts=ambient_counts,
+    )
+
+
+def _embed_derivative_contraction(
+    contraction, derivative_operator, ambient_operator, momentum_label
+):
+    """Embed one historical derivative contraction into momentum space."""
+
+    derivative = next(
+        field for field in derivative_operator.indexed_fields if field.derivs
+    )
+    return _embed_multi_derivative_contraction(
+        contraction,
+        derivative_operator,
+        ambient_operator,
+        {_stripped_occurrence_key(derivative): (momentum_label,)},
     )
 
 
@@ -792,6 +878,396 @@ class HistoricalDerivativeBasis:
         return self._metadata(coordinates)
 
 
+def _derivative_irrep_dynkins(field):
+    """Return every Lorentz irrep in ``(1, 1) x field``.
+
+    The completion database retains the irrep chosen by ``allowed_lor_dyn``.
+    The remaining irreps provide the representation-theoretic complement
+    needed to extract that component without imposing equations of motion.
+    """
+
+    undotted, dotted = map(int, field.dynkin[:2])
+    candidates = []
+    for delta_undotted in (-1, 1):
+        for delta_dotted in (-1, 1):
+            new_undotted = undotted + delta_undotted
+            new_dotted = dotted + delta_dotted
+            if new_undotted < 0 or new_dotted < 0:
+                continue
+            candidates.append(f"{new_undotted}{new_dotted}")
+    allowed = allowed_lor_dyn(field)
+    return tuple(sorted(candidates, key=lambda item: (item != allowed, item)))
+
+
+def _indexed_stripped_occurrence(field, gauge_indices):
+    undotted, dotted, _, _, _ = field.fresh_indices().indices_by_type.values()
+    lorentz = " ".join(map(str, (*undotted, *dotted)))
+    indexed = field(
+        " ".join(part for part in (lorentz, gauge_indices) if part)
+    )
+    return lorentz_field_key(indexed)
+
+
+def _derivative_irrep_operator(fields, epsilons, assignments):
+    structure = []
+    for index, (field, indices) in enumerate(fields):
+        assignment = assignments.get(index)
+        if assignment == "box":
+            placed = _box_derivative_field(field)
+        elif assignment is not None:
+            placed = D(field, assignment)
+        else:
+            placed = field
+        structure.append((placed, indices))
+    return construct_operator(structure, epsilons)
+
+
+def _basis_singlets(operator, basis):
+    singlets = {
+        lorentz_contraction(singlet, normalise=True).label: singlet
+        for singlet in lorentz_singlets(operator)
+        if singlet.safe_simplify() != 0
+    }
+    return tuple(singlets[label] for label in basis.labels)
+
+
+@dataclass(frozen=True)
+class SecondDerivativePlacement:
+    indices: tuple
+    occurrence_keys: tuple
+    label: str
+    operator: EffectiveOperator
+    basis: LorentzBasis
+    coordinate_start: int
+
+    @property
+    def dimension(self):
+        return self.basis.dimension
+
+
+@dataclass
+class UnreducedSecondDerivativeBasis:
+    """Canonical placement basis for two derivatives with no EOM reduction."""
+
+    requested_operator: EffectiveOperator
+    stripped_operator: EffectiveOperator
+    fields: tuple
+    epsilons: tuple
+    occurrence_keys: tuple
+    placements: tuple
+    placement_by_indices: dict
+    labels: tuple
+    momentum_fields: tuple
+    ambient_operator: Operator
+    cross_matrices: dict
+
+    @classmethod
+    def from_operator(cls, requested_operator):
+        fields, epsilons, n_derivs = operator_strip_derivs(
+            requested_operator.operator
+        ).values()
+        if n_derivs != 2:
+            raise ValueError("The unreduced placement basis requires two derivatives")
+        fields = tuple(fields)
+        epsilons = tuple(epsilons)
+        stripped_operator = EffectiveOperator(
+            requested_operator.name, construct_operator(fields, epsilons)
+        )
+        occurrence_keys = tuple(
+            _indexed_stripped_occurrence(field, indices)
+            for field, indices in fields
+        )
+
+        placements = []
+        labels = []
+        coordinate_start = 0
+        for left, right in combinations_with_replacement(range(len(fields)), 2):
+            assignments = (
+                {left: "box"}
+                if left == right
+                else {
+                    left: allowed_lor_dyn(fields[left][0]),
+                    right: allowed_lor_dyn(fields[right][0]),
+                }
+            )
+            derivative_operator = _derivative_irrep_operator(
+                fields, epsilons, assignments
+            )
+            if derivative_operator.safe_simplify() == 0:
+                continue
+            try:
+                basis = LorentzBasis.from_operator(derivative_operator)
+            except ValueError:
+                continue
+            field_labels = tuple(
+                fields[index][0].label_with_dagger for index in (left, right)
+            )
+            placement_label = (
+                f"p{left},{right}:" + ",".join(field_labels)
+            )
+            labels.extend(
+                f"{placement_label}|{label}" for label in basis.labels
+            )
+            placements.append(
+                SecondDerivativePlacement(
+                    indices=(left, right),
+                    occurrence_keys=(
+                        occurrence_keys[left],
+                        occurrence_keys[right],
+                    ),
+                    label=placement_label,
+                    operator=EffectiveOperator(
+                        requested_operator.name, derivative_operator
+                    ),
+                    basis=basis,
+                    coordinate_start=coordinate_start,
+                )
+            )
+            coordinate_start += basis.dimension
+
+        momentum_fields = tuple(
+            Field(
+                f"{_MOMENTUM_FIELD_LABEL}{index}",
+                dynkin="11000",
+                charges={"y": 0, "3b": 0},
+                latex=f"p_{index}",
+            )
+            for index in range(2)
+        )
+        ambient_operator = Operator(
+            *stripped_operator.operator.tensors,
+            *(momentum.fresh_indices() for momentum in momentum_fields),
+        )
+        _, ambient_port_counts = lorentz_field_port_layout(ambient_operator)
+        ambient_dimension = LorentzBasis.from_port_counts(
+            ambient_port_counts
+        ).dimension
+
+        placement_by_indices = {
+            placement.indices: placement for placement in placements
+        }
+        cross_matrices = {}
+        momentum_labels = tuple(field.label for field in momentum_fields)
+        for placement in placements:
+            left, right = placement.indices
+            if left == right:
+                continue
+            allowed_dynkins = (
+                allowed_lor_dyn(fields[left][0]),
+                allowed_lor_dyn(fields[right][0]),
+            )
+            irrep_choices = [
+                allowed_dynkins,
+                *(
+                    choice
+                    for choice in product(
+                        _derivative_irrep_dynkins(fields[left][0]),
+                        _derivative_irrep_dynkins(fields[right][0]),
+                    )
+                    if choice != allowed_dynkins
+                ),
+            ]
+            for ordered_indices in ((left, right), (right, left)):
+                assignments = {
+                    occurrence_keys[ordered_indices[0]]: (momentum_labels[0],),
+                    occurrence_keys[ordered_indices[1]]: (momentum_labels[1],),
+                }
+                extension = []
+                rank = 0
+                target_dimension = 0
+                for choice_index, dynkins in enumerate(irrep_choices):
+                    derivative_operator = _derivative_irrep_operator(
+                        fields,
+                        epsilons,
+                        {left: dynkins[0], right: dynkins[1]},
+                    )
+                    if derivative_operator.safe_simplify() == 0:
+                        if choice_index == 0:
+                            raise ValueError(
+                                "The retained derivative placement vanished"
+                            )
+                        continue
+                    try:
+                        basis = LorentzBasis.from_operator(derivative_operator)
+                    except ValueError:
+                        continue
+                    vectors = [
+                        _embed_multi_derivative_contraction(
+                            lorentz_contraction(singlet, normalise=True),
+                            derivative_operator,
+                            ambient_operator,
+                            assignments,
+                        ).evaluation_vector()
+                        for singlet in _basis_singlets(
+                            derivative_operator, basis
+                        )
+                    ]
+                    for vector in vectors:
+                        trial = Matrix.hstack(
+                            *(Matrix(item) for item in (*extension, vector))
+                        )
+                        trial_rank = trial.rank()
+                        if trial_rank == rank:
+                            if choice_index == 0:
+                                raise ValueError(
+                                    "Retained derivative basis is not independent"
+                                )
+                            continue
+                        extension.append(vector)
+                        rank = trial_rank
+                    if choice_index == 0:
+                        target_dimension = len(extension)
+                        if target_dimension != placement.dimension:
+                            raise ValueError(
+                                "Retained derivative basis changed on embedding"
+                            )
+                    if rank == ambient_dimension:
+                        break
+                if rank != ambient_dimension:
+                    raise ValueError(
+                        "Derivative irreps do not span the momentum space"
+                    )
+                cross_matrices[ordered_indices] = Matrix.hstack(
+                    *(Matrix(vector) for vector in extension)
+                )
+
+        return cls(
+            requested_operator=requested_operator,
+            stripped_operator=stripped_operator,
+            fields=fields,
+            epsilons=epsilons,
+            occurrence_keys=occurrence_keys,
+            placements=tuple(placements),
+            placement_by_indices=placement_by_indices,
+            labels=tuple(labels),
+            momentum_fields=momentum_fields,
+            ambient_operator=ambient_operator,
+            cross_matrices=cross_matrices,
+        )
+
+    def _metadata(self, coordinates):
+        derivative_fields = tuple(
+            field.label
+            for field in self.requested_operator.operator.indexed_fields
+            if field.derivs
+        )
+        return MultiDerivativeProjection(
+            basis_labels=self.labels,
+            coordinates=tuple(str(value) for value in coordinates),
+            derivative_fields=derivative_fields,
+            ibp_relation=UNREDUCED_SECOND_DERIVATIVE_IBP_RELATION,
+            eom_relation=HISTORICAL_EOM_RELATION,
+        )
+
+    def _placement_coordinates(self, placement, operator):
+        local = placement.basis.project(operator, primitive=False)
+        if local is None:
+            raise ValueError("Contraction is outside its derivative-placement basis")
+        coordinates = [Rational(0)] * len(self.labels)
+        start = placement.coordinate_start
+        coordinates[start : start + placement.dimension] = local
+        return coordinates
+
+    def placement_for_operator(self, operator):
+        derivative_fields = [
+            field for field in operator.indexed_fields if field.derivs
+        ]
+        if sum(field.derivs for field in derivative_fields) != 2:
+            raise ValueError("Local record must contain two derivatives")
+        indices = tuple(
+            sorted(
+                self.occurrence_keys.index(_stripped_occurrence_key(field))
+                for field in derivative_fields
+                for _ in range(field.derivs)
+            )
+        )
+        return self.placement_by_indices[indices]
+
+    def project_local(self, operator):
+        placement = self.placement_for_operator(operator)
+        coordinates = self._placement_coordinates(placement, operator)
+        return self._metadata(primitive_coordinates(coordinates))
+
+    def project_existing_local(self, operator):
+        return self.project_local(operator)
+
+    def _closed_momentum_square(self, explicit):
+        momenta = tuple(
+            momentum.fresh_indices() for momentum in self.momentum_fields
+        )
+        closing_epsilons = []
+        for short_type in LORENTZ_TYPES:
+            ports = [
+                momentum.indices_by_type[Index.get_index_types()[short_type]][0]
+                for momentum in momenta
+            ]
+            closing_epsilons.append(eps(f"{-ports[0]} {-ports[1]}"))
+        closed = Operator(*explicit.tensors, *momenta, *closing_epsilons)
+        return lorentz_contraction(closed)
+
+    def _project_box(self, explicit, placement):
+        occurrence_key = placement.occurrence_keys[0]
+        target = next(
+            field
+            for field in explicit.indexed_fields
+            if _stripped_occurrence_key(field) == occurrence_key
+        )
+        boxed = _box_derivative_field(target.field)(
+            " ".join(map(str, target.indices))
+        )
+        boxed_operator = Operator(
+            *(boxed if tensor is target else tensor for tensor in explicit.tensors)
+        )
+        local = placement.basis.project(boxed_operator, primitive=False)
+        if local is None:
+            raise ValueError("D^2 contraction is outside its placement basis")
+        return local
+
+    def _project_cross(self, contraction, ordered_indices):
+        placement = self.placement_by_indices[tuple(sorted(ordered_indices))]
+        matrix = self.cross_matrices[ordered_indices]
+        target = Matrix(contraction.evaluation_vector())
+        coordinates, parameters = matrix.gauss_jordan_solve(target)
+        if parameters.rows:
+            raise ValueError("Derivative-irrep decomposition is not independent")
+        return tuple(
+            Rational(value) for value in coordinates[: placement.dimension]
+        )
+
+    def project_denominator(self, explicit, partition, contribution):
+        if contribution.denominator_order != 1:
+            raise ValueError("Second-derivative projection requires one p^2 term")
+        external = {
+            leaf.node: self.occurrence_keys.index(
+                _stripped_occurrence_key(leaf.field)
+            )
+            for leaf in partition_leaves(partition)
+        }
+        coordinates = [Rational(0)] * len(self.labels)
+        momentum_square = self._closed_momentum_square(explicit)
+        for left_node in contribution.cut_side:
+            for right_node in contribution.cut_side:
+                ordered_indices = (external[left_node], external[right_node])
+                placement = self.placement_by_indices.get(
+                    tuple(sorted(ordered_indices))
+                )
+                if placement is None:
+                    continue
+                if ordered_indices[0] == ordered_indices[1]:
+                    local = self._project_box(explicit, placement)
+                else:
+                    local = self._project_cross(
+                        momentum_square, ordered_indices
+                    )
+                start = placement.coordinate_start
+                for offset, value in enumerate(local):
+                    coordinates[start + offset] += value
+        coordinates = primitive_coordinates(coordinates)
+        if not any(coordinates):
+            return None
+        return self._metadata(coordinates)
+
+
 def derivative_route_candidates(fields):
     """Return a deterministic ordering of differentiable fermion fields."""
 
@@ -850,13 +1326,19 @@ def derivative_route_alternatives(fields):
 
 
 def route_derivative_to_internal_fermion(fields, derivative_state):
-    """Select one explicitly requested heavy-fermion momentum branch."""
+    """Select the next explicitly requested heavy-fermion momentum branch."""
 
-    if derivative_state is None or derivative_state["remaining"] != 1:
+    if derivative_state is None or derivative_state["remaining"] <= 0:
         return None
 
     alternatives = derivative_route_alternatives(fields)
-    route_choice = derivative_state.get("route_choice", 0)
+    route_index = derivative_state.get("consumed", 0)
+    route_choices = derivative_state.get(
+        "route_choices", (derivative_state.get("route_choice", 0),)
+    )
+    if route_index >= len(route_choices):
+        return None
+    route_choice = route_choices[route_index]
     if route_choice >= len(alternatives):
         return None
     return alternatives[route_choice]
@@ -883,7 +1365,10 @@ def consume_routed_derivative(derivative_state, derivative_route):
     if derivative_route is None:
         return
 
+    if derivative_state["pending_route"] is not None:
+        raise ValueError("A routed derivative was not assigned to an edge")
     derivative_state["remaining"] -= 1
+    derivative_state["consumed"] += 1
     derivative_state["pending_route"] = derivative_route
 
 
@@ -1118,7 +1603,7 @@ def process_derivative_term(op: Operator) -> Union[Operator, str]:
         if isinstance(t, IndexedField) and t.derivs > 0 and t.is_boson:
             no_deriv_field = t.strip_derivs_with_indices()
             scalars.append(no_deriv_field)
-        if isinstance(t, IndexedField) and t.derivs > 0 and t.is_fermion:
+        elif isinstance(t, IndexedField) and t.derivs > 0 and t.is_fermion:
             no_deriv_field = t.strip_derivs_with_indices()
             fermions.append(no_deriv_field)
         elif isinstance(t, VectorLikeDiracFermion):
@@ -1458,17 +1943,26 @@ def construct_completion(
     graph,
     derivative_count=0,
     derivative_route_choice=0,
+    derivative_route_choices=None,
 ) -> Union[str, tuple]:
     """Returns arguments needed to pass into Completion object contructor, or a
     string with the reason the completion failed.
 
     """
     lorentz_epsilons, terms, edge_dict, field_dict = [], [], {}, {}
+    if derivative_route_choices is None:
+        derivative_route_choices = (derivative_route_choice,) * derivative_count
+    derivative_route_choices = tuple(derivative_route_choices)
+    if len(derivative_route_choices) != derivative_count:
+        raise ValueError(
+            "The route-choice sequence must match the routed derivative count"
+        )
     derivative_state = {
         "remaining": derivative_count,
+        "consumed": 0,
         "pending_route": None,
         "routes": [],
-        "route_choice": derivative_route_choice,
+        "route_choices": derivative_route_choices,
     }
     more_fermion_symbols = ["f" + str(i) for i in range(10)]
     more_scalar_symbols = ["S" + str(i) for i in range(10)]
@@ -1646,6 +2140,7 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
         graph,
         derivative_count=derivative_count,
         derivative_route_choice=partition.get("derivative_route_choice", 0),
+        derivative_route_choices=partition.get("derivative_route_choices"),
     )
     if not isinstance(args, str):
         terms, edge_dict, field_dict, lorentz_epsilons, derivative_routes = args
@@ -1873,25 +2368,52 @@ def exotic_label_bijections(comp1: Completion, comp2: Completion):
         yield mapping
 
 
-def derivative_routes_equivalent(comp1, comp2, oriented_remapping):
-    """Compare explicit numerator choices under an exotic-field relabelling."""
+def momentum_contributions_equivalent(comp1, comp2, oriented_remapping):
+    """Compare propagator-expansion terms under an exotic-field relabelling."""
 
-    routes1 = getattr(comp1, "derivative_routes", ())
-    routes2 = getattr(comp2, "derivative_routes", ())
-    if not routes1 or not routes2:
+    contributions1 = getattr(comp1, "momentum_contributions", ())
+    contributions2 = getattr(comp2, "momentum_contributions", ())
+    if not contributions1 or not contributions2:
         return True
-    if len(routes1) != len(routes2):
+    if len(contributions1) != len(contributions2):
         return False
 
-    def route_signature(route, label_mapping):
-        mapped_label = remapped_field_label(route.numerator_field, label_mapping)
-        return field_label_parts(mapped_label)[0]
+    legacy_numerators = all(
+        contribution.numerator_kind == "momentum"
+        and contribution.denominator_order == 0
+        for contribution in (*contributions1, *contributions2)
+    )
+
+    def contribution_signature(contribution, label_mapping):
+        mapped_label = remapped_field_label(
+            contribution.particle, label_mapping
+        )
+        if legacy_numerators:
+            return field_label_parts(mapped_label)[0]
+        return (
+            field_label_parts(mapped_label)[0],
+            contribution.numerator_kind,
+            contribution.denominator_order,
+            tuple(sorted(contribution.cut_side)),
+        )
 
     signatures1 = Counter(
-        route_signature(route, oriented_remapping) for route in routes1
+        contribution_signature(contribution, oriented_remapping)
+        for contribution in contributions1
     )
-    signatures2 = Counter(route_signature(route, {}) for route in routes2)
+    signatures2 = Counter(
+        contribution_signature(contribution, {})
+        for contribution in contributions2
+    )
     return signatures1 == signatures2
+
+
+def derivative_routes_equivalent(comp1, comp2, oriented_remapping):
+    """Backwards-compatible alias for propagator-contribution equivalence."""
+
+    return momentum_contributions_equivalent(
+        comp1, comp2, oriented_remapping
+    )
 
 
 def lorentz_projections_equivalent(comp1, comp2):
@@ -1925,7 +2447,7 @@ def compare_terms(comp1: Completion, comp2: Completion) -> Dict[str, str]:
         for oriented_remapping in oriented_exotic_mappings(comp1, comp2, remapping):
             if equivalent_lagrangians(
                 comp1.terms, comp2.terms, oriented_remapping
-            ) and derivative_routes_equivalent(
+            ) and momentum_contributions_equivalent(
                 comp1, comp2, oriented_remapping
             ) and lorentz_projections_equivalent(comp1, comp2):
                 return remapping
@@ -2045,8 +2567,7 @@ def operator_strip_derivs(op: Operator) -> List[Operator]:
     for field in tensors:
         if isinstance(field, Field):
             if field.derivs:
-                assert field.derivs == 1
-                n_derivs += 1
+                n_derivs += field.derivs
                 new_field = field.strip_derivs()
                 indices = field.gauge_indices
                 new_fields.append((new_field, " ".join(str(i) for i in indices)))
@@ -2071,15 +2592,14 @@ def construct_operator(
         lor_idx_str = " ".join(str(i) for i in u + d)
         tensors.append(field(lor_idx_str + " " + index_string))
 
-    return reduce(lambda x, y: x * y, tensors + epsilons)
+    return reduce(lambda x, y: x * y, tensors + list(epsilons))
 
 
 def unique_lorentz_completion_operator(operator: EffectiveOperator):
     """Return the unique nonzero Lorentz singlet associated with ``operator``.
 
-    Momentum routing is only enabled when the Lorentz structure is unique.  A
-    multi-dimensional Lorentz space requires an explicit basis projection and
-    is deliberately left to the existing local-derivative implementation.
+    Multi-dimensional spaces are handled separately by explicit placement
+    projectors.
     """
 
     singlets = {}
@@ -2094,29 +2614,207 @@ def unique_lorentz_completion_operator(operator: EffectiveOperator):
     return EffectiveOperator(operator.name, next(iter(singlets.values())))
 
 
+def unique_multi_derivative_projection(operator):
+    """Return the normalised coordinate of a unique multi-derivative singlet."""
+
+    _, _, n_derivs = operator_strip_derivs(operator.operator).values()
+    if n_derivs < 2:
+        return None
+    basis = LorentzBasis.from_operator(operator.operator)
+    if basis.dimension != 1:
+        return None
+    derivative_fields = tuple(
+        field.label
+        for field in operator.operator.indexed_fields
+        if field.derivs
+    )
+    return MultiDerivativeProjection(
+        basis_labels=basis.labels,
+        coordinates=("1",),
+        derivative_fields=derivative_fields,
+        ibp_relation=UNIQUE_MULTI_DERIVATIVE_IBP_RELATION,
+        eom_relation=HISTORICAL_EOM_RELATION,
+    )
+
+
+def canonical_propagator_cut(partition, graph, edge):
+    """Return a deterministic external-node side of a cut internal edge."""
+
+    cut_graph = graph.copy()
+    cut_graph.remove_edge(*edge)
+    external_nodes = {leaf.node for leaf in partition_leaves(partition)}
+    sides = []
+    for component in nx.connected_components(cut_graph):
+        side = tuple(sorted(component & external_nodes))
+        if side:
+            sides.append(side)
+    if len(sides) != 2:
+        raise ValueError("A propagator edge must split the external fields in two")
+    return min(sides)
+
+
+def weak_compositions(total, length):
+    """Yield deterministic weak compositions of ``total`` into ``length`` parts."""
+
+    if length == 0:
+        if total == 0:
+            yield ()
+        return
+    for first in range(total + 1):
+        for rest in weak_compositions(total - first, length - 1):
+            yield (first, *rest)
+
+
+def _completion_with_momentum_contributions(completion, contributions):
+    """Copy a completion while replacing its propagator-expansion metadata."""
+
+    return Completion(
+        operator=completion.operator,
+        partition=completion.partition,
+        graph=deepcopy(completion.graph),
+        exotics=completion.exotics,
+        terms=completion.terms,
+        topology=completion.topology,
+        canonical_topology=completion.canonical_topology,
+        momentum_contributions=tuple(contributions),
+        lorentz_projection=completion.lorentz_projection,
+    )
+
+
+def _edge_particle_field(completion, edge):
+    particle = completion.graph.edges[edge]["particle"]
+    exact_matches = [
+        field for field in completion.exotics if field.label == particle
+    ]
+    matches = exact_matches or [
+        field
+        for field in completion.exotics
+        if base_exotic_label(field.label) == base_exotic_label(particle)
+    ]
+    if not matches or len({field.is_fermion for field in matches}) != 1:
+        labels = tuple(sorted(field.label for field in completion.exotics))
+        raise ValueError(
+            f"Cannot identify particle {particle!r} on propagator edge "
+            f"{edge}; completion exotics are {labels}"
+        )
+    return particle, matches[0]
+
+
+def expand_propagator_denominators(completion, denominator_order):
+    """Attach every propagator-denominator term of a fixed total order.
+
+    ``denominator_order`` counts powers of :math:`p^2/M^2`, so it supplies
+    twice as many EFT derivatives.  Existing fermion momentum numerators are
+    retained and may carry additional denominator powers on the same edge.
+    """
+
+    if denominator_order < 0:
+        raise ValueError("Propagator denominator order must be nonnegative")
+    exotic_labels = {
+        base_exotic_label(field.label) for field in completion.exotics
+    }
+    internal_edges = tuple(
+        sorted(
+            tuple(sorted(edge))
+            for edge, particle in nx.get_edge_attributes(
+                completion.graph, "particle"
+            ).items()
+            if base_exotic_label(particle) in exotic_labels
+        )
+    )
+    if not internal_edges:
+        return [] if denominator_order else [completion]
+
+    canonical_contributions = [
+        contribution._replace(
+            edge=tuple(sorted(contribution.edge)),
+            cut_side=canonical_propagator_cut(
+                completion.partition,
+                completion.graph,
+                contribution.edge,
+            ),
+        )
+        for contribution in completion.momentum_contributions
+    ]
+    expanded = []
+    for allocation in weak_compositions(denominator_order, len(internal_edges)):
+        contributions = list(canonical_contributions)
+        by_edge = {
+            contribution.edge: index
+            for index, contribution in enumerate(contributions)
+        }
+        for edge, order in zip(internal_edges, allocation):
+            if not order:
+                continue
+            if edge in by_edge:
+                index = by_edge[edge]
+                contribution = contributions[index]
+                contributions[index] = contribution._replace(
+                    denominator_order=contribution.denominator_order + order
+                )
+                continue
+
+            particle, field = _edge_particle_field(completion, edge)
+            contributions.append(
+                PropagatorContribution(
+                    edge=edge,
+                    particle=particle,
+                    numerator_kind="mass" if field.is_fermion else "scalar",
+                    denominator_order=order,
+                    numerator_lorentz="",
+                    differentiated_field="",
+                    differentiated_lorentz="",
+                    cut_side=canonical_propagator_cut(
+                        completion.partition, completion.graph, edge
+                    ),
+                )
+            )
+        contributions.sort(
+            key=lambda item: (
+                item.edge,
+                item.numerator_kind,
+                item.denominator_order,
+                item.particle,
+            )
+        )
+        expanded.append(
+            _completion_with_momentum_contributions(completion, contributions)
+        )
+    return expanded
+
+
 def momentum_routed_completions(
     operator: EffectiveOperator,
     verbose=False,
     canonical_partitions=False,
     historical_basis=None,
+    second_derivative_basis=None,
 ) -> List[Completion]:
-    """Complete a single-derivative operator by routing momentum on heavy fermions.
+    """Complete an operator using the low-momentum propagator expansion.
 
-    External derivative labels are removed while furnishing the graph.  One
-    derivative token must then be consumed by a dotted-undotted current
-    containing an internal fermion.  The original, explicit Lorentz singlet is
-    retained on the returned completion.
+    External derivative labels are removed while furnishing the graph.
+    Fermion momentum numerators supply odd derivative degree and denominator
+    corrections supply even degree.  Multi-derivative routing is currently
+    enabled either when the requested Lorentz structure is unique or when an
+    explicit unreduced placement projector is available.  No EOM reduction is
+    applied.
     """
 
     fields, epsilons, n_derivs = operator_strip_derivs(operator.operator).values()
-    if n_derivs != 1:
+    if not n_derivs:
         return []
 
     completion_operator = unique_lorentz_completion_operator(operator)
+    unique_projection = unique_multi_derivative_projection(operator)
     if completion_operator is None:
-        if operator.name not in PROJECTED_LORENTZ_OPERATORS:
+        if n_derivs == 2:
+            if second_derivative_basis is None:
+                second_derivative_basis = (
+                    UnreducedSecondDerivativeBasis.from_operator(operator)
+                )
+        elif n_derivs != 1 or operator.name not in PROJECTED_LORENTZ_OPERATORS:
             return []
-        if historical_basis is None:
+        elif historical_basis is None:
             historical_basis = HistoricalDerivativeBasis.from_operator(operator)
 
     stripped_operator = EffectiveOperator(
@@ -2128,25 +2826,70 @@ def momentum_routed_completions(
         routed_partitions = remove_isomorphic(routed_partitions)
     for partition in routed_partitions:
         partition_candidates = []
-        rooted_partitions = canonical_rooted_partitions(
-            partition["partition"], partition["graph"]
-        )
-        for rooted_partition in rooted_partitions:
-            route_choice_count = derivative_route_choice_count(rooted_partition)
-            for route_choice in range(route_choice_count):
-                branch = dict(partition)
-                branch["partition"] = rooted_partition
-                branch["graph"] = deepcopy(partition["graph"])
-                branch["completion_operator"] = completion_operator
-                if historical_basis is not None:
-                    branch["historical_derivative_basis"] = historical_basis
-                    branch["requested_operator"] = operator
-                branch["derivative_count"] = n_derivs
-                branch["derivative_route_choice"] = route_choice
-                branch["derivative_partition_is_canonical"] = True
-                completion = partition_completion(branch)
-                if not isinstance(completion, FailedCompletion):
-                    partition_candidates.append(completion)
+        for numerator_count in range(n_derivs % 2, n_derivs + 1, 2):
+            denominator_order = (n_derivs - numerator_count) // 2
+            if numerator_count:
+                rooted_partitions = canonical_rooted_partitions(
+                    partition["partition"], partition["graph"]
+                )
+            else:
+                rooted_partitions = (partition["partition"],)
+
+            for rooted_partition in rooted_partitions:
+                if numerator_count:
+                    route_choice_count = derivative_route_choice_count(
+                        rooted_partition
+                    )
+                    route_choice_sequences = product(
+                        range(route_choice_count), repeat=numerator_count
+                    )
+                else:
+                    route_choice_sequences = ((),)
+
+                for route_choices in route_choice_sequences:
+                    branch = dict(partition)
+                    branch["partition"] = rooted_partition
+                    branch["graph"] = deepcopy(partition["graph"])
+                    branch["completion_operator"] = completion_operator
+                    if historical_basis is not None:
+                        branch["historical_derivative_basis"] = historical_basis
+                        branch["requested_operator"] = operator
+                    branch["derivative_count"] = numerator_count
+                    branch["derivative_route_choices"] = route_choices
+                    branch["derivative_partition_is_canonical"] = True
+                    completion = partition_completion(branch)
+                    if isinstance(completion, FailedCompletion):
+                        continue
+                    if unique_projection is not None:
+                        completion.lorentz_projection = unique_projection
+                    expanded = expand_propagator_denominators(
+                        completion, denominator_order
+                    )
+                    if second_derivative_basis is not None:
+                        if numerator_count:
+                            raise ValueError(
+                                "An unreduced two-numerator branch requires "
+                                "an explicit spinor-momentum projection"
+                            )
+                        projected = []
+                        for candidate in expanded:
+                            contribution = next(
+                                contribution
+                                for contribution in candidate.momentum_contributions
+                                if contribution.denominator_order
+                            )
+                            projection = second_derivative_basis.project_denominator(
+                                candidate.operator.operator,
+                                candidate.partition,
+                                contribution,
+                            )
+                            if projection is None:
+                                continue
+                            candidate.operator = operator
+                            candidate.lorentz_projection = projection
+                            projected.append(candidate)
+                        expanded = projected
+                    partition_candidates.extend(expanded)
         partition_branches = []
         append_unique_completions(partition_branches, partition_candidates)
         routed.extend(partition_branches)
@@ -2300,16 +3043,26 @@ def deriv_operator_completions(
 ) -> List[Completion]:
     """Find the completions of a derivative operator. Differs from regular
     ``operator_completions`` in that it acts the derivatives in all possible
-    ways. There shouldn't be more than one derivative acting on a single field.
+    ways.  Two-derivative multidimensional operators retain both distributed
+    derivatives and explicit :math:`D^2` placements without EOM reduction.
 
     """
     historical_basis = None
+    unique_projection = unique_multi_derivative_projection(operator)
+    second_derivative_basis = None
+    _, _, derivative_count = operator_strip_derivs(operator.operator).values()
     if (
         operator.name in PROJECTED_LORENTZ_OPERATORS
         and unique_lorentz_completion_operator(operator) is None
     ):
         historical_basis = HistoricalDerivativeBasis.from_operator(operator)
         placements = historical_basis.placements
+        deriv_combos = [placement.operator for placement in placements]
+    elif unique_projection is None and derivative_count == 2:
+        second_derivative_basis = UnreducedSecondDerivativeBasis.from_operator(
+            operator
+        )
+        placements = second_derivative_basis.placements
         deriv_combos = [placement.operator for placement in placements]
     else:
         placements = None
@@ -2335,6 +3088,16 @@ def deriv_operator_completions(
                 completion.lorentz_projection = historical_basis.project_local(
                     placement, completion.operator.operator
                 )
+        elif unique_projection is not None:
+            for completion in generated:
+                completion.lorentz_projection = unique_projection
+        elif second_derivative_basis is not None:
+            for completion in generated:
+                completion.lorentz_projection = (
+                    second_derivative_basis.project_local(
+                        completion.operator.operator
+                    )
+                )
         comps += generated
 
     routed = momentum_routed_completions(
@@ -2342,6 +3105,7 @@ def deriv_operator_completions(
         verbose=verbose,
         canonical_partitions=canonical_partitions,
         historical_basis=historical_basis,
+        second_derivative_basis=second_derivative_basis,
     )
     append_unique_completions(comps, routed)
 
@@ -2349,18 +3113,20 @@ def deriv_operator_completions(
 
 
 def exact_completions(operator: EffectiveOperator, verbose=False) -> List[Completion]:
-    """Return exact UV-Lagrangian classes using canonical furnished partitions.
+    """Return exact UV-Lagrangian classes after symbolic construction.
 
-    Raw generation remains the default public behaviour.  This explicit mode
-    removes isomorphic furnished diagrams before symbolic construction and then
-    applies the same exact interaction-graph equivalence used by the census.
+    The canonical-partition preflight is safe for ordinary and one-derivative
+    operators.  For several derivatives, propagator numerator orientations can
+    distinguish partitions only after furnishing, so the complete raw set is
+    constructed before applying exact interaction-graph equivalence.
     """
 
     if any(field.derivs for field in operator.fields):
+        derivative_count = operator_strip_derivs(operator.operator)["n_derivs"]
         candidates = deriv_operator_completions(
             operator,
             verbose=verbose,
-            canonical_partitions=True,
+            canonical_partitions=derivative_count <= 1,
         )
     else:
         candidates = operator_completions(

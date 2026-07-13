@@ -101,13 +101,29 @@ Models generating the Weinberg at tree-level can then be found with the
 >>> seesaw_1, seesaw_2, seesaw_3 = clean_completions(operator_completions(eff_o1))
 #+END_SRC
 Raw generation preserves every furnished completion record.  When only exact
-UV-Lagrangian classes are required, =exact_completions= removes isomorphic
-furnished diagrams before symbolic construction and applies exact contraction-
-graph equivalence afterward:
+UV-Lagrangian classes are required, =exact_completions= applies exact
+contraction-graph equivalence after symbolic construction.  Ordinary and
+one-derivative operators also use a safe canonical-partition preflight;
+multi-derivative operators are furnished first because propagator momentum
+assignments can distinguish otherwise-isomorphic bare partitions:
 #+BEGIN_SRC python
 >>> from neutrinomass.completions import exact_completions
 >>> seesaw_1, seesaw_2, seesaw_3 = exact_completions(eff_o1)
 #+END_SRC
+Derivative completions include the low-momentum expansion of every heavy
+propagator.  A fermion momentum numerator contributes odd derivative degree,
+while each denominator power of $p^2/M^2$ contributes degree two.  The selected
+edge, numerator kind, denominator order and canonical momentum cut are stored
+in =Completion.momentum_contributions=.  Version-two JSONL preserves this
+metadata and continues to read version-one =DerivativeRoute= records.
+Multi-derivative momentum routing uses the unique nonzero Lorentz singlet when
+one exists.  The two-dimensional $D15$ and $D22$ spaces instead use an
+unreduced placement basis: each $p_S^2$ is expanded over ordered external-field
+occurrences on the canonical cut side, including both $D^2\Phi_i$ and
+$D\Phi_iD\Phi_j$ terms.  The other Lorentz irreps in $D\Phi$ provide a canonical
+representation-theoretic complement when needed.  No equation-of-motion
+reduction is applied, and distinct derivative placements remain explicit in
+the stored projection coordinates.
 Safe completion artifacts use versioned JSONL.  =iter_completion_jsonl= opens
 and decodes the file lazily, whereas =read_completion_jsonl= is an eager list
 wrapper intended only for small files:
