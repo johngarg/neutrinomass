@@ -250,6 +250,8 @@ def stable_report_data(report):
         "derivatives": report["derivatives"],
         "operator_scale_gev": report["operator_scale_gev"],
         "records": report["records"],
+        "provisional_records": report["provisional_records"],
+        "generation_rejections": report["generation_rejections"],
         "structural_exact_classes": report["structural_exact_classes"],
         "exact_classes": report["exact_classes"],
         "amplitude_symmetrisation": amplitude_symmetrisation,

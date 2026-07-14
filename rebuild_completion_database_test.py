@@ -35,6 +35,11 @@ def sample_report(directory, seed):
         "peak_memory_mib": 2.0 + seed,
         "operator_scale_gev": 3.0,
         "records": {"generator": 8, "local": 8, "routed": 0},
+        "provisional_records": 9,
+        "generation_rejections": {
+            "decoded_vanishing_uv_interactions": 1,
+            "topologies": {"2s2f_1|2s2f_1": 1},
+        },
         "structural_exact_classes": 4,
         "exact_classes": {"all": 3, "local": 3, "routed": 0},
         "amplitude_symmetrisation": {

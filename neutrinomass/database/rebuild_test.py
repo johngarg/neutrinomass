@@ -1,3 +1,6 @@
+from copy import deepcopy
+from types import SimpleNamespace
+
 import pytest
 
 from neutrinomass.completions.completions import operator_completions
@@ -5,6 +8,7 @@ from neutrinomass.completions.core import ComplexScalar, VectorLikeDiracFermion
 from neutrinomass.completions.operators import DERIV_EFF_OPERATORS, EFF_OPERATORS
 from neutrinomass.tensormethod import L, eps
 from neutrinomass.database.deduplication import deduplicate_completion_jsonl
+from neutrinomass.database.serialization import iter_completion_jsonl
 from neutrinomass.database.rebuild import (
     audit_exact_artifact,
     classify_historical_classes,
@@ -104,6 +108,41 @@ def test_streamed_generation_and_disk_backed_historical_audit(tmp_path):
     assert model_path.read_text(encoding="utf-8").count("\n") == 3
 
 
+def test_generated_artifact_rejects_vertices_zero_after_round_trip(
+    tmp_path, monkeypatch
+):
+    valid = next(operator_completions(EFF_OPERATORS["1"]))
+    invalid = deepcopy(valid)
+    scalar = ComplexScalar("phi", "-c0 i0", charges={"y": 0, "3b": 0})
+    fermion = VectorLikeDiracFermion(
+        "psi", "u1 -c2 -c1", charges={"y": 0, "3b": 0}
+    )
+    invalid.terms = [
+        scalar
+        * L("u0 i1")
+        * fermion
+        * eps("-u0 -u1")
+        * eps("-i0 -i1")
+        * eps("c0 c1 c2")
+    ]
+    path = tmp_path / "generated.jsonl"
+    monkeypatch.setattr(
+        "neutrinomass.database.rebuild.validate_completion",
+        lambda completion, check_vanishing=True: None,
+    )
+
+    report = write_generated_artifact(
+        path, [valid, invalid], terms_prevalidated=True
+    )
+
+    assert report["source_records"] == 2
+    assert report["records"] == 1
+    assert report["decoded_vertex_rejections"] == 1
+    assert report["decoded_rejection_topologies"]
+    survivor = list(iter_completion_jsonl(path))[0]
+    assert all(term.safe_simplify() != 0 for term in survivor.terms)
+
+
 def test_regenerated_democratic_filter_uses_surviving_upstream_subsets():
     registry = {
         "high": {("F",): (("top", "top"),)},
@@ -141,12 +180,30 @@ def test_historical_audit_classifies_vanishing_legacy_classes():
     completion = next(operator_completions(EFF_OPERATORS["1"]))
     completion.terms = [vanishing]
 
-    valid, invalid = classify_historical_classes([completion])
+    valid, invalid, unsupported = classify_historical_classes([completion])
 
     assert valid == []
     assert len(invalid) == 1
     assert invalid[0]["reason"] == "vanishing UV interaction"
     assert invalid[0]["vanishing_term_indices"] == [0]
+    assert unsupported == []
+
+
+def test_historical_audit_defers_unsupported_provenance_to_coverage(monkeypatch):
+    completion = next(operator_completions(EFF_OPERATORS["1"]))
+    monkeypatch.setattr(
+        "neutrinomass.database.rebuild.audit_amplitude_symmetrisation",
+        lambda completion: SimpleNamespace(
+            status="unsupported", is_zero=False, reason="legacy provenance"
+        ),
+    )
+
+    valid, invalid, unsupported = classify_historical_classes([completion])
+
+    assert valid == [completion]
+    assert invalid == []
+    assert len(unsupported) == 1
+    assert unsupported[0]["reason"] == "legacy provenance"
 
 
 def test_historical_audit_classifies_inconsistent_exotic_labels():

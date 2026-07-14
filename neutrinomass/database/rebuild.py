@@ -296,7 +296,7 @@ def write_generated_artifact(path, completions, *, terms_prevalidated=False):
     path.parent.mkdir(parents=True, exist_ok=True)
     source_stats = _new_stats()
     source_digest = OrderedSignatureDigest()
-    temporary = tempfile.NamedTemporaryFile(
+    source_temporary = tempfile.NamedTemporaryFile(
         mode="w",
         encoding="utf-8",
         prefix=f".{path.name}.",
@@ -304,38 +304,65 @@ def write_generated_artifact(path, completions, *, terms_prevalidated=False):
         dir=path.parent,
         delete=False,
     )
-    temporary_path = Path(temporary.name)
+    source_temporary_path = Path(source_temporary.name)
+    decoded_temporary = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        prefix=f".{path.name}.decoded.",
+        suffix=".tmp",
+        dir=path.parent,
+        delete=False,
+    )
+    decoded_temporary_path = Path(decoded_temporary.name)
+    round_trip_stats = _new_stats()
+    round_trip_digest = OrderedSignatureDigest()
+    decoded_stats = _new_stats()
+    decoded_digest = OrderedSignatureDigest()
+    decoded_vertex_rejections = 0
+    decoded_rejection_topologies = Counter()
     try:
-        with temporary:
+        with source_temporary:
             for completion in completions:
                 validate_completion(
                     completion, check_vanishing=not terms_prevalidated
                 )
                 _update_stats(source_stats, completion)
                 source_digest.update(round_trip_signature(completion))
-                temporary.write(dumps_completion(completion) + "\n")
-        temporary_path.replace(path)
+                source_temporary.write(dumps_completion(completion) + "\n")
+
+        with decoded_temporary:
+            for completion in iter_completion_jsonl(source_temporary_path):
+                _update_stats(round_trip_stats, completion)
+                round_trip_digest.update(round_trip_signature(completion))
+                if any(term.safe_simplify() == 0 for term in completion.terms):
+                    decoded_vertex_rejections += 1
+                    decoded_rejection_topologies[topology_key(completion)] += 1
+                    continue
+                _update_stats(decoded_stats, completion)
+                decoded_digest.update(round_trip_signature(completion))
+                decoded_temporary.write(dumps_completion(completion) + "\n")
+
+        source = _serialise_stats(source_stats)
+        round_trip = _serialise_stats(round_trip_stats)
+        if source != round_trip:
+            raise ValueError("record statistics changed across JSONL round trip")
+        if source_digest.hexdigest() != round_trip_digest.hexdigest():
+            raise ValueError("completion metadata changed across JSONL round trip")
+        decoded_temporary_path.replace(path)
     finally:
-        temporary_path.unlink(missing_ok=True)
+        source_temporary_path.unlink(missing_ok=True)
+        decoded_temporary_path.unlink(missing_ok=True)
 
-    decoded_stats = _new_stats()
-    decoded_digest = OrderedSignatureDigest()
-    # Source objects were fully validated before writing.  This second pass
-    # isolates schema/metadata round-trip checks without repeating symbolic
-    # simplification for every UV term.
-    for completion in iter_completion_jsonl(path):
-        _update_stats(decoded_stats, completion)
-        decoded_digest.update(round_trip_signature(completion))
-
-    source = _serialise_stats(source_stats)
     decoded = _serialise_stats(decoded_stats)
-    if source != decoded:
-        raise ValueError("record statistics changed across JSONL round trip")
-    if source_digest.hexdigest() != decoded_digest.hexdigest():
-        raise ValueError("completion metadata changed across JSONL round trip")
     return {
-        **source,
-        "round_trip_digest": source_digest.hexdigest(),
+        **decoded,
+        "source_records": source["records"],
+        "decoded_vertex_rejections": decoded_vertex_rejections,
+        "decoded_rejection_topologies": dict(
+            sorted(decoded_rejection_topologies.items())
+        ),
+        "round_trip_digest": decoded_digest.hexdigest(),
+        "source_round_trip_digest": source_digest.hexdigest(),
         "sha256": file_sha256(path),
     }
 
@@ -415,6 +442,7 @@ def historical_classes(operator_name, historical_path):
 def classify_historical_classes(classes):
     valid = []
     invalid = []
+    unsupported = []
     for completion in classes:
         try:
             validate_completion(completion)
@@ -423,17 +451,21 @@ def classify_historical_classes(classes):
         else:
             audit = audit_amplitude_symmetrisation(completion)
             if audit.status == "unsupported":
-                raise ValueError(
-                    "Cannot audit historical completion amplitude: "
-                    f"{audit.reason}"
+                valid.append(completion)
+                unsupported.append(
+                    {
+                        "fingerprint": repr(completion_fingerprint(completion)),
+                        "topology": topology_key(completion),
+                        "reason": audit.reason,
+                    }
                 )
-            if audit.is_zero:
+            elif audit.is_zero:
                 invalid.append(
                     _invalid_historical_class(completion, ValueError(audit.reason))
                 )
             else:
                 valid.append(completion)
-    return valid, invalid
+    return valid, invalid, unsupported
 
 
 def audit_amplitude_artifact(source, destination):
@@ -804,7 +836,11 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
     records, classes, unbucketable_historical = historical_classes(
         operator_name, historical_path
     )
-    valid_historical, invalid_historical = classify_historical_classes(classes)
+    (
+        valid_historical,
+        invalid_historical,
+        unsupported_historical,
+    ) = classify_historical_classes(classes)
     invalid_historical = unbucketable_historical + invalid_historical
     exact = audit_exact_artifact(
         exact_path,
@@ -850,6 +886,13 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
             "local": generated["local"],
             "routed": generated["routed"],
         },
+        "provisional_records": generated["source_records"],
+        "generation_rejections": {
+            "decoded_vanishing_uv_interactions": generated[
+                "decoded_vertex_rejections"
+            ],
+            "topologies": generated["decoded_rejection_topologies"],
+        },
         "exact_classes": {
             "all": exact["records"],
             "local": exact["local"],
@@ -865,6 +908,7 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
             "valid_classes": len(valid_historical),
             "invalid_classes": len(invalid_historical),
             "invalid": invalid_historical,
+            "amplitude_unsupported": unsupported_historical,
             "reproduced": len(valid_historical),
             "missing": 0,
             "exact_comparisons": exact["historical_comparisons"],
