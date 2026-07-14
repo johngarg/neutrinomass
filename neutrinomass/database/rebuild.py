@@ -129,7 +129,14 @@ def completion_stream(operator_name):
     if operator_name in EFF_OPERATORS:
         return operator_completions(EFF_OPERATORS[operator_name])
     if operator_name in DERIV_EFF_OPERATORS:
-        return iter(deriv_operator_completions(DERIV_EFF_OPERATORS[operator_name]))
+        operator = DERIV_EFF_OPERATORS[operator_name]
+        derivative_count = operator_strip_derivs(operator.operator)["n_derivs"]
+        return iter(
+            deriv_operator_completions(
+                operator,
+                canonical_partitions=derivative_count <= 1,
+            )
+        )
     raise KeyError(operator_name)
 
 

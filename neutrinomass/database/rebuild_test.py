@@ -2,12 +2,13 @@ import pytest
 
 from neutrinomass.completions.completions import operator_completions
 from neutrinomass.completions.core import ComplexScalar, VectorLikeDiracFermion
-from neutrinomass.completions.operators import EFF_OPERATORS
+from neutrinomass.completions.operators import DERIV_EFF_OPERATORS, EFF_OPERATORS
 from neutrinomass.tensormethod import L, eps
 from neutrinomass.database.deduplication import deduplicate_completion_jsonl
 from neutrinomass.database.rebuild import (
     audit_exact_artifact,
     classify_historical_classes,
+    completion_stream,
     file_sha256,
     filter_democratic_registry,
     operator_inventory,
@@ -51,6 +52,29 @@ def test_operator_inventory_requires_an_exact_legacy_mapping(tmp_path, monkeypat
     with pytest.raises(ValueError) as error:
         operator_inventory(tmp_path)
     assert "missing definitions=['missing']" in str(error.value)
+
+
+def test_derivative_census_uses_safe_canonical_partition_preflight(monkeypatch):
+    calls = []
+
+    def generate(operator, *, canonical_partitions):
+        calls.append((operator.name, canonical_partitions))
+        return ()
+
+    monkeypatch.setattr(
+        "neutrinomass.database.rebuild.deriv_operator_completions", generate
+    )
+    monkeypatch.setattr(
+        "neutrinomass.database.rebuild.DERIV_EFF_OPERATORS",
+        {
+            "one": DERIV_EFF_OPERATORS["D20"],
+            "several": DERIV_EFF_OPERATORS["D21"],
+        },
+    )
+
+    assert list(completion_stream("one")) == []
+    assert list(completion_stream("several")) == []
+    assert calls == [("D20", True), ("D21", False)]
 
 
 def test_streamed_generation_and_disk_backed_historical_audit(tmp_path):
