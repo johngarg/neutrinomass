@@ -6,7 +6,7 @@ priority4_submit_spartan() (
     set -euo pipefail
 
     local repo_root project_root account output_root legacy_dir task_manifest
-    local source_commit python_cmd task_count array_job final_job
+    local source_commit python_cmd task_count preflight_job array_job final_job
     repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
     project_root="$(cd "${repo_root}/.." && pwd)"
     account="${NEUTRINOMASS_ACCOUNT:-punim0011}"
@@ -49,33 +49,32 @@ priority4_submit_spartan() (
 
     mkdir -p "${output_root}/logs" "${output_root}/.matplotlib-submit"
     export MPLCONFIGDIR="${output_root}/.matplotlib-submit"
-    cd "${repo_root}"
-    "${python_cmd}" -m pytest -q \
-        cluster_rebuild_test.py \
-        cluster_legacy_archive_test.py \
-        compare_published_database_test.py \
-        rebuild_completion_database_test.py
-    "${python_cmd}" cluster/fetch_legacy_archive.py "${legacy_dir}"
-
-    "${python_cmd}" cluster_rebuild.py plan \
-        "${legacy_dir}" \
-        --source-commit "${source_commit}" \
-        --output "${task_manifest}"
-    task_count="$("${python_cmd}" cluster_rebuild.py count "${task_manifest}")"
-    if [[ "${task_count}" != "486" ]]; then
-        echo "Expected 486 tasks, found ${task_count}." >&2
-        return 2
-    fi
+    "${python_cmd}" "${repo_root}/cluster/fetch_legacy_archive.py" "${legacy_dir}"
+    task_count="486"
 
     if [[ "${NEUTRINOMASS_PREPARE_ONLY:-0}" == "1" ]]; then
-        printf 'Prepared Priority-4 census: %s tasks in %s. No jobs submitted.\n' \
-            "${task_count}" "${task_manifest}"
+        printf 'Prepared Priority-4 census inputs for %s tasks. No jobs submitted.\n' \
+            "${task_count}"
         return 0
     fi
+
+    preflight_job="$(sbatch \
+        --parsable \
+        --account "${account}" \
+        --job-name nm-p4-preflight \
+        --cpus-per-task 1 \
+        --mem "${NEUTRINOMASS_PREFLIGHT_MEMORY:-8G}" \
+        --time "${NEUTRINOMASS_PREFLIGHT_WALLTIME:-02:00:00}" \
+        --output "${output_root}/logs/preflight_%j.out" \
+        --error "${output_root}/logs/preflight_%j.err" \
+        --export "ALL,NEUTRINOMASS_REPO_ROOT=${repo_root},NEUTRINOMASS_TASK_MANIFEST=${task_manifest},NEUTRINOMASS_OUTPUT_ROOT=${output_root},NEUTRINOMASS_LEGACY_DIR=${legacy_dir},NEUTRINOMASS_SOURCE_COMMIT=${source_commit}" \
+        "${repo_root}/cluster/slurm_priority4_preflight.sh")"
+    preflight_job="${preflight_job%%;*}"
 
     array_job="$(sbatch \
         --parsable \
         --account "${account}" \
+        --dependency "afterok:${preflight_job}" \
         --job-name nm-p4-census \
         --cpus-per-task 1 \
         --mem "${NEUTRINOMASS_MEMORY:-8G}" \
@@ -101,9 +100,10 @@ priority4_submit_spartan() (
         "${repo_root}/cluster/slurm_priority4_finalize.sh")"
     final_job="${final_job%%;*}"
 
-    printf 'Submitted Priority-4 census array %s and finalizer %s.\n' \
-        "${array_job}" "${final_job}"
-    printf 'Monitor with: squeue -j %s,%s\n' "${array_job}" "${final_job}"
+    printf 'Submitted Priority-4 preflight %s, census array %s, and finalizer %s.\n' \
+        "${preflight_job}" "${array_job}" "${final_job}"
+    printf 'Monitor with: squeue -j %s,%s,%s\n' \
+        "${preflight_job}" "${array_job}" "${final_job}"
 )
 
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then

@@ -6,8 +6,8 @@ On a Spartan login node, check out `cluster-rebuild` and run:
 source cluster/submit_spartan.sh
 ```
 
-To prepare and validate everything through creation of the 486-task manifest,
-but stop before either Slurm submission, run:
+To prepare the environment and verified legacy inputs, but stop before any
+Slurm submission, run:
 
 ```bash
 export NEUTRINOMASS_PREPARE_ONLY=1
@@ -15,8 +15,11 @@ source cluster/submit_spartan.sh
 unset NEUTRINOMASS_PREPARE_ONLY
 ```
 
-After reviewing the prepared manifest, source the submitter normally to launch
-the array and its dependent finalizer.
+After reviewing the prepared inputs, source the submitter normally. It submits
+a small validation job, then the census array and finalizer behind `afterok`
+dependencies. The validation job runs the tests and creates the 486-task
+manifest on a compute node rather than using the Spartan login node for Python
+workloads.
 
 An already prepared Python environment can be selected with
 `NEUTRINOMASS_PYTHON=/absolute/path/to/python`. Set
@@ -25,11 +28,12 @@ Spartan Python module.
 
 That one command creates `.venv` when needed, downloads and verifies the
 published 199 MB Zenodo `raw_completions.zip` when the legacy directory is
-absent, safely extracts its 243 inputs (about 4.4 GB), writes a 486-task
-manifest (243 operators times two hash seeds),
-submits a throttled Slurm array, and submits an `afterok` finalizer. Each array
-job uses node-local scratch, gzip-packages the large raw, structural-exact and
-physical-exact JSONL files, and publishes only its own operator directory. The
+absent, safely extracts its 243 inputs (about 4.4 GB), submits a validation job
+that writes a 486-task manifest (243 operators times two hash seeds), submits a
+throttled Slurm array dependent on that validation, and submits an `afterok`
+finalizer. Each array job uses node-local scratch and gzip-packages the large
+raw, structural-exact, and physical-exact JSONL files before publishing only
+its own operator directory. The
 finalizer validates every checksum and historical comparison, compares both
 seed reports, writes `migration_manifest.json`, regenerates the
 democratic/one-loop-Weinberg filtering artifacts, and writes
@@ -37,8 +41,8 @@ democratic/one-loop-Weinberg filtering artifacts, and writes
 from the counts reported in 2009.13537.
 
 Defaults are suitable for the `punim0011` Spartan project: one CPU, 8 GiB,
-24 hours, and at most 16 simultaneous census jobs. Override them before
-sourcing when required:
+24 hours, and at most 16 simultaneous census jobs. The validation job defaults
+to one CPU, 8 GiB, and two hours. Override them before sourcing when required:
 
 ```bash
 export NEUTRINOMASS_ACCOUNT=punim0011
