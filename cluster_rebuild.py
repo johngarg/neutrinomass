@@ -170,7 +170,11 @@ def package_report(report_path):
     report_path = Path(report_path)
     report = load_json(report_path)
     originals = []
-    for name in ("generator", "exact_classes"):
+    for name in (
+        "generator",
+        "structural_exact_classes",
+        "exact_classes",
+    ):
         metadata = report["artifacts"][name]
         source = Path(metadata["path"])
         destination, compressed = _compressed_artifact(source, metadata)

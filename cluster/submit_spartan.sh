@@ -10,7 +10,7 @@ priority4_submit_spartan() (
     repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
     project_root="$(cd "${repo_root}/.." && pwd)"
     account="${NEUTRINOMASS_ACCOUNT:-punim0011}"
-    output_root="${NEUTRINOMASS_OUTPUT_ROOT:-${project_root}/priority4-rebuild-v4}"
+    output_root="${NEUTRINOMASS_OUTPUT_ROOT:-${project_root}/priority4-rebuild-v5}"
     legacy_dir="${NEUTRINOMASS_LEGACY_DIR:-${project_root}/raw_completions}"
     task_manifest="${output_root}/cluster_tasks.json"
     source_commit="179c20e33b601765b2a17dbd2c7d3527bc0afb1c"
@@ -53,6 +53,7 @@ priority4_submit_spartan() (
     "${python_cmd}" -m pytest -q \
         cluster_rebuild_test.py \
         cluster_legacy_archive_test.py \
+        compare_published_database_test.py \
         rebuild_completion_database_test.py
     "${python_cmd}" cluster/fetch_legacy_archive.py "${legacy_dir}"
 

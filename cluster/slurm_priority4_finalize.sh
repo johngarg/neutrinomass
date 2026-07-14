@@ -10,6 +10,7 @@ source "${repo_root}/cluster/load_spartan.sh"
 python_cmd="${NEUTRINOMASS_PYTHON:-${repo_root}/.venv/bin/python}"
 manifest="${output_root}/migration_manifest.json"
 filtered_dir="${output_root}/filtered"
+filtering_report="${filtered_dir}/filtering_report.json"
 export MPLCONFIGDIR="${output_root}/.matplotlib-finalize"
 mkdir -p "${MPLCONFIGDIR}"
 
@@ -22,4 +23,9 @@ cd "${repo_root}"
 "${python_cmd}" rebuild_completion_database.py filter \
     "${output_root}" \
     "${manifest}" \
+    --output-dir "${filtered_dir}"
+"${python_cmd}" compare_published_database.py \
+    "${output_root}" \
+    "${manifest}" \
+    "${filtering_report}" \
     --output-dir "${filtered_dir}"

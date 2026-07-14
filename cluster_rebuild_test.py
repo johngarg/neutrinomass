@@ -70,7 +70,12 @@ def test_worker_manifest_validation_does_not_rehash_entire_legacy_archive(
 def test_package_report_is_deterministic_and_lossless(tmp_path):
     artifacts = {}
     original_payloads = {}
-    for name in ("generator", "exact_classes", "democratic_models"):
+    for name in (
+        "generator",
+        "structural_exact_classes",
+        "exact_classes",
+        "democratic_models",
+    ):
         path = tmp_path / f"{name}.jsonl"
         payload = ((name + "\n") * 100).encode()
         path.write_bytes(payload)
@@ -81,7 +86,7 @@ def test_package_report_is_deterministic_and_lossless(tmp_path):
 
     report = package_report(report_path)
 
-    for name in ("generator", "exact_classes"):
+    for name in ("generator", "structural_exact_classes", "exact_classes"):
         artifact = report["artifacts"][name]
         assert artifact["compression"] == "gzip"
         assert artifact["uncompressed_sha256"] == artifacts[name]["sha256"]
@@ -94,9 +99,9 @@ def test_package_report_is_deterministic_and_lossless(tmp_path):
 
     first_hashes = {
         name: report["artifacts"][name]["sha256"]
-        for name in ("generator", "exact_classes")
+        for name in ("generator", "structural_exact_classes", "exact_classes")
     }
-    for name in ("generator", "exact_classes"):
+    for name in ("generator", "structural_exact_classes", "exact_classes"):
         path = tmp_path / f"second-{name}.jsonl"
         path.write_bytes(original_payloads[name])
         artifacts[name] = {"path": str(path), "sha256": file_sha256(path)}
@@ -107,14 +112,19 @@ def test_package_report_is_deterministic_and_lossless(tmp_path):
     second = package_report(second_report_path)
     assert first_hashes == {
         name: second["artifacts"][name]["sha256"]
-        for name in ("generator", "exact_classes")
+        for name in ("generator", "structural_exact_classes", "exact_classes")
     }
 
 
 def test_relocate_report_paths_verifies_transferred_artifacts(tmp_path):
     old_root = Path("/old/machine/rebuild/seed-0/operators/1")
     artifacts = {}
-    for name in ("generator", "exact_classes", "democratic_models"):
+    for name in (
+        "generator",
+        "structural_exact_classes",
+        "exact_classes",
+        "democratic_models",
+    ):
         path = tmp_path / f"{name}.jsonl"
         path.write_text(name, encoding="utf-8")
         artifacts[name] = {
