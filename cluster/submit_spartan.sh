@@ -67,6 +67,12 @@ priority4_submit_spartan() (
         return 2
     fi
 
+    if [[ "${NEUTRINOMASS_PREPARE_ONLY:-0}" == "1" ]]; then
+        printf 'Prepared Priority-4 census: %s tasks in %s. No jobs submitted.\n' \
+            "${task_count}" "${task_manifest}"
+        return 0
+    fi
+
     array_job="$(sbatch \
         --parsable \
         --account "${account}" \

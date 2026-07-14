@@ -6,6 +6,18 @@ On a Spartan login node, check out `cluster-rebuild` and run:
 source cluster/submit_spartan.sh
 ```
 
+To prepare and validate everything through creation of the 486-task manifest,
+but stop before either Slurm submission, run:
+
+```bash
+export NEUTRINOMASS_PREPARE_ONLY=1
+source cluster/submit_spartan.sh
+unset NEUTRINOMASS_PREPARE_ONLY
+```
+
+After reviewing the prepared manifest, source the submitter normally to launch
+the array and its dependent finalizer.
+
 An already prepared Python environment can be selected with
 `NEUTRINOMASS_PYTHON=/absolute/path/to/python`. Set
 `NEUTRINOMASS_SKIP_MODULES=1` only when that environment does not require a
