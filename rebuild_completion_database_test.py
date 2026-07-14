@@ -13,7 +13,12 @@ from rebuild_completion_database import (
 def sample_report(directory, seed):
     directory.mkdir(parents=True)
     artifacts = {}
-    for name in ("generator", "exact_classes", "democratic_models"):
+    for name in (
+        "generator",
+        "structural_exact_classes",
+        "exact_classes",
+        "democratic_models",
+    ):
         path = directory / f"{name}.jsonl"
         path.write_text(f"{name}\n", encoding="utf-8")
         artifacts[name] = {
@@ -30,7 +35,18 @@ def sample_report(directory, seed):
         "peak_memory_mib": 2.0 + seed,
         "operator_scale_gev": 3.0,
         "records": {"generator": 8, "local": 8, "routed": 0},
+        "structural_exact_classes": 4,
         "exact_classes": {"all": 3, "local": 3, "routed": 0},
+        "amplitude_symmetrisation": {
+            "input_records": 4,
+            "surviving_records": 3,
+            "rejected_records": 1,
+            "rejected_topologies": {"2s2f_1|2s2f_1": 1},
+            "derivative_sectors": {"1": 4},
+            "completion_digest": "physical-completions",
+            "source_sha256": "structural",
+            "destination_sha256": "physical",
+        },
         "democratic_models": 3,
         "species_models": 3,
         "propagator_models": 3,
@@ -46,7 +62,11 @@ def sample_report(directory, seed):
             "generator": {"2s2f_1|2s2f_1": 8},
             "exact_classes": {"2s2f_1|2s2f_1": 3},
         },
-        "completion_digests": {"generator": "raw", "exact_classes": "exact"},
+        "completion_digests": {
+            "generator": "raw",
+            "structural_exact_classes": "structural",
+            "exact_classes": "exact",
+        },
         "round_trip_digests": {
             "generator": "raw-round-trip",
             "exact_classes": "exact-round-trip",
