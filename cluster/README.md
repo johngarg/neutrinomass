@@ -16,11 +16,13 @@ published 199 MB Zenodo `raw_completions.zip` when the legacy directory is
 absent, safely extracts its 243 inputs (about 4.4 GB), writes a 486-task
 manifest (243 operators times two hash seeds),
 submits a throttled Slurm array, and submits an `afterok` finalizer. Each array
-job uses node-local scratch, gzip-packages the large raw and exact JSONL files,
-and publishes only its own operator directory. The finalizer validates every
-checksum and historical comparison, compares both seed reports, writes
-`migration_manifest.json`, and regenerates the democratic/one-loop-Weinberg
-filtering artifacts.
+job uses node-local scratch, gzip-packages the large raw, structural-exact and
+physical-exact JSONL files, and publishes only its own operator directory. The
+finalizer validates every checksum and historical comparison, compares both
+seed reports, writes `migration_manifest.json`, regenerates the
+democratic/one-loop-Weinberg filtering artifacts, and writes
+`published_comparison.{json,csv,md}` with global and operator-level changes
+from the counts reported in 2009.13537.
 
 Defaults are suitable for the `punim0011` Spartan project: one CPU, 8 GiB,
 24 hours, and at most 16 simultaneous census jobs. Override them before
@@ -32,7 +34,7 @@ export NEUTRINOMASS_CONCURRENCY=12
 export NEUTRINOMASS_MEMORY=8G
 export NEUTRINOMASS_WALLTIME=24:00:00
 export NEUTRINOMASS_LEGACY_DIR=/data/gpfs/projects/punim0011/garj/exploding-operators/raw_completions
-export NEUTRINOMASS_OUTPUT_ROOT=/data/gpfs/projects/punim0011/garj/exploding-operators/priority4-rebuild-v4
+export NEUTRINOMASS_OUTPUT_ROOT=/data/gpfs/projects/punim0011/garj/exploding-operators/priority4-rebuild-v5
 source cluster/submit_spartan.sh
 ```
 
@@ -55,7 +57,9 @@ is repaired without manual deletion.
 The workflow is restartable: sourcing the submitter again creates a new array,
 but valid completed task reports are checksum-verified and skipped. The source
 commit for the scientific census is pinned to
-`179c20e33b601765b2a17dbd2c7d3527bc0afb1c`. This incorporates the repaired
-propagator expansion and the unreduced, no-EOM second-derivative placement
-bases for D15 and D22. Later commits on the cluster branch may add only
-orchestration around those unchanged scientific sources.
+`9d96add59fc636223eda1e39d2f16a2a5de5e908`. This merge pins scientific
+commit `4cd174efc1138c607d50f2848c5781dff6ebb878` and includes the repaired
+propagator expansion, the unreduced no-EOM second-derivative placement bases,
+streamed derivative generation, decoded-record vertex validation, and the
+amplitude-level identical-field symmetrisation audit. Later commits on the
+cluster branch may add only orchestration around those scientific sources.
