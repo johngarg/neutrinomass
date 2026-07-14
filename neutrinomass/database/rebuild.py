@@ -23,13 +23,16 @@ from neutrinomass.completions.completions import (
     are_equivalent_completions,
     base_exotic_label,
     canonical_propagator_cut,
-    deriv_operator_completions,
+    deriv_operator_completion_stream,
     exact_completion_bucket_key,
     exotic_species,
     is_singlet,
     operator_completions,
     operator_strip_derivs,
     unique_multi_derivative_projection,
+)
+from neutrinomass.completions.amplitudes import (
+    audit_amplitude_symmetrisation,
 )
 from neutrinomass.completions.equivalence import clear_interaction_graph_cache
 from neutrinomass.completions.fingerprints import (
@@ -126,7 +129,14 @@ def completion_stream(operator_name):
     if operator_name in EFF_OPERATORS:
         return operator_completions(EFF_OPERATORS[operator_name])
     if operator_name in DERIV_EFF_OPERATORS:
-        return iter(deriv_operator_completions(DERIV_EFF_OPERATORS[operator_name]))
+        operator = DERIV_EFF_OPERATORS[operator_name]
+        derivative_count = operator_strip_derivs(operator.operator)["n_derivs"]
+        return iter(
+            deriv_operator_completion_stream(
+                operator,
+                canonical_partitions=derivative_count <= 1,
+            )
+        )
     raise KeyError(operator_name)
 
 
@@ -286,7 +296,7 @@ def write_generated_artifact(path, completions, *, terms_prevalidated=False):
     path.parent.mkdir(parents=True, exist_ok=True)
     source_stats = _new_stats()
     source_digest = OrderedSignatureDigest()
-    temporary = tempfile.NamedTemporaryFile(
+    source_temporary = tempfile.NamedTemporaryFile(
         mode="w",
         encoding="utf-8",
         prefix=f".{path.name}.",
@@ -294,38 +304,65 @@ def write_generated_artifact(path, completions, *, terms_prevalidated=False):
         dir=path.parent,
         delete=False,
     )
-    temporary_path = Path(temporary.name)
+    source_temporary_path = Path(source_temporary.name)
+    decoded_temporary = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        prefix=f".{path.name}.decoded.",
+        suffix=".tmp",
+        dir=path.parent,
+        delete=False,
+    )
+    decoded_temporary_path = Path(decoded_temporary.name)
+    round_trip_stats = _new_stats()
+    round_trip_digest = OrderedSignatureDigest()
+    decoded_stats = _new_stats()
+    decoded_digest = OrderedSignatureDigest()
+    decoded_vertex_rejections = 0
+    decoded_rejection_topologies = Counter()
     try:
-        with temporary:
+        with source_temporary:
             for completion in completions:
                 validate_completion(
                     completion, check_vanishing=not terms_prevalidated
                 )
                 _update_stats(source_stats, completion)
                 source_digest.update(round_trip_signature(completion))
-                temporary.write(dumps_completion(completion) + "\n")
-        temporary_path.replace(path)
+                source_temporary.write(dumps_completion(completion) + "\n")
+
+        with decoded_temporary:
+            for completion in iter_completion_jsonl(source_temporary_path):
+                _update_stats(round_trip_stats, completion)
+                round_trip_digest.update(round_trip_signature(completion))
+                if any(term.safe_simplify() == 0 for term in completion.terms):
+                    decoded_vertex_rejections += 1
+                    decoded_rejection_topologies[topology_key(completion)] += 1
+                    continue
+                _update_stats(decoded_stats, completion)
+                decoded_digest.update(round_trip_signature(completion))
+                decoded_temporary.write(dumps_completion(completion) + "\n")
+
+        source = _serialise_stats(source_stats)
+        round_trip = _serialise_stats(round_trip_stats)
+        if source != round_trip:
+            raise ValueError("record statistics changed across JSONL round trip")
+        if source_digest.hexdigest() != round_trip_digest.hexdigest():
+            raise ValueError("completion metadata changed across JSONL round trip")
+        decoded_temporary_path.replace(path)
     finally:
-        temporary_path.unlink(missing_ok=True)
+        source_temporary_path.unlink(missing_ok=True)
+        decoded_temporary_path.unlink(missing_ok=True)
 
-    decoded_stats = _new_stats()
-    decoded_digest = OrderedSignatureDigest()
-    # Source objects were fully validated before writing.  This second pass
-    # isolates schema/metadata round-trip checks without repeating symbolic
-    # simplification for every UV term.
-    for completion in iter_completion_jsonl(path):
-        _update_stats(decoded_stats, completion)
-        decoded_digest.update(round_trip_signature(completion))
-
-    source = _serialise_stats(source_stats)
     decoded = _serialise_stats(decoded_stats)
-    if source != decoded:
-        raise ValueError("record statistics changed across JSONL round trip")
-    if source_digest.hexdigest() != decoded_digest.hexdigest():
-        raise ValueError("completion metadata changed across JSONL round trip")
     return {
-        **source,
-        "round_trip_digest": source_digest.hexdigest(),
+        **decoded,
+        "source_records": source["records"],
+        "decoded_vertex_rejections": decoded_vertex_rejections,
+        "decoded_rejection_topologies": dict(
+            sorted(decoded_rejection_topologies.items())
+        ),
+        "round_trip_digest": decoded_digest.hexdigest(),
+        "source_round_trip_digest": source_digest.hexdigest(),
         "sha256": file_sha256(path),
     }
 
@@ -405,14 +442,107 @@ def historical_classes(operator_name, historical_path):
 def classify_historical_classes(classes):
     valid = []
     invalid = []
+    unsupported = []
     for completion in classes:
         try:
             validate_completion(completion)
         except ValueError as error:
             invalid.append(_invalid_historical_class(completion, error))
         else:
-            valid.append(completion)
-    return valid, invalid
+            audit = audit_amplitude_symmetrisation(completion)
+            if audit.status == "unsupported":
+                valid.append(completion)
+                unsupported.append(
+                    {
+                        "fingerprint": repr(completion_fingerprint(completion)),
+                        "topology": topology_key(completion),
+                        "reason": audit.reason,
+                    }
+                )
+            elif audit.is_zero:
+                invalid.append(
+                    _invalid_historical_class(completion, ValueError(audit.reason))
+                )
+            else:
+                valid.append(completion)
+    return valid, invalid, unsupported
+
+
+def audit_amplitude_artifact(source, destination):
+    """Filter structurally exact classes by full amplitude symmetrisation."""
+
+    source = Path(source)
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        prefix=f".{destination.name}.",
+        suffix=".tmp",
+        dir=destination.parent,
+        delete=False,
+    )
+    temporary_path = Path(temporary.name)
+    fingerprint_database = tempfile.NamedTemporaryFile(
+        prefix=f".{destination.name}.fingerprints.",
+        suffix=".sqlite3",
+        dir=destination.parent,
+        delete=False,
+    )
+    fingerprint_database_path = Path(fingerprint_database.name)
+    fingerprint_database.close()
+    input_records = 0
+    output_records = 0
+    rejected_topologies = Counter()
+    derivative_sectors = Counter()
+    try:
+        with temporary, sqlite3.connect(fingerprint_database_path) as connection:
+            connection.execute("CREATE TABLE fingerprints (value TEXT NOT NULL)")
+            for completion in iter_completion_jsonl(source):
+                input_records += 1
+                audit = audit_amplitude_symmetrisation(completion)
+                if audit.status == "unsupported":
+                    raise ValueError(
+                        "Cannot audit completion amplitude at record "
+                        f"{input_records}: {audit.reason}"
+                    )
+                derivative_sectors[audit.derivative_sectors] += 1
+                if audit.is_zero:
+                    rejected_topologies[topology_key(completion)] += 1
+                    continue
+                output_records += 1
+                temporary.write(dumps_completion(completion) + "\n")
+                connection.execute(
+                    "INSERT INTO fingerprints(value) VALUES (?)",
+                    (repr(completion_fingerprint(completion)),),
+                )
+            connection.commit()
+            completion_digest = sha256()
+            first = True
+            for (fingerprint,) in connection.execute(
+                "SELECT value FROM fingerprints ORDER BY value"
+            ):
+                if not first:
+                    completion_digest.update(b"\n")
+                completion_digest.update(fingerprint.encode("utf-8"))
+                first = False
+        temporary_path.replace(destination)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+        fingerprint_database_path.unlink(missing_ok=True)
+
+    return {
+        "input_records": input_records,
+        "surviving_records": output_records,
+        "rejected_records": input_records - output_records,
+        "rejected_topologies": dict(sorted(rejected_topologies.items())),
+        "derivative_sectors": {
+            str(key): value for key, value in sorted(derivative_sectors.items())
+        },
+        "completion_digest": completion_digest.hexdigest(),
+        "source_sha256": file_sha256(source),
+        "destination_sha256": file_sha256(destination),
+    }
 
 
 def _write_models(path, models):
@@ -687,6 +817,9 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
     historical_path = Path(historical_path)
     output_dir.mkdir(parents=True, exist_ok=True)
     raw_path = output_dir / f"op_{operator_name}_remediated.jsonl"
+    structural_path = (
+        output_dir / f"op_{operator_name}_remediated_structural_unique.jsonl"
+    )
     exact_path = output_dir / f"op_{operator_name}_remediated_unique.jsonl"
     model_path = output_dir / f"op_{operator_name}_models.jsonl"
 
@@ -697,12 +830,17 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
     )
     clear_interaction_graph_cache()
     deduplication = deduplicate_completion_jsonl(
-        raw_path, exact_path, work_dir=output_dir
+        raw_path, structural_path, work_dir=output_dir
     )
+    amplitude_audit = audit_amplitude_artifact(structural_path, exact_path)
     records, classes, unbucketable_historical = historical_classes(
         operator_name, historical_path
     )
-    valid_historical, invalid_historical = classify_historical_classes(classes)
+    (
+        valid_historical,
+        invalid_historical,
+        unsupported_historical,
+    ) = classify_historical_classes(classes)
     invalid_historical = unbucketable_historical + invalid_historical
     exact = audit_exact_artifact(
         exact_path,
@@ -717,13 +855,18 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
         )
     if generated["records"] != deduplication["input_records"]:
         raise ValueError("deduplication input count differs from generated count")
-    if exact["records"] != deduplication["exact_classes"]:
-        raise ValueError("deduplication output count differs from exact audit")
+    if amplitude_audit["input_records"] != deduplication["exact_classes"]:
+        raise ValueError("amplitude-audit input differs from structural exact count")
+    if exact["records"] != amplitude_audit["surviving_records"]:
+        raise ValueError("amplitude-audit output count differs from exact audit")
     if generated["sha256"] != deduplication["source_sha256"]:
         raise ValueError("raw artifact hash changed before deduplication")
+    structural_sha256 = file_sha256(structural_path)
+    if structural_sha256 != deduplication["destination_sha256"]:
+        raise ValueError("structural artifact hash changed after deduplication")
     exact_sha256 = file_sha256(exact_path)
-    if exact_sha256 != deduplication["destination_sha256"]:
-        raise ValueError("exact artifact hash changed after deduplication")
+    if exact_sha256 != amplitude_audit["destination_sha256"]:
+        raise ValueError("physical exact artifact hash changed after amplitude audit")
 
     return {
         "schema_version": 1,
@@ -743,11 +886,19 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
             "local": generated["local"],
             "routed": generated["routed"],
         },
+        "provisional_records": generated["source_records"],
+        "generation_rejections": {
+            "decoded_vanishing_uv_interactions": generated[
+                "decoded_vertex_rejections"
+            ],
+            "topologies": generated["decoded_rejection_topologies"],
+        },
         "exact_classes": {
             "all": exact["records"],
             "local": exact["local"],
             "routed": exact["routed"],
         },
+        "structural_exact_classes": deduplication["exact_classes"],
         "democratic_models": exact["democratic_models"],
         "species_models": exact["species_models"],
         "propagator_models": exact["propagator_models"],
@@ -757,6 +908,7 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
             "valid_classes": len(valid_historical),
             "invalid_classes": len(invalid_historical),
             "invalid": invalid_historical,
+            "amplitude_unsupported": unsupported_historical,
             "reproduced": len(valid_historical),
             "missing": 0,
             "exact_comparisons": exact["historical_comparisons"],
@@ -771,13 +923,17 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
         },
         "completion_digests": {
             "generator": deduplication["input_completion_digest"],
-            "exact_classes": deduplication["exact_completion_digest"],
+            "structural_exact_classes": deduplication[
+                "exact_completion_digest"
+            ],
+            "exact_classes": amplitude_audit["completion_digest"],
         },
         "round_trip_digests": {
             "generator": generated["round_trip_digest"],
             "exact_classes": exact["round_trip_digest"],
         },
         "deduplication": deduplication,
+        "amplitude_symmetrisation": amplitude_audit,
         "artifacts": {
             "generator": {
                 "path": str(raw_path.resolve()),
@@ -786,6 +942,10 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
             "exact_classes": {
                 "path": str(exact_path.resolve()),
                 "sha256": exact_sha256,
+            },
+            "structural_exact_classes": {
+                "path": str(structural_path.resolve()),
+                "sha256": structural_sha256,
             },
             "democratic_models": exact["model_artifact"],
         },

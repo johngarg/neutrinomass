@@ -2783,14 +2783,14 @@ def expand_propagator_denominators(completion, denominator_order):
     return expanded
 
 
-def momentum_routed_completions(
+def momentum_routed_completion_stream(
     operator: EffectiveOperator,
     verbose=False,
     canonical_partitions=False,
     historical_basis=None,
     second_derivative_basis=None,
-) -> List[Completion]:
-    """Complete an operator using the low-momentum propagator expansion.
+) -> Iterable[Completion]:
+    """Yield completions using the low-momentum propagator expansion.
 
     External derivative labels are removed while furnishing the graph.
     Fermion momentum numerators supply odd derivative degree and denominator
@@ -2802,7 +2802,7 @@ def momentum_routed_completions(
 
     fields, epsilons, n_derivs = operator_strip_derivs(operator.operator).values()
     if not n_derivs:
-        return []
+        return
 
     completion_operator = unique_lorentz_completion_operator(operator)
     unique_projection = unique_multi_derivative_projection(operator)
@@ -2813,14 +2813,13 @@ def momentum_routed_completions(
                     UnreducedSecondDerivativeBasis.from_operator(operator)
                 )
         elif n_derivs != 1 or operator.name not in PROJECTED_LORENTZ_OPERATORS:
-            return []
+            return
         elif historical_basis is None:
             historical_basis = HistoricalDerivativeBasis.from_operator(operator)
 
     stripped_operator = EffectiveOperator(
         operator.name, construct_operator(fields, epsilons)
     )
-    routed = []
     routed_partitions = partitions(stripped_operator, verbose=verbose)
     if canonical_partitions:
         routed_partitions = remove_isomorphic(routed_partitions)
@@ -2892,9 +2891,27 @@ def momentum_routed_completions(
                     partition_candidates.extend(expanded)
         partition_branches = []
         append_unique_completions(partition_branches, partition_candidates)
-        routed.extend(partition_branches)
+        yield from partition_branches
 
-    return routed
+
+def momentum_routed_completions(
+    operator: EffectiveOperator,
+    verbose=False,
+    canonical_partitions=False,
+    historical_basis=None,
+    second_derivative_basis=None,
+) -> List[Completion]:
+    """Return the routed completion stream as a compatibility list."""
+
+    return list(
+        momentum_routed_completion_stream(
+            operator,
+            verbose=verbose,
+            canonical_partitions=canonical_partitions,
+            historical_basis=historical_basis,
+            second_derivative_basis=second_derivative_basis,
+        )
+    )
 
 
 def exact_completion_bucket_key(completion):
@@ -3038,13 +3055,18 @@ def derivative_combinations(
     return out
 
 
-def deriv_operator_completions(
+def deriv_operator_completion_stream(
     operator: EffectiveOperator, verbose=False, canonical_partitions=False
-) -> List[Completion]:
-    """Find the completions of a derivative operator. Differs from regular
-    ``operator_completions`` in that it acts the derivatives in all possible
-    ways.  Two-derivative multidimensional operators retain both distributed
-    derivatives and explicit :math:`D^2` placements without EOM reduction.
+) -> Iterable[Completion]:
+    """Yield completions of every supported derivative placement.
+
+    Unlike :func:`deriv_operator_completions`, this function does not retain
+    generated local completions or compare routed candidates against them.
+    Downstream artifact generation can therefore write each candidate as soon
+    as it is furnished and leave exact uniqueness to the disk-backed
+    deduplicator.  Two-derivative multidimensional operators retain both
+    distributed derivatives and explicit :math:`D^2` placements without EOM
+    reduction.
 
     """
     historical_basis = None
@@ -3071,45 +3093,61 @@ def deriv_operator_completions(
     if verbose:
         print(f"Finding completions of {len(deriv_combos)} IBP-related operators...")
 
-    comps = []
     for combo_number, combo in enumerate(deriv_combos):
         if combo.operator.simplify() == 0:
             continue
-        generated = list(
-            operator_completions(
-                combo,
-                verbose=verbose,
-                canonical_partitions=canonical_partitions,
-            )
-        )
-        if historical_basis is not None:
-            placement = placements[combo_number]
-            for completion in generated:
+        for completion in operator_completions(
+            combo,
+            verbose=verbose,
+            canonical_partitions=canonical_partitions,
+        ):
+            if historical_basis is not None:
+                placement = placements[combo_number]
                 completion.lorentz_projection = historical_basis.project_local(
                     placement, completion.operator.operator
                 )
-        elif unique_projection is not None:
-            for completion in generated:
+            elif unique_projection is not None:
                 completion.lorentz_projection = unique_projection
-        elif second_derivative_basis is not None:
-            for completion in generated:
+            elif second_derivative_basis is not None:
                 completion.lorentz_projection = (
                     second_derivative_basis.project_local(
                         completion.operator.operator
                     )
                 )
-        comps += generated
+            yield completion
 
-    routed = momentum_routed_completions(
+    yield from momentum_routed_completion_stream(
         operator,
         verbose=verbose,
         canonical_partitions=canonical_partitions,
         historical_basis=historical_basis,
         second_derivative_basis=second_derivative_basis,
     )
-    append_unique_completions(comps, routed)
 
-    return comps
+
+def deriv_operator_completions(
+    operator: EffectiveOperator, verbose=False, canonical_partitions=False
+) -> List[Completion]:
+    """Return the derivative completion stream as a compatibility list.
+
+    Routed candidates retain the historical API invariant of being exactly
+    distinct from the generated local candidates and from earlier routes.
+    """
+
+    local = []
+    routed = []
+    for completion in deriv_operator_completion_stream(
+        operator,
+        verbose=verbose,
+        canonical_partitions=canonical_partitions,
+    ):
+        if completion.momentum_contributions:
+            routed.append(completion)
+        else:
+            local.append(completion)
+    append_unique_completions(local, routed)
+
+    return local
 
 
 def exact_completions(operator: EffectiveOperator, verbose=False) -> List[Completion]:

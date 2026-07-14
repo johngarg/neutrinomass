@@ -240,6 +240,9 @@ def stable_report_data(report):
     historical["artifact"] = {
         "sha256": historical["artifact"]["sha256"]
     }
+    amplitude_symmetrisation = deepcopy(report["amplitude_symmetrisation"])
+    amplitude_symmetrisation.pop("source_sha256", None)
+    amplitude_symmetrisation.pop("destination_sha256", None)
     return {
         "schema_version": report["schema_version"],
         "operator": report["operator"],
@@ -247,7 +250,11 @@ def stable_report_data(report):
         "derivatives": report["derivatives"],
         "operator_scale_gev": report["operator_scale_gev"],
         "records": report["records"],
+        "provisional_records": report["provisional_records"],
+        "generation_rejections": report["generation_rejections"],
+        "structural_exact_classes": report["structural_exact_classes"],
         "exact_classes": report["exact_classes"],
+        "amplitude_symmetrisation": amplitude_symmetrisation,
         "democratic_models": report["democratic_models"],
         "species_models": report["species_models"],
         "propagator_models": report["propagator_models"],
