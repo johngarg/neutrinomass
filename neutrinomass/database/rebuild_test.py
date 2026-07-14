@@ -62,7 +62,7 @@ def test_derivative_census_uses_safe_canonical_partition_preflight(monkeypatch):
         return ()
 
     monkeypatch.setattr(
-        "neutrinomass.database.rebuild.deriv_operator_completions", generate
+        "neutrinomass.database.rebuild.deriv_operator_completion_stream", generate
     )
     monkeypatch.setattr(
         "neutrinomass.database.rebuild.DERIV_EFF_OPERATORS",

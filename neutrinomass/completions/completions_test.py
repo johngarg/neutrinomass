@@ -849,6 +849,51 @@ def test_operator_strip_derivs_preserves_field_statistics():
     assert all(field.nf == H.nf for field in higgs_fields)
 
 
+def test_derivative_completion_stream_yields_before_routed_generation(monkeypatch):
+    completions_module = import_module("neutrinomass.completions.completions")
+    events = []
+    combo = SimpleNamespace(operator=SimpleNamespace(simplify=lambda: 1))
+    local = SimpleNamespace(momentum_contributions=())
+    routed = SimpleNamespace(momentum_contributions=(object(),))
+    operator = SimpleNamespace(name="stream-test", operator=object())
+
+    def local_completions(*args, **kwargs):
+        events.append("local")
+        yield local
+
+    def routed_completions(*args, **kwargs):
+        events.append("routed")
+        yield routed
+
+    monkeypatch.setattr(
+        completions_module, "unique_multi_derivative_projection", lambda op: None
+    )
+    monkeypatch.setattr(
+        completions_module,
+        "operator_strip_derivs",
+        lambda op: {"fields": (), "epsilons": (), "n_derivs": 1},
+    )
+    monkeypatch.setattr(
+        completions_module, "derivative_combinations", lambda op: [combo]
+    )
+    monkeypatch.setattr(completions_module, "operator_completions", local_completions)
+    monkeypatch.setattr(
+        completions_module,
+        "momentum_routed_completion_stream",
+        routed_completions,
+    )
+
+    stream = completions_module.deriv_operator_completion_stream(operator)
+
+    assert events == []
+    assert next(stream) is local
+    assert events == ["local"]
+    assert next(stream) is routed
+    assert events == ["local", "routed"]
+    with pytest.raises(StopIteration):
+        next(stream)
+
+
 def test_d3_full_census_baseline_is_stable():
     completions = deriv_operator_completions(DERIV_EFF_OPERATORS["D3"])
     unique = []

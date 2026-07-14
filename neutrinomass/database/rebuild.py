@@ -23,7 +23,7 @@ from neutrinomass.completions.completions import (
     are_equivalent_completions,
     base_exotic_label,
     canonical_propagator_cut,
-    deriv_operator_completions,
+    deriv_operator_completion_stream,
     exact_completion_bucket_key,
     exotic_species,
     is_singlet,
@@ -132,7 +132,7 @@ def completion_stream(operator_name):
         operator = DERIV_EFF_OPERATORS[operator_name]
         derivative_count = operator_strip_derivs(operator.operator)["n_derivs"]
         return iter(
-            deriv_operator_completions(
+            deriv_operator_completion_stream(
                 operator,
                 canonical_partitions=derivative_count <= 1,
             )
