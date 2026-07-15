@@ -10,10 +10,10 @@ priority4_submit_spartan() (
     repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
     project_root="$(cd "${repo_root}/.." && pwd)"
     account="${NEUTRINOMASS_ACCOUNT:-punim0011}"
-    output_root="${NEUTRINOMASS_OUTPUT_ROOT:-${project_root}/priority4-rebuild-v5}"
+    output_root="${NEUTRINOMASS_OUTPUT_ROOT:-${project_root}/priority4-rebuild-v6}"
     legacy_dir="${NEUTRINOMASS_LEGACY_DIR:-${project_root}/raw_completions}"
     task_manifest="${output_root}/cluster_tasks.json"
-    source_commit="9d96add59fc636223eda1e39d2f16a2a5de5e908"
+    source_commit="da3172f2a9a7a97e083e5ee3e3d5c2a4bd7f7cfb"
 
     if [[ "$(git -C "${repo_root}" branch --show-current)" != "cluster-rebuild" ]]; then
         echo "Check out branch cluster-rebuild before submission." >&2

@@ -50,7 +50,7 @@ export NEUTRINOMASS_CONCURRENCY=12
 export NEUTRINOMASS_MEMORY=8G
 export NEUTRINOMASS_WALLTIME=24:00:00
 export NEUTRINOMASS_LEGACY_DIR=/data/gpfs/projects/punim0011/garj/exploding-operators/raw_completions
-export NEUTRINOMASS_OUTPUT_ROOT=/data/gpfs/projects/punim0011/garj/exploding-operators/priority4-rebuild-v5
+export NEUTRINOMASS_OUTPUT_ROOT=/data/gpfs/projects/punim0011/garj/exploding-operators/priority4-rebuild-v6
 source cluster/submit_spartan.sh
 ```
 
@@ -73,9 +73,11 @@ is repaired without manual deletion.
 The workflow is restartable: sourcing the submitter again creates a new array,
 but valid completed task reports are checksum-verified and skipped. The source
 commit for the scientific census is pinned to
-`9d96add59fc636223eda1e39d2f16a2a5de5e908`. This merge pins scientific
-commit `4cd174efc1138c607d50f2848c5781dff6ebb878` and includes the repaired
+`da3172f2a9a7a97e083e5ee3e3d5c2a4bd7f7cfb`. This merge pins scientific
+commit `f8c57719106149048a598f5a7fa98dc6e1638fa4` and includes the repaired
 propagator expansion, the unreduced no-EOM second-derivative placement bases,
 streamed derivative generation, decoded-record vertex validation, and the
-amplitude-level identical-field symmetrisation audit. Later commits on the
-cluster branch may add only orchestration around those scientific sources.
+amplitude-level identical-field symmetrisation audit. It also preserves
+occurrence-level graph provenance when identical mediator species appear on
+several propagator edges. Later commits on the cluster branch may add only
+orchestration around those scientific sources.
