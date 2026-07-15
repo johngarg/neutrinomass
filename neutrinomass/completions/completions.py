@@ -1843,6 +1843,11 @@ def replace_and_mutate(
     # update edge_dict
     exotic_edge = get_connecting_edge(graph, nodes)
     edge_dict[exotic_field] = exotic_edge
+    # ``edge_dict`` is keyed by the field value for legacy callers, so two
+    # identical mediator occurrences overwrite one another there.  Record the
+    # occurrence-level provenance on the graph immediately, before that lossy
+    # species-level bookkeeping can discard an earlier propagator edge.
+    graph.edges[exotic_edge]["particle"] = exotic_field.label
 
     if derivative_state is not None and derivative_state["pending_route"] is not None:
         record_routed_derivative_edges(derivative_state, edge_dict)

@@ -177,6 +177,39 @@ def test_construct_completion():
     assert len(result) == 5
 
 
+def test_repeated_mediator_occurrences_retain_each_propagator_edge(monkeypatch):
+    completions_module = import_module("neutrinomass.completions.completions")
+    graph = nx.Graph()
+    graph.add_edges_from(
+        [(1, 10), (2, 10), (10, 20), (3, 30), (4, 30), (30, 20)]
+    )
+    mediator = ComplexScalar("s", "", charges={"y": 0, "3b": 0})
+    term = H("i10")
+    monkeypatch.setattr(
+        completions_module,
+        "contract",
+        lambda *args, **kwargs: (mediator, term, [], []),
+    )
+    monkeypatch.setattr(completions_module, "check_singlet", lambda _: None)
+    edge_dict = {}
+    common = {
+        "symbols": {},
+        "gauge_epsilons": [],
+        "lorentz_epsilons": [],
+        "terms": [],
+        "edge_dict": edge_dict,
+        "field_dict": {},
+        "graph": graph,
+    }
+
+    replace_and_mutate((Leaf(H("i1"), 1), Leaf(H("i2"), 2)), **common)
+    replace_and_mutate((Leaf(H("i3"), 3), Leaf(H("i4"), 4)), **common)
+
+    assert len(edge_dict) == 1
+    assert graph.edges[10, 20]["particle"] == mediator.label
+    assert graph.edges[30, 20]["particle"] == mediator.label
+
+
 def test_weak_compositions_enumerate_denominator_orders():
     assert list(weak_compositions(2, 3)) == [
         (0, 0, 2),
