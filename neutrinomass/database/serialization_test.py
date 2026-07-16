@@ -14,10 +14,12 @@ from neutrinomass.completions.completions import (
 )
 from neutrinomass.completions.core import (
     Completion,
+    ComplexScalar,
     DerivativeRoute,
     LorentzProjection,
     MultiDerivativeProjection,
     PropagatorContribution,
+    VectorLikeDiracFermion,
 )
 from neutrinomass.completions.fingerprints import completion_fingerprint
 from neutrinomass.completions.operators import EFF_OPERATORS, DERIV_EFF_OPERATORS
@@ -35,6 +37,7 @@ from neutrinomass.database.serialization import (
     write_completion_jsonl,
     route_to_data,
 )
+from neutrinomass.tensormethod.core import FERMI, eps
 
 
 def completion_with_route():
@@ -91,6 +94,45 @@ def test_derivative_operator_round_trip_preserves_stripped_metadata():
     assert [field.stripped for field in restored.indexed_fields] == [
         field.stripped for field in operator.indexed_fields
     ]
+
+
+def test_field_type_round_trip_preserves_fermionic_tensor_statistics():
+    eta = ComplexScalar("eta", "i0 i1", charges={"y": -2, "3b": 0})
+    psi_a = VectorLikeDiracFermion(
+        "psi†",
+        "d0 i2 i3",
+        charges={"y": 1, "3b": 0},
+        is_conj=True,
+        comm=FERMI,
+    )
+    psi_b = VectorLikeDiracFermion(
+        "psi†",
+        "d1 i4 i5",
+        charges={"y": 1, "3b": 0},
+        is_conj=True,
+        comm=FERMI,
+    )
+    operator = (
+        eta
+        * psi_a
+        * psi_b
+        * eps("-d0 -d1")
+        * eps("-i2 -i1")
+        * eps("-i4 -i3")
+        * eps("-i5 -i0")
+    )
+
+    restored = operator_from_data(operator_to_data(operator))
+    restored_fermions = [
+        field for field in restored.indexed_fields if field.is_fermion
+    ]
+    original_heads = [field.args[0].comm for field in operator.indexed_fields]
+    restored_heads = [field.args[0].comm for field in restored.indexed_fields]
+
+    assert operator.safe_simplify() == 0
+    assert restored.safe_simplify() == 0
+    assert restored_heads == original_heads
+    assert all(field.args[0].comm != 0 for field in restored_fermions)
 
 
 def test_lorentz_projection_round_trip_preserves_basis_metadata():

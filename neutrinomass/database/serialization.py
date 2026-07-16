@@ -137,6 +137,7 @@ def tensor_from_data(data):
         "latex": data["latex"],
         "is_conj": data["is_conj"],
         "symmetry": data["symmetry"],
+        "comm": data["comm"],
     }
     if field_class == "ComplexScalar":
         return ComplexScalar(**common)
@@ -152,7 +153,6 @@ def tensor_from_data(data):
         raise ValueError(f"Unknown field class {field_class}")
     return IndexedField(
         **common,
-        comm=data["comm"],
         nf=data["nf"],
         derivs=data["derivs"],
         stripped=_decode_stripped(data["stripped"]),

@@ -14,6 +14,9 @@ def test_complex_scalar():
     assert not f.is_conj
     assert f.y == 1
     assert f.comm == BOSE
+    assert f.args[0].comm == ComplexScalar(
+        "f_explicit", "i1 c1", charges={"y": 1}, comm=BOSE
+    ).args[0].comm
 
     assert f.conj.is_conj
     assert f.conj.conj == f
@@ -22,6 +25,9 @@ def test_complex_scalar():
 def test_real_scalar():
     f = RealScalar("f", "i1")
     assert f.y == 0
+    assert f.args[0].comm == RealScalar(
+        "f_explicit", "i1", comm=BOSE
+    ).args[0].comm
 
 
 def test_majorana_fermion():
@@ -30,6 +36,9 @@ def test_majorana_fermion():
     assert f.conj.conj == f
     assert f.conj.is_conj
     assert invariants(f.field, f.field, ignore=[])
+    assert f.args[0].comm == MajoranaFermion(
+        "f_explicit", "u0 c0 -c1", comm=FERMI
+    ).args[0].comm
 
 
 def test_vectorlike_dirac_fermion():
@@ -37,6 +46,9 @@ def test_vectorlike_dirac_fermion():
     partner = f.dirac_partner()
 
     assert not f.is_conj
+    assert f.args[0].comm == VectorLikeDiracFermion(
+        "f_explicit", "u0 i1", charges={"y": 1}, comm=FERMI
+    ).args[0].comm
     assert f.conj.conj == f
     assert f.conj.is_conj
     assert invariants(f.field, f.dirac_partner().field, ignore=[])
@@ -48,6 +60,16 @@ def test_vectorlike_dirac_fermion():
     assert copied_partner.charges == partner.charges
     assert copied_partner.is_unbarred == partner.is_unbarred
     assert copied_partner.dirac_partner().label == f.label
+
+
+def test_cons_completion_field_assigns_fermionic_tensor_statistics():
+    indexed = IndexedField("f", "u0 i1", charges={"y": 1})
+
+    completion_field = cons_completion_field(indexed)
+
+    assert completion_field.comm == FERMI
+    assert indexed.args[0].comm == 0
+    assert completion_field.args[0].comm != indexed.args[0].comm
 
 
 def test_vectorlike_dirac_partners_have_distinct_latex():

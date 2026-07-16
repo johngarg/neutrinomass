@@ -24,7 +24,11 @@ from neutrinomass.tensormethod.lagrangian import Lagrangian
 class FieldType(IndexedField):
     """Base class for exotic fields."""
 
+    default_comm = None
+
     def __new__(cls, *args, **kwargs):
+        if cls.default_comm is not None:
+            kwargs.setdefault("comm", cls.default_comm)
         return super(FieldType, cls).__new__(cls, *args, **kwargs)
 
     def lower_su2(self, skip=[]):
@@ -90,6 +94,8 @@ class FieldType(IndexedField):
 
 
 class ComplexScalar(FieldType):
+    default_comm = BOSE
+
     def __init__(
         self,
         label,
@@ -146,6 +152,8 @@ def assert_real_rep(indices: str, charges) -> None:
 
 
 class RealScalar(FieldType):
+    default_comm = BOSE
+
     def __init__(
         self, label, indices, charges=None, latex=None, is_conj=False, **kwargs
     ):
@@ -195,6 +203,8 @@ class RealScalar(FieldType):
 
 
 class MajoranaFermion(FieldType):
+    default_comm = FERMI
+
     def __init__(
         self, label, indices, charges=None, latex=None, is_conj=False, **kwargs
     ):
@@ -258,6 +268,8 @@ class VectorLikeDiracFermion(FieldType):
     Here ψ(u0, i1) and ψ~(u0, i1) are different fields.
 
     """
+
+    default_comm = FERMI
 
     def __init__(
         self,
