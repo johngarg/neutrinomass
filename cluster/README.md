@@ -50,7 +50,7 @@ export NEUTRINOMASS_CONCURRENCY=12
 export NEUTRINOMASS_MEMORY=8G
 export NEUTRINOMASS_WALLTIME=24:00:00
 export NEUTRINOMASS_LEGACY_DIR=/data/gpfs/projects/punim0011/garj/exploding-operators/raw_completions
-export NEUTRINOMASS_OUTPUT_ROOT=/data/gpfs/projects/punim0011/garj/exploding-operators/priority4-rebuild-v6
+export NEUTRINOMASS_OUTPUT_ROOT=/data/gpfs/projects/punim0011/garj/exploding-operators/priority4-rebuild-v7
 source cluster/submit_spartan.sh
 ```
 
@@ -73,11 +73,13 @@ is repaired without manual deletion.
 The workflow is restartable: sourcing the submitter again creates a new array,
 but valid completed task reports are checksum-verified and skipped. The source
 commit for the scientific census is pinned to
-`da3172f2a9a7a97e083e5ee3e3d5c2a4bd7f7cfb`. This merge pins scientific
-commit `f8c57719106149048a598f5a7fa98dc6e1638fa4` and includes the repaired
+`8fc88b98e3cd0be8e53664dd737faf7cce869e5d`. This merge pins scientific
+commit `b0fc17cb43f6c3f1cd0893f9d6560891df1706f7` and includes the repaired
 propagator expansion, the unreduced no-EOM second-derivative placement bases,
 streamed derivative generation, decoded-record vertex validation, and the
 amplitude-level identical-field symmetrisation audit. It also preserves
 occurrence-level graph provenance when identical mediator species appear on
-several propagator edges. Later commits on the cluster branch may add only
-orchestration around those scientific sources.
+several propagator edges, and ensures that scalar and fermion tensor statistics
+are established before symbolic tensor heads are constructed and survive JSON
+round trips. Later commits on the cluster branch may add only orchestration
+around those scientific sources.
