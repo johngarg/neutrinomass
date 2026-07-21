@@ -63,18 +63,25 @@ def _undifferentiated_label(field):
     return label
 
 
-def _occurrence_key(field, *, strip_derivatives=False):
+def _occurrence_key(
+    field, *, strip_derivatives=False, include_generation=True
+):
     label = (
         _undifferentiated_label(field)
         if strip_derivatives
         else field.label
+    )
+    index_types = (
+        GAUGE_INDEX_TYPES
+        if include_generation
+        else GAUGE_INDEX_TYPES - {"Generation"}
     )
     return (
         label,
         tuple(
             str(index)
             for index in field.indices
-            if index.index_type in GAUGE_INDEX_TYPES
+            if index.index_type in index_types
         ),
     )
 
@@ -82,34 +89,126 @@ def _occurrence_key(field, *, strip_derivatives=False):
 def external_leg_provenance(completion):
     """Map every external UV field factor to its graph leaf.
 
-    Gauge and generation indices are inherited from the effective-operator
-    partition and are stable across JSON serialisation.  A queue handles the
-    rare case of several index-free fields with the same label without relying
-    on Python object identity.
+    Match all factors of one UV term to a common graph vertex before assigning
+    individual leaves.  This resolves repeated index-free fields without
+    relying on term or leaf ordering.  Legacy derivative terms can omit their
+    free generation index, so provenance matching uses colour and isospin;
+    generation metadata is restored from the matched partition leaf later.
     """
 
-    leaves = defaultdict(deque)
     sorted_leaves = sorted(
         partition_leaves(completion.partition), key=lambda item: item.node
     )
+    leaf_nodes = {leaf.node for leaf in sorted_leaves}
+    internal_vertices = set(completion.graph) - leaf_nodes
+    leaves_by_vertex = defaultdict(list)
     for leaf in sorted_leaves:
-        leaves[_occurrence_key(leaf.field, strip_derivatives=True)].append(leaf)
+        neighbours = tuple(completion.graph.neighbors(leaf.node))
+        if len(neighbours) != 1:
+            raise UnsupportedAmplitudeAudit(
+                f"External partition leaf {leaf.node} does not have one vertex"
+            )
+        leaves_by_vertex[neighbours[0]].append(leaf)
 
     exotic_labels = set(exotic_species(completion))
-    provenance = {}
+    term_occurrences = {}
     for term_index, term in enumerate(completion.terms):
+        occurrences = []
         for tensor_index, tensor in enumerate(term.tensors):
             if not isinstance(tensor, IndexedField):
                 continue
             if field_label_parts(tensor.label)[0] in exotic_labels:
                 continue
-            key = _occurrence_key(tensor)
+            occurrences.append(
+                (
+                    tensor_index,
+                    _occurrence_key(tensor, include_generation=False),
+                )
+            )
+        if occurrences:
+            term_occurrences[term_index] = occurrences
+
+    def term_heavy_signature(term_index):
+        return Counter(
+            field_label_parts(field.label)[0]
+            for field in completion.terms[term_index].indexed_fields
+            if field_label_parts(field.label)[0] in exotic_labels
+        )
+
+    def vertex_heavy_signature(vertex):
+        return Counter(
+            field_label_parts(data["particle"])[0]
+            for _, _, data in completion.graph.edges(vertex, data=True)
+            if field_label_parts(data["particle"])[0] in exotic_labels
+        )
+
+    vertex_external_signatures = {
+        vertex: Counter(
+            _occurrence_key(
+                leaf.field,
+                strip_derivatives=True,
+                include_generation=False,
+            )
+            for leaf in leaves_by_vertex[vertex]
+        )
+        for vertex in internal_vertices
+    }
+    candidates = {
+        term_index: [
+            vertex
+            for vertex in sorted(internal_vertices)
+            if vertex_external_signatures[vertex]
+            == Counter(key for _, key in occurrences)
+            and vertex_heavy_signature(vertex)
+            == term_heavy_signature(term_index)
+        ]
+        for term_index, occurrences in term_occurrences.items()
+    }
+
+    def assign(pending, available):
+        if not pending:
+            return {}
+        term_index = min(pending, key=lambda item: (len(candidates[item]), item))
+        for vertex in candidates[term_index]:
+            if vertex not in available:
+                continue
+            rest = assign(
+                [item for item in pending if item != term_index],
+                available - {vertex},
+            )
+            if rest is not None:
+                return {term_index: vertex, **rest}
+        return None
+
+    term_vertices = assign(list(term_occurrences), set(internal_vertices))
+    if term_vertices is None:
+        raise UnsupportedAmplitudeAudit(
+            "Cannot match external UV fields jointly to interaction vertices"
+        )
+
+    provenance = {}
+    matched_nodes = set()
+    for term_index, occurrences in term_occurrences.items():
+        leaves = defaultdict(deque)
+        for leaf in sorted(
+            leaves_by_vertex[term_vertices[term_index]],
+            key=lambda item: item.node,
+        ):
+            leaves[
+                _occurrence_key(
+                    leaf.field,
+                    strip_derivatives=True,
+                    include_generation=False,
+                )
+            ].append(leaf)
+        for tensor_index, key in occurrences:
             if not leaves[key]:
                 raise UnsupportedAmplitudeAudit(
-                    "Cannot match an external UV field to a partition leaf: "
-                    f"term {term_index}, factor {tensor_index}, {tensor}"
+                    "Cannot match an external UV field within its vertex: "
+                    f"term {term_index}, factor {tensor_index}"
                 )
             leaf = leaves[key].popleft()
+            matched_nodes.add(leaf.node)
             provenance[(term_index, tensor_index)] = ExternalLegProvenance(
                 node=leaf.node,
                 term_index=term_index,
@@ -117,7 +216,7 @@ def external_leg_provenance(completion):
                 field_label=leaf.field.label,
             )
 
-    unmatched = [leaf for queue in leaves.values() for leaf in queue]
+    unmatched = [leaf for leaf in sorted_leaves if leaf.node not in matched_nodes]
     if unmatched:
         raise UnsupportedAmplitudeAudit(
             f"Unmatched external partition leaves: {unmatched}"
@@ -144,9 +243,16 @@ def _freshened_tensors(term):
     return tuple(tensor.fun_eval(*replacements) for tensor in term.tensors)
 
 
-def _decorated_external_field(field, derivative_degree):
+def _decorated_external_field(field, derivative_degree, source_field=None):
+    source_field = source_field or field
     indices = [
-        index for index in field.indices if index.index_type in GAUGE_INDEX_TYPES
+        index
+        for index in field.indices
+        if index.index_type in {"Colour", "Isospin"}
+    ] + [
+        index
+        for index in source_field.indices
+        if index.index_type == "Generation"
     ]
     # SymPy 1.2 cannot construct a tensor head whose only slot is a generation
     # index (its empty gauge-symmetry direct product raises IndexError).  Such a
@@ -157,14 +263,14 @@ def _decorated_external_field(field, derivative_degree):
         "D" if derivative_degree == 1 else f"D{derivative_degree}"
     )
     return IndexedField(
-        label=prefix + field.label,
+        label=prefix + _undifferentiated_label(source_field),
         indices=" ".join(map(str, indices)),
-        charges=field.charges,
-        is_conj=field.is_conj,
+        charges=source_field.charges,
+        is_conj=source_field.is_conj,
         symmetry=None,
-        comm=field.comm,
-        latex=field.latex,
-        nf=field.nf,
+        comm=source_field.comm,
+        latex=source_field.latex,
+        nf=source_field.nf,
         derivs=0,
     )
 
@@ -328,6 +434,9 @@ def induced_amplitude_operator(completion, derivative_degrees=None):
     external = []
     invariants = []
     internal = defaultdict(list)
+    leaves_by_node = {
+        leaf.node: leaf for leaf in partition_leaves(completion.partition)
+    }
 
     for term_index, term in enumerate(completion.terms):
         freshened = _freshened_tensors(term)
@@ -341,7 +450,9 @@ def induced_amplitude_operator(completion, derivative_degrees=None):
                     continue
                 leg = provenance[(term_index, tensor_index)]
                 projected = _decorated_external_field(
-                    tensor, derivative_degrees.get(leg.node, 0)
+                    tensor,
+                    derivative_degrees.get(leg.node, 0),
+                    source_field=leaves_by_node[leg.node].field,
                 )
                 if projected is not None:
                     external.append(projected)

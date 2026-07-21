@@ -69,18 +69,29 @@ def _temporary_database_bytes(database_path):
 
 
 def deduplicate_completion_jsonl(
-    source, destination, *, work_dir=None, commit_interval=1000
+    source,
+    destination,
+    *,
+    work_dir=None,
+    commit_interval=1000,
+    representative_rank=None,
+    maximum_rank=None,
 ):
-    """Write first-occurrence exact classes from ``source`` to ``destination``.
+    """Write exact classes from ``source`` to ``destination``.
 
     A SQLite index bounds the Python working set.  The Weisfeiler--Lehman
     Lagrangian fingerprint only prioritises comparisons within a physical
     bucket; every representative in that bucket remains eligible for exact
-    contraction-graph isomorphism.
+    contraction-graph isomorphism.  By default the first occurrence represents
+    its class.  If ``representative_rank`` is supplied, an equivalent later
+    occurrence with a larger integer rank replaces it.  Once ``maximum_rank``
+    is reached, later equivalents need not be ranked.
     """
 
     if commit_interval < 1:
         raise ValueError("commit_interval must be positive")
+    if maximum_rank is not None and representative_rank is None:
+        raise ValueError("maximum_rank requires representative_rank")
 
     source = Path(source)
     destination = Path(destination)
@@ -96,6 +107,8 @@ def deduplicate_completion_jsonl(
     retained_classes = 0
     candidate_hash_matches = 0
     exact_isomorphism_comparisons = 0
+    representative_rank_evaluations = 0
+    representative_replacements = 0
     maximum_database_bytes = 0
 
     temporary_output = tempfile.NamedTemporaryFile(
@@ -124,7 +137,8 @@ def deduplicate_completion_jsonl(
                         bucket_key TEXT NOT NULL,
                         candidate_hash TEXT NOT NULL,
                         payload TEXT NOT NULL,
-                        fingerprint TEXT NOT NULL
+                        fingerprint TEXT NOT NULL,
+                        representative_rank INTEGER
                     );
                     CREATE INDEX representative_candidates
                         ON representatives(bucket_key, candidate_hash);
@@ -149,7 +163,8 @@ def deduplicate_completion_jsonl(
                         duplicate = False
                         possible_matches = connection.execute(
                             """
-                            SELECT payload, candidate_hash
+                            SELECT sequence, payload, candidate_hash,
+                                   representative_rank
                             FROM representatives
                             WHERE bucket_key = ?
                             ORDER BY
@@ -158,7 +173,12 @@ def deduplicate_completion_jsonl(
                             """,
                             (bucket_key, candidate_hash),
                         )
-                        for payload, known_hash in possible_matches:
+                        for (
+                            sequence,
+                            payload,
+                            known_hash,
+                            known_rank,
+                        ) in possible_matches:
                             if known_hash == candidate_hash:
                                 candidate_hash_matches += 1
                             exact_isomorphism_comparisons += 1
@@ -166,6 +186,47 @@ def deduplicate_completion_jsonl(
                             if are_equivalent_completions(
                                 candidate, representative
                             ):
+                                if representative_rank is not None:
+                                    if known_rank is None:
+                                        known_rank = representative_rank(
+                                            representative
+                                        )
+                                        representative_rank_evaluations += 1
+                                        connection.execute(
+                                            """
+                                            UPDATE representatives
+                                            SET representative_rank = ?
+                                            WHERE sequence = ?
+                                            """,
+                                            (known_rank, sequence),
+                                        )
+                                    if (
+                                        maximum_rank is None
+                                        or known_rank < maximum_rank
+                                    ):
+                                        candidate_rank = representative_rank(
+                                            candidate
+                                        )
+                                        representative_rank_evaluations += 1
+                                        if candidate_rank > known_rank:
+                                            representative_replacements += 1
+                                            connection.execute(
+                                                """
+                                                UPDATE representatives
+                                                SET candidate_hash = ?,
+                                                    payload = ?,
+                                                    fingerprint = ?,
+                                                    representative_rank = ?
+                                                WHERE sequence = ?
+                                                """,
+                                                (
+                                                    candidate_hash,
+                                                    dumps_completion(candidate),
+                                                    fingerprint,
+                                                    candidate_rank,
+                                                    sequence,
+                                                ),
+                                            )
                                 duplicate = True
                                 break
 
@@ -178,8 +239,9 @@ def deduplicate_completion_jsonl(
                                     bucket_key,
                                     candidate_hash,
                                     payload,
-                                    fingerprint
-                                ) VALUES (?, ?, ?, ?, ?)
+                                    fingerprint,
+                                    representative_rank
+                                ) VALUES (?, ?, ?, ?, ?, NULL)
                                 """,
                                 (
                                     input_records,
@@ -242,6 +304,10 @@ def deduplicate_completion_jsonl(
             "maximum_bucket_size": maximum_bucket_size,
             "candidate_hash_matches": candidate_hash_matches,
             "exact_isomorphism_comparisons": exact_isomorphism_comparisons,
+            "representative_rank_evaluations": (
+                representative_rank_evaluations
+            ),
+            "representative_replacements": representative_replacements,
             "input_completion_digest": input_completion_digest,
             "exact_completion_digest": exact_completion_digest,
             "source_sha256": _file_digest(source),

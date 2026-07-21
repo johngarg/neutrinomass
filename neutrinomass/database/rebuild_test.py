@@ -4,11 +4,20 @@ from types import SimpleNamespace
 import pytest
 
 from neutrinomass.completions.completions import operator_completions
-from neutrinomass.completions.core import ComplexScalar, VectorLikeDiracFermion
+from neutrinomass.completions.core import (
+    ComplexScalar,
+    VectorLikeDiracFermion,
+    cons_completion_field,
+)
 from neutrinomass.completions.operators import DERIV_EFF_OPERATORS, EFF_OPERATORS
 from neutrinomass.tensormethod import L, eps
+from neutrinomass.tensormethod.core import FERMI, IndexedField
 from neutrinomass.database.deduplication import deduplicate_completion_jsonl
-from neutrinomass.database.serialization import iter_completion_jsonl
+from neutrinomass.database.serialization import (
+    dumps_completion,
+    iter_completion_jsonl,
+    loads_completion,
+)
 from neutrinomass.database.rebuild import (
     audit_exact_artifact,
     classify_historical_classes,
@@ -72,13 +81,15 @@ def test_derivative_census_uses_safe_canonical_partition_preflight(monkeypatch):
         "neutrinomass.database.rebuild.DERIV_EFF_OPERATORS",
         {
             "one": DERIV_EFF_OPERATORS["D20"],
+            "projected": DERIV_EFF_OPERATORS["D8g"],
             "several": DERIV_EFF_OPERATORS["D21"],
         },
     )
 
     assert list(completion_stream("one")) == []
+    assert list(completion_stream("projected")) == []
     assert list(completion_stream("several")) == []
-    assert calls == [("D20", True), ("D21", False)]
+    assert calls == [("D20", True), ("D8g", False), ("D21", False)]
 
 
 def test_streamed_generation_and_disk_backed_historical_audit(tmp_path):
@@ -141,6 +152,54 @@ def test_generated_artifact_rejects_vertices_zero_after_round_trip(
     assert report["decoded_rejection_topologies"]
     survivor = list(iter_completion_jsonl(path))[0]
     assert all(term.safe_simplify() != 0 for term in survivor.terms)
+
+
+def test_safe_round_trip_corrects_legacy_exotic_tensor_symmetry():
+    completion = next(operator_completions(EFF_OPERATORS["1"]))
+    charges = {"y": 1, "3b": 0}
+    legacy_kwargs = {
+        "symmetry": [[1], [1], [1, 1]],
+        "charges": charges,
+        "nf": 1,
+        "dynkin": "01012",
+        "comm": FERMI,
+        "latex": "psi",
+        "is_conj": True,
+        "is_unbarred": True,
+    }
+    first = cons_completion_field(
+        IndexedField(
+            label="legacy_psi†",
+            indices="d0 -c0 i0 i1",
+            **legacy_kwargs,
+        )
+    )
+    second = cons_completion_field(
+        IndexedField(
+            label="legacy_psi†",
+            indices="d1 -c1 i2 i3",
+            **legacy_kwargs,
+        )
+    )
+    eta = ComplexScalar(
+        "legacy_eta", "-c2", charges={"y": -2, "3b": 0}
+    )
+    legacy_term = (
+        eta
+        * first
+        * second
+        * eps("-d0 -d1")
+        * eps("-i2 -i1")
+        * eps("-i3 -i0")
+        * eps("c0 c1 c2")
+    )
+    completion.exotics = {eta, first, second}
+    completion.terms = [legacy_term]
+
+    restored = loads_completion(dumps_completion(completion))
+
+    assert legacy_term.safe_simplify() != 0
+    assert restored.terms[0].safe_simplify() == 0
 
 
 def test_regenerated_democratic_filter_uses_surviving_upstream_subsets():

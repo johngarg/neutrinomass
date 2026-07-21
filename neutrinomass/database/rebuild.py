@@ -22,6 +22,7 @@ from neutrinomass.completions.completions import (
     append_unique_completions,
     are_equivalent_completions,
     base_exotic_label,
+    canonical_derivative_partitions,
     canonical_propagator_cut,
     deriv_operator_completion_stream,
     exact_completion_bucket_key,
@@ -130,11 +131,10 @@ def completion_stream(operator_name):
         return operator_completions(EFF_OPERATORS[operator_name])
     if operator_name in DERIV_EFF_OPERATORS:
         operator = DERIV_EFF_OPERATORS[operator_name]
-        derivative_count = operator_strip_derivs(operator.operator)["n_derivs"]
         return iter(
             deriv_operator_completion_stream(
                 operator,
-                canonical_partitions=derivative_count <= 1,
+                canonical_partitions=canonical_derivative_partitions(operator),
             )
         )
     raise KeyError(operator_name)
@@ -401,8 +401,15 @@ def partition_bucketable_historical_records(records):
 
 
 def historical_classes(operator_name, historical_path):
+    # Legacy ``ExoticField(IndexedField(...))`` expressions construct an
+    # intermediate generic tensor head before choosing the scalar/fermion
+    # completion class.  For repeated higher representations, that head can
+    # retain the legacy symmetry object even though its metadata says
+    # ``comm='fermi'``.  Reconstructing through the safe schema creates the
+    # concrete field class directly and puts historical validation on the same
+    # tensor-statistics footing as fresh generation.
     records = [
-        item.force(trusted=True)
+        loads_completion(dumps_completion(item.force(trusted=True)))
         for item in read_completions(historical_path, trusted=True)[operator_name]
     ]
     if operator_name in PROJECTED_LORENTZ_OPERATORS:
@@ -543,6 +550,15 @@ def audit_amplitude_artifact(source, destination):
         "source_sha256": file_sha256(source),
         "destination_sha256": file_sha256(destination),
     }
+
+
+def amplitude_survival_rank(completion):
+    """Prefer a nonzero amplitude when exact representatives are equivalent."""
+
+    audit = audit_amplitude_symmetrisation(completion)
+    if audit.status == "unsupported":
+        raise ValueError(f"Cannot rank completion amplitude: {audit.reason}")
+    return 0 if audit.is_zero else 1
 
 
 def _write_models(path, models):
@@ -829,8 +845,25 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
         terms_prevalidated=True,
     )
     clear_interaction_graph_cache()
+    # A unique multi-derivative projection identifies its IBP-related literal
+    # placements as one exact class.  Those representatives can have different
+    # symmetrised tensors, so retain a nonzero representative whenever one was
+    # generated.  Other derivative bases encode placement in their projection
+    # coordinates and do not need this additional ranking pass.
+    representative_options = {}
+    if (
+        kind == DERIVATIVE_KIND
+        and unique_multi_derivative_projection(operator) is not None
+    ):
+        representative_options = {
+            "representative_rank": amplitude_survival_rank,
+            "maximum_rank": 1,
+        }
     deduplication = deduplicate_completion_jsonl(
-        raw_path, structural_path, work_dir=output_dir
+        raw_path,
+        structural_path,
+        work_dir=output_dir,
+        **representative_options,
     )
     amplitude_audit = audit_amplitude_artifact(structural_path, exact_path)
     records, classes, unbucketable_historical = historical_classes(
