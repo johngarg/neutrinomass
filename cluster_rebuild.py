@@ -28,7 +28,27 @@ from rebuild_completion_database import (
 
 
 SCHEMA_VERSION = 1
+TASK_SCHEMA_VERSION = 2
 SCIENTIFIC_PATHS = ("census_operator.py", "neutrinomass")
+HIGH_RESOURCE_OPERATORS = frozenset(
+    {
+        "71p",
+        "77p",
+        "78p",
+        "79a",
+        "79b",
+        "7p",
+        "80a",
+        "80b",
+        "80c",
+        "80d",
+        "81a",
+        "81b",
+        "81c",
+        "81d",
+        "8pp",
+    }
+)
 
 
 def git_output(*args):
@@ -78,6 +98,10 @@ def portable_inventory(legacy_dir):
     ]
 
 
+def operator_resource_tier(operator):
+    return "high" if operator in HIGH_RESOURCE_OPERATORS else "normal"
+
+
 def build_task_manifest(legacy_dir, source_commit, orchestration_commit):
     inventory = portable_inventory(legacy_dir)
     tasks = []
@@ -88,10 +112,11 @@ def build_task_manifest(legacy_dir, source_commit, orchestration_commit):
                     "task_id": len(tasks),
                     "hash_seed": str(seed),
                     "operator": item["operator"],
+                    "resource_tier": operator_resource_tier(item["operator"]),
                 }
             )
     return {
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": TASK_SCHEMA_VERSION,
         "source_commit": source_commit,
         "orchestration_commit": orchestration_commit,
         "inventory": inventory,
@@ -100,7 +125,7 @@ def build_task_manifest(legacy_dir, source_commit, orchestration_commit):
 
 
 def validate_task_manifest(manifest, legacy_dir, *, verify_inventory=True):
-    if manifest.get("schema_version") != SCHEMA_VERSION:
+    if manifest.get("schema_version") != TASK_SCHEMA_VERSION:
         raise ValueError("Unsupported cluster task manifest schema")
     if verify_inventory and manifest["inventory"] != portable_inventory(legacy_dir):
         raise ValueError("Legacy inventory differs from the task manifest")
@@ -112,10 +137,38 @@ def validate_task_manifest(manifest, legacy_dir, *, verify_inventory=True):
                     "task_id": len(expected),
                     "hash_seed": str(seed),
                     "operator": item["operator"],
+                    "resource_tier": operator_resource_tier(
+                        item["operator"]
+                    ),
                 }
             )
     if manifest["tasks"] != expected:
         raise ValueError("Cluster task list is incomplete or out of order")
+
+
+def task_array_expression(manifest, resource_tier):
+    """Return a compact Slurm array expression for one resource tier."""
+
+    if resource_tier not in {"normal", "high"}:
+        raise ValueError(f"Unknown resource tier {resource_tier!r}")
+    task_ids = [
+        task["task_id"]
+        for task in manifest["tasks"]
+        if task["resource_tier"] == resource_tier
+    ]
+    if not task_ids:
+        raise ValueError(f"No {resource_tier} resource tasks in manifest")
+
+    ranges = []
+    start = previous = task_ids[0]
+    for task_id in task_ids[1:]:
+        if task_id == previous + 1:
+            previous = task_id
+            continue
+        ranges.append(str(start) if start == previous else f"{start}-{previous}")
+        start = previous = task_id
+    ranges.append(str(start) if start == previous else f"{start}-{previous}")
+    return ",".join(ranges)
 
 
 def _compressed_artifact(source, metadata):
@@ -440,6 +493,12 @@ def main():
     count = subparsers.add_parser("count", help="print the task count")
     count.add_argument("task_manifest", type=Path)
 
+    array = subparsers.add_parser(
+        "array", help="print the Slurm array expression for a resource tier"
+    )
+    array.add_argument("task_manifest", type=Path)
+    array.add_argument("resource_tier", choices=("normal", "high"))
+
     worker = subparsers.add_parser("worker", help="run one immutable task")
     worker.add_argument("task_manifest", type=Path)
     worker.add_argument("task_id", type=int)
@@ -468,6 +527,13 @@ def main():
         return
     if args.command == "count":
         print(len(load_json(args.task_manifest)["tasks"]))
+        return
+    if args.command == "array":
+        print(
+            task_array_expression(
+                load_json(args.task_manifest), args.resource_tier
+            )
+        )
         return
     if args.command == "worker":
         result = run_task(

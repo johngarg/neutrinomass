@@ -33,4 +33,15 @@ if [[ "${task_count}" != "486" ]]; then
     echo "Expected 486 tasks, found ${task_count}." >&2
     exit 2
 fi
+source "${repo_root}/cluster/resource_tiers.sh"
+normal_array="$("${python_cmd}" cluster_rebuild.py array "${task_manifest}" normal)"
+high_array="$("${python_cmd}" cluster_rebuild.py array "${task_manifest}" high)"
+if [[ "${normal_array}" != "${PRIORITY4_NORMAL_TASK_ARRAY}" ]]; then
+    echo "Normal-resource task array differs from the pinned split." >&2
+    exit 2
+fi
+if [[ "${high_array}" != "${PRIORITY4_HIGH_TASK_ARRAY}" ]]; then
+    echo "High-resource task array differs from the pinned split." >&2
+    exit 2
+fi
 printf 'Validated Priority-4 census manifest with %s tasks.\n' "${task_count}"

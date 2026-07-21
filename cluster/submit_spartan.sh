@@ -6,14 +6,16 @@ priority4_submit_spartan() (
     set -euo pipefail
 
     local repo_root project_root account output_root legacy_dir task_manifest
-    local source_commit python_cmd task_count preflight_job array_job final_job
+    local source_commit python_cmd task_count preflight_job normal_job high_job
+    local final_job
     repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
     project_root="$(cd "${repo_root}/.." && pwd)"
     account="${NEUTRINOMASS_ACCOUNT:-punim0011}"
-    output_root="${NEUTRINOMASS_OUTPUT_ROOT:-${project_root}/priority4-rebuild-v7}"
+    output_root="${NEUTRINOMASS_OUTPUT_ROOT:-${project_root}/priority4-rebuild-v8}"
     legacy_dir="${NEUTRINOMASS_LEGACY_DIR:-${project_root}/raw_completions}"
     task_manifest="${output_root}/cluster_tasks.json"
-    source_commit="8fc88b98e3cd0be8e53664dd737faf7cce869e5d"
+    source_commit="38c72507b58da9be34219ffc0e45a10f4d03d5f9"
+    source "${repo_root}/cluster/resource_tiers.sh"
 
     if [[ "$(git -C "${repo_root}" branch --show-current)" != "cluster-rebuild" ]]; then
         echo "Check out branch cluster-rebuild before submission." >&2
@@ -71,25 +73,40 @@ priority4_submit_spartan() (
         "${repo_root}/cluster/slurm_priority4_preflight.sh")"
     preflight_job="${preflight_job%%;*}"
 
-    array_job="$(sbatch \
+    normal_job="$(sbatch \
         --parsable \
         --account "${account}" \
         --dependency "afterok:${preflight_job}" \
-        --job-name nm-p4-census \
+        --job-name nm-p4-normal \
         --cpus-per-task 1 \
         --mem "${NEUTRINOMASS_MEMORY:-8G}" \
         --time "${NEUTRINOMASS_WALLTIME:-24:00:00}" \
-        --array "0-$((task_count - 1))%${NEUTRINOMASS_CONCURRENCY:-16}" \
-        --output "${output_root}/logs/census_%A_%a.out" \
-        --error "${output_root}/logs/census_%A_%a.err" \
+        --array "${PRIORITY4_NORMAL_TASK_ARRAY}%${NEUTRINOMASS_CONCURRENCY:-16}" \
+        --output "${output_root}/logs/census_normal_%A_%a.out" \
+        --error "${output_root}/logs/census_normal_%A_%a.err" \
         --export "ALL,NEUTRINOMASS_REPO_ROOT=${repo_root},NEUTRINOMASS_TASK_MANIFEST=${task_manifest},NEUTRINOMASS_OUTPUT_ROOT=${output_root},NEUTRINOMASS_LEGACY_DIR=${legacy_dir}" \
         "${repo_root}/cluster/slurm_priority4_worker.sh")"
-    array_job="${array_job%%;*}"
+    normal_job="${normal_job%%;*}"
+
+    high_job="$(sbatch \
+        --parsable \
+        --account "${account}" \
+        --dependency "afterok:${preflight_job}" \
+        --job-name nm-p4-high \
+        --cpus-per-task 1 \
+        --mem "${NEUTRINOMASS_HIGH_MEMORY:-16G}" \
+        --time "${NEUTRINOMASS_HIGH_WALLTIME:-48:00:00}" \
+        --array "${PRIORITY4_HIGH_TASK_ARRAY}%${NEUTRINOMASS_HIGH_CONCURRENCY:-4}" \
+        --output "${output_root}/logs/census_high_%A_%a.out" \
+        --error "${output_root}/logs/census_high_%A_%a.err" \
+        --export "ALL,NEUTRINOMASS_REPO_ROOT=${repo_root},NEUTRINOMASS_TASK_MANIFEST=${task_manifest},NEUTRINOMASS_OUTPUT_ROOT=${output_root},NEUTRINOMASS_LEGACY_DIR=${legacy_dir}" \
+        "${repo_root}/cluster/slurm_priority4_worker.sh")"
+    high_job="${high_job%%;*}"
 
     final_job="$(sbatch \
         --parsable \
         --account "${account}" \
-        --dependency "afterok:${array_job}" \
+        --dependency "afterok:${normal_job}:${high_job}" \
         --job-name nm-p4-finalize \
         --cpus-per-task 1 \
         --mem "${NEUTRINOMASS_FINAL_MEMORY:-16G}" \
@@ -100,10 +117,10 @@ priority4_submit_spartan() (
         "${repo_root}/cluster/slurm_priority4_finalize.sh")"
     final_job="${final_job%%;*}"
 
-    printf 'Submitted Priority-4 preflight %s, census array %s, and finalizer %s.\n' \
-        "${preflight_job}" "${array_job}" "${final_job}"
-    printf 'Monitor with: squeue -j %s,%s,%s\n' \
-        "${preflight_job}" "${array_job}" "${final_job}"
+    printf 'Submitted Priority-4 preflight %s, normal array %s, high-resource array %s, and finalizer %s.\n' \
+        "${preflight_job}" "${normal_job}" "${high_job}" "${final_job}"
+    printf 'Monitor with: squeue -j %s,%s,%s,%s\n' \
+        "${preflight_job}" "${normal_job}" "${high_job}" "${final_job}"
 )
 
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then

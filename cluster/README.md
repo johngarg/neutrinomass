@@ -16,10 +16,10 @@ unset NEUTRINOMASS_PREPARE_ONLY
 ```
 
 After reviewing the prepared inputs, source the submitter normally. It submits
-a small validation job, then the census array and finalizer behind `afterok`
-dependencies. The validation job runs the tests and creates the 486-task
-manifest on a compute node rather than using the Spartan login node for Python
-workloads.
+a small validation job, separate normal and high-resource census arrays, and a
+finalizer behind `afterok` dependencies. The validation job runs the tests,
+creates the 486-task manifest, and verifies the pinned resource split on a
+compute node rather than using the Spartan login node for Python workloads.
 
 An already prepared Python environment can be selected with
 `NEUTRINOMASS_PYTHON=/absolute/path/to/python`. Set
@@ -29,30 +29,41 @@ Spartan Python module.
 That one command creates `.venv` when needed, downloads and verifies the
 published 199 MB Zenodo `raw_completions.zip` when the legacy directory is
 absent, safely extracts its 243 inputs (about 4.4 GB), submits a validation job
-that writes a 486-task manifest (243 operators times two hash seeds), submits a
-throttled Slurm array dependent on that validation, and submits an `afterok`
-finalizer. Each array job uses node-local scratch and gzip-packages the large
-raw, structural-exact, and physical-exact JSONL files before publishing only
-its own operator directory. The
+that writes a 486-task manifest (243 operators times two hash seeds), submits
+two throttled Slurm arrays dependent on that validation, and submits an
+`afterok` finalizer. Each array job uses node-local scratch and gzip-packages
+the large raw, structural-exact, and physical-exact JSONL files before
+publishing only its own operator directory. The
 finalizer validates every checksum and historical comparison, compares both
 seed reports, writes `migration_manifest.json`, regenerates the
 democratic/one-loop-Weinberg filtering artifacts, and writes
 `published_comparison.{json,csv,md}` with global and operator-level changes
 from the counts reported in 2009.13537.
 
-Defaults are suitable for the `punim0011` Spartan project: one CPU, 8 GiB,
-24 hours, and at most 16 simultaneous census jobs. The validation job defaults
-to one CPU, 8 GiB, and two hours. Override them before sourcing when required:
+The normal tier defaults to one CPU, 8 GiB, 24 hours, and at most 16
+simultaneous jobs. The 15 operators that exhausted 8 GiB in the completed v7
+diagnostic run are submitted for both hash seeds in a separate tier with one
+CPU, 16 GiB, 48 hours, and at most four simultaneous jobs. The validation job
+defaults to one CPU, 8 GiB, and two hours. Override them before sourcing when
+required:
 
 ```bash
 export NEUTRINOMASS_ACCOUNT=punim0011
 export NEUTRINOMASS_CONCURRENCY=12
 export NEUTRINOMASS_MEMORY=8G
 export NEUTRINOMASS_WALLTIME=24:00:00
+export NEUTRINOMASS_HIGH_CONCURRENCY=4
+export NEUTRINOMASS_HIGH_MEMORY=16G
+export NEUTRINOMASS_HIGH_WALLTIME=48:00:00
 export NEUTRINOMASS_LEGACY_DIR=/data/gpfs/projects/punim0011/garj/exploding-operators/raw_completions
-export NEUTRINOMASS_OUTPUT_ROOT=/data/gpfs/projects/punim0011/garj/exploding-operators/priority4-rebuild-v7
+export NEUTRINOMASS_OUTPUT_ROOT=/data/gpfs/projects/punim0011/garj/exploding-operators/priority4-rebuild-v8
 source cluster/submit_spartan.sh
 ```
+
+The high-resource operators are `71p`, `77p`, `78p`, `79a`, `79b`, `7p`,
+`80a`--`80d`, `81a`--`81d`, and `8pp`. A 16 GiB diagnostic for `71p` reached
+8.31 GiB and was still running at 24 hours, which motivates the 16 GiB,
+48-hour defaults without increasing resources for the other 456 tasks.
 
 The download is pinned to Zenodo record `4054618`, byte size `198689883`, and
 published MD5 `f7a199f7718607e3740137e85c1d488b`. A cached archive is reused only
@@ -70,16 +81,15 @@ provides the same compatibility shim as the validated local environment. The
 install is deliberately repeated on submission so a partially created `.venv`
 is repaired without manual deletion.
 
-The workflow is restartable: sourcing the submitter again creates a new array,
+The workflow is restartable: sourcing the submitter again creates new arrays,
 but valid completed task reports are checksum-verified and skipped. The source
 commit for the scientific census is pinned to
-`8fc88b98e3cd0be8e53664dd737faf7cce869e5d`. This merge pins scientific
-commit `b0fc17cb43f6c3f1cd0893f9d6560891df1706f7` and includes the repaired
-propagator expansion, the unreduced no-EOM second-derivative placement bases,
-streamed derivative generation, decoded-record vertex validation, and the
-amplitude-level identical-field symmetrisation audit. It also preserves
-occurrence-level graph provenance when identical mediator species appear on
-several propagator edges, and ensures that scalar and fermion tensor statistics
-are established before symbolic tensor heads are constructed and survive JSON
-round trips. Later commits on the cluster branch may add only orchestration
-around those scientific sources.
+`38c72507b58da9be34219ffc0e45a10f4d03d5f9`. This merge pins scientific
+commit `2ef766dfec46b733a2f24575a06e15370a956c4d`. In addition to the earlier
+propagator, tensor-statistics, and amplitude checks, it reconstructs trusted
+legacy records through the safe schema, retains all exact derivative
+placements in projected spaces, matches repeated external fields jointly by
+interaction vertex, restores generation provenance, and prevents a vanishing
+IBP representative from suppressing a nonvanishing representative of the same
+unique multi-derivative class. Later commits on the cluster branch may add only
+orchestration around those scientific sources.

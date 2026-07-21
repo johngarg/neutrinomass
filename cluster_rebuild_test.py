@@ -6,9 +6,10 @@ from cluster_rebuild import (
     build_task_manifest,
     package_report,
     relocate_report_paths,
+    task_array_expression,
     validate_task_manifest,
 )
-from neutrinomass.database.rebuild import file_sha256
+from neutrinomass.database.rebuild import file_sha256, operator_registry
 
 
 def test_task_manifest_is_seed_major_and_complete(tmp_path, monkeypatch):
@@ -39,14 +40,47 @@ def test_task_manifest_is_seed_major_and_complete(tmp_path, monkeypatch):
         ("1", "1"),
         ("1", "1p"),
     ]
+    assert all(task["resource_tier"] == "normal" for task in manifest["tasks"])
     validate_task_manifest(manifest, tmp_path)
+
+
+def test_full_manifest_resource_arrays_match_the_spartan_split(
+    tmp_path, monkeypatch
+):
+    inventory = [
+        {
+            "operator": operator,
+            "kind": "test",
+            "derivatives": 0,
+            "legacy_path": str(tmp_path / f"op_{operator}.dat"),
+            "legacy_sha256": operator,
+        }
+        for operator in sorted(operator_registry())
+    ]
+    monkeypatch.setattr("cluster_rebuild.operator_inventory", lambda _: inventory)
+
+    manifest = build_task_manifest(tmp_path, "science", "cluster")
+
+    assert sum(
+        task["resource_tier"] == "high" for task in manifest["tasks"]
+    ) == 30
+    assert sum(
+        task["resource_tier"] == "normal" for task in manifest["tasks"]
+    ) == 456
+    assert task_array_expression(manifest, "high") == (
+        "168,173,175-178,180-187,190,411,416,418-421,423-430,433"
+    )
+    assert task_array_expression(manifest, "normal") == (
+        "0-167,169-172,174,179,188-189,191-410,412-415,417,422,"
+        "431-432,434-485"
+    )
 
 
 def test_worker_manifest_validation_does_not_rehash_entire_legacy_archive(
     tmp_path, monkeypatch
 ):
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "inventory": [
             {
                 "operator": "1",
@@ -56,8 +90,20 @@ def test_worker_manifest_validation_does_not_rehash_entire_legacy_archive(
                 "legacy_sha256": "one",
             }
         ],
-        "tasks": [{"task_id": 0, "hash_seed": "0", "operator": "1"},
-                  {"task_id": 1, "hash_seed": "1", "operator": "1"}],
+        "tasks": [
+            {
+                "task_id": 0,
+                "hash_seed": "0",
+                "operator": "1",
+                "resource_tier": "normal",
+            },
+            {
+                "task_id": 1,
+                "hash_seed": "1",
+                "operator": "1",
+                "resource_tier": "normal",
+            },
+        ],
     }
     monkeypatch.setattr(
         "cluster_rebuild.portable_inventory",
