@@ -484,6 +484,25 @@ PROJECTED_LORENTZ_OPERATORS = frozenset(
     }
 )
 
+
+def canonical_derivative_partitions(operator):
+    """Return whether bare-partition canonicalisation preserves all classes.
+
+    A one-dimensional derivative space is unchanged when isomorphic bare
+    partitions are identified before furnishing.  In a historical projected
+    space, however, the external occurrence carrying the derivative is part of
+    the exact class, and that information is not present in a bare partition.
+    Multi-derivative propagator assignments likewise require post-furnishing
+    comparison.
+    """
+
+    derivative_count = operator_strip_derivs(operator.operator)["n_derivs"]
+    return (
+        derivative_count <= 1
+        and operator.name not in PROJECTED_LORENTZ_OPERATORS
+    )
+
+
 HISTORICAL_IBP_RELATION = (
     "IBP defines the derivative-placement orbit; routed momentum uses the "
     "lexicographically first side of the cut without quotienting placements"
@@ -3158,18 +3177,19 @@ def deriv_operator_completions(
 def exact_completions(operator: EffectiveOperator, verbose=False) -> List[Completion]:
     """Return exact UV-Lagrangian classes after symbolic construction.
 
-    The canonical-partition preflight is safe for ordinary and one-derivative
-    operators.  For several derivatives, propagator numerator orientations can
-    distinguish partitions only after furnishing, so the complete raw set is
-    constructed before applying exact interaction-graph equivalence.
+    The canonical-partition preflight is safe for ordinary operators and
+    one-dimensional one-derivative spaces.  Historical projected spaces retain
+    the differentiated external occurrence as exact data, while several
+    derivatives can distinguish propagator assignments only after furnishing.
+    Both therefore require the complete raw partition set before exact
+    interaction-graph equivalence is applied.
     """
 
     if any(field.derivs for field in operator.fields):
-        derivative_count = operator_strip_derivs(operator.operator)["n_derivs"]
         candidates = deriv_operator_completions(
             operator,
             verbose=verbose,
-            canonical_partitions=derivative_count <= 1,
+            canonical_partitions=canonical_derivative_partitions(operator),
         )
     else:
         candidates = operator_completions(

@@ -31,6 +31,7 @@ from neutrinomass.database import (
     iter_completion_jsonl,
     write_completion_jsonl,
 )
+from neutrinomass.database.serialization import dumps_completion, loads_completion
 from neutrinomass.tensormethod import H, eps
 
 
@@ -77,6 +78,31 @@ def test_disk_deduplication_preserves_first_occurrence_and_digests(tmp_path):
         are_equivalent_completions(left, right)
         for left, right in zip(restored, [first, second])
     )
+
+
+def test_disk_deduplication_can_prefer_a_later_equivalent_representative(
+    tmp_path,
+):
+    first = next(operator_completions(EFF_OPERATORS["1"]))
+    preferred = loads_completion(dumps_completion(first))
+    preferred.topology = "preferred"
+    source = tmp_path / "ranked.jsonl"
+    destination = tmp_path / "unique.jsonl"
+    write_completion_jsonl(source, [first, preferred, first])
+
+    report = deduplicate_completion_jsonl(
+        source,
+        destination,
+        work_dir=tmp_path,
+        representative_rank=lambda item: int(item.topology == "preferred"),
+        maximum_rank=1,
+    )
+    restored = list(iter_completion_jsonl(destination))
+
+    assert report["exact_classes"] == 1
+    assert report["representative_rank_evaluations"] == 2
+    assert report["representative_replacements"] == 1
+    assert restored[0].topology == "preferred"
 
 
 def test_disk_deduplication_resolves_candidate_hash_collisions_exactly(
