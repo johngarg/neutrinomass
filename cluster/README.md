@@ -56,14 +56,17 @@ export NEUTRINOMASS_HIGH_CONCURRENCY=4
 export NEUTRINOMASS_HIGH_MEMORY=16G
 export NEUTRINOMASS_HIGH_WALLTIME=48:00:00
 export NEUTRINOMASS_LEGACY_DIR=/data/gpfs/projects/punim0011/garj/exploding-operators/raw_completions
-export NEUTRINOMASS_OUTPUT_ROOT=/data/gpfs/projects/punim0011/garj/exploding-operators/priority4-rebuild-v8
+export NEUTRINOMASS_OUTPUT_ROOT=/data/gpfs/projects/punim0011/garj/exploding-operators/priority4-rebuild-v9
 source cluster/submit_spartan.sh
 ```
 
 The high-resource operators are `71p`, `77p`, `78p`, `79a`, `79b`, `7p`,
-`80a`--`80d`, `81a`--`81d`, and `8pp`. A 16 GiB diagnostic for `71p` reached
-8.31 GiB and was still running at 24 hours, which motivates the 16 GiB,
-48-hour defaults without increasing resources for the other 456 tasks.
+`80a`--`80d`, `81a`--`81d`, and `8pp`. Earlier runs of `71p` and `79a`
+reached the 16 GiB allocation and the 48-hour limit while materialising and
+re-auditing tens of thousands of historical records. The historical census is
+now streamed through a disk-backed exact-class index, and an already matched
+class inherits the amplitude result of its audited exact survivor. The
+16 GiB, 48-hour tier remains as headroom for these large inputs.
 
 The download is pinned to Zenodo record `4054618`, byte size `198689883`, and
 published MD5 `f7a199f7718607e3740137e85c1d488b`. A cached archive is reused only
@@ -84,12 +87,12 @@ is repaired without manual deletion.
 The workflow is restartable: sourcing the submitter again creates new arrays,
 but valid completed task reports are checksum-verified and skipped. The source
 commit for the scientific census is pinned to
-`38c72507b58da9be34219ffc0e45a10f4d03d5f9`. This merge pins scientific
-commit `2ef766dfec46b733a2f24575a06e15370a956c4d`. In addition to the earlier
-propagator, tensor-statistics, and amplitude checks, it reconstructs trusted
-legacy records through the safe schema, retains all exact derivative
-placements in projected spaces, matches repeated external fields jointly by
-interaction vertex, restores generation provenance, and prevents a vanishing
-IBP representative from suppressing a nonvanishing representative of the same
-unique multi-derivative class. Later commits on the cluster branch may add only
-orchestration around those scientific sources.
+`b1872e57e5f72091d80405f90c8f19e9ce3f5b85`. This merge pins scientific
+commit `e240f77b242fde84267b88beebe588a99fe27846`. In addition to the earlier
+propagator, tensor-statistics, and amplitude checks, it streams and
+disk-deduplicates legacy records, avoids redundant historical amplitude
+audits, and restricts pre-furnishing derivative-partition canonicalisation to
+operators checked against a complete raw baseline. The latter restores the
+missing D5b class while retaining the verified D20 optimisation. Later commits
+on the cluster branch may add only orchestration around those scientific
+sources.
