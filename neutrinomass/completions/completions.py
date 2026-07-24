@@ -483,24 +483,21 @@ PROJECTED_LORENTZ_OPERATORS = frozenset(
         "D17",
     }
 )
+CANONICAL_DERIVATIVE_PARTITION_OPERATORS = frozenset({"D20"})
 
 
 def canonical_derivative_partitions(operator):
     """Return whether bare-partition canonicalisation preserves all classes.
 
-    A one-dimensional derivative space is unchanged when isomorphic bare
-    partitions are identified before furnishing.  In a historical projected
-    space, however, the external occurrence carrying the derivative is part of
-    the exact class, and that information is not present in a bare partition.
-    Multi-derivative propagator assignments likewise require post-furnishing
-    comparison.
+    Bare graph isomorphism does not include the full effective-operator tensor
+    contraction.  It can therefore identify field assignments that furnish
+    different UV classes even in a one-dimensional derivative space, as for
+    D5b.  Keep this optimisation only for operators whose canonical result has
+    been checked against a complete raw-partition baseline; all other exact
+    classes are compared after furnishing.
     """
 
-    derivative_count = operator_strip_derivs(operator.operator)["n_derivs"]
-    return (
-        derivative_count <= 1
-        and operator.name not in PROJECTED_LORENTZ_OPERATORS
-    )
+    return operator.name in CANONICAL_DERIVATIVE_PARTITION_OPERATORS
 
 
 HISTORICAL_IBP_RELATION = (

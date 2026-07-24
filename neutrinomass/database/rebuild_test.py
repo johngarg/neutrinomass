@@ -13,6 +13,7 @@ from neutrinomass.completions.operators import DERIV_EFF_OPERATORS, EFF_OPERATOR
 from neutrinomass.tensormethod import L, eps
 from neutrinomass.tensormethod.core import FERMI, IndexedField
 from neutrinomass.database.deduplication import deduplicate_completion_jsonl
+from neutrinomass.database.export import export_completion
 from neutrinomass.database.serialization import (
     dumps_completion,
     iter_completion_jsonl,
@@ -28,6 +29,7 @@ from neutrinomass.database.rebuild import (
     operator_registry,
     partition_bucketable_historical_records,
     write_generated_artifact,
+    write_historical_artifact,
 )
 
 
@@ -80,19 +82,28 @@ def test_derivative_census_uses_safe_canonical_partition_preflight(monkeypatch):
     monkeypatch.setattr(
         "neutrinomass.database.rebuild.DERIV_EFF_OPERATORS",
         {
-            "one": DERIV_EFF_OPERATORS["D20"],
+            "verified": DERIV_EFF_OPERATORS["D20"],
+            "one": DERIV_EFF_OPERATORS["D5b"],
             "projected": DERIV_EFF_OPERATORS["D8g"],
             "several": DERIV_EFF_OPERATORS["D21"],
         },
     )
 
+    assert list(completion_stream("verified")) == []
     assert list(completion_stream("one")) == []
     assert list(completion_stream("projected")) == []
     assert list(completion_stream("several")) == []
-    assert calls == [("D20", True), ("D8g", False), ("D21", False)]
+    assert calls == [
+        ("D20", True),
+        ("D5b", False),
+        ("D8g", False),
+        ("D21", False),
+    ]
 
 
-def test_streamed_generation_and_disk_backed_historical_audit(tmp_path):
+def test_streamed_generation_and_disk_backed_historical_audit(
+    tmp_path, monkeypatch
+):
     raw_path = tmp_path / "raw.jsonl"
     exact_path = tmp_path / "exact.jsonl"
     model_path = tmp_path / "models.jsonl"
@@ -102,11 +113,18 @@ def test_streamed_generation_and_disk_backed_historical_audit(tmp_path):
     deduplication = deduplicate_completion_jsonl(
         raw_path, exact_path, work_dir=tmp_path
     )
+    monkeypatch.setattr(
+        "neutrinomass.database.rebuild.audit_amplitude_symmetrisation",
+        lambda completion: pytest.fail(
+            "matched historical classes inherit the audited exact survivor"
+        ),
+    )
     audit = audit_exact_artifact(
         exact_path,
         model_path,
         [completions[0]],
         work_dir=tmp_path,
+        classify_historical=True,
     )
 
     assert generated["records"] == 8
@@ -115,8 +133,27 @@ def test_streamed_generation_and_disk_backed_historical_audit(tmp_path):
     assert deduplication["exact_classes"] == 3
     assert audit["records"] == 3
     assert audit["democratic_models"] == 3
+    assert audit["valid_historical_classes"] == 1
+    assert audit["reproduced_historical_classes"] == 1
     assert audit["missing_historical_fingerprints"] == []
     assert model_path.read_text(encoding="utf-8").count("\n") == 3
+
+
+def test_legacy_historical_normalisation_is_streamed_to_safe_jsonl(tmp_path):
+    completion = next(operator_completions(EFF_OPERATORS["1"]))
+    legacy = tmp_path / "op_1.dat"
+    legacy.write_text(
+        (export_completion(completion) + "\n") * 2,
+        encoding="utf-8",
+    )
+    destination = tmp_path / "historical.jsonl"
+
+    report = write_historical_artifact("1", legacy, destination)
+
+    assert report["records"] == 2
+    assert report["bucketable_records"] == 2
+    assert report["unbucketable_invalid"] == []
+    assert len(list(iter_completion_jsonl(destination))) == 2
 
 
 def test_generated_artifact_rejects_vertices_zero_after_round_trip(

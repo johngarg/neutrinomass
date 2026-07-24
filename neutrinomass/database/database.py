@@ -99,22 +99,27 @@ class LazyCompletion:
     #     return self.head["operator_dimension"]
 
 
-def read_completions(filename: str, *, trusted=False):
-    """Read the legacy executable ``.dat`` format after explicit opt-in."""
+def iter_completions(filename: str, *, trusted=False):
+    """Stream the legacy executable ``.dat`` format after explicit opt-in."""
 
     if not trusted:
         raise ValueError(
             "Legacy completion files execute Python; pass trusted=True only "
             "for package-controlled data, or use the JSONL serializer"
         )
-    completions = defaultdict(list)
     with open(filename, "r") as f:
-        line = f.readline()
-        while line:
+        for line in f:
             comp = eval(line)
             comp._trusted_legacy = True
-            completions[comp.operator_name].append(comp)
-            line = f.readline()
+            yield comp
+
+
+def read_completions(filename: str, *, trusted=False):
+    """Read the legacy executable ``.dat`` format after explicit opt-in."""
+
+    completions = defaultdict(list)
+    for comp in iter_completions(filename, trusted=trusted):
+        completions[comp.operator_name].append(comp)
 
     return completions
 

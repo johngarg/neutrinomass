@@ -74,3 +74,22 @@ def test_legacy_executable_formats_require_explicit_trust(tmp_path):
     )
     with pytest.raises(ValueError, match="execute Python"):
         completion.force()
+
+
+def test_legacy_completions_can_be_streamed_after_explicit_trust(tmp_path):
+    legacy = tmp_path / "op_test.dat"
+    legacy.write_text(
+        "LazyCompletion(head={'operator_name': 'test', "
+        "'quantum_numbers': []}, tail='1')\n"
+        "LazyCompletion(head={'operator_name': 'other', "
+        "'quantum_numbers': []}, tail='2')\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="execute Python"):
+        list(iter_completions(str(legacy)))
+
+    streamed = list(iter_completions(str(legacy), trusted=True))
+
+    assert [item.operator_name for item in streamed] == ["test", "other"]
+    assert [item.force() for item in streamed] == [1, 2]
