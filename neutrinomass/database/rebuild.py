@@ -50,7 +50,7 @@ from neutrinomass.database.closures import (
     neutrino_mass_estimate,
     numerical_np_scale_estimate,
 )
-from neutrinomass.database.database import read_completions
+from neutrinomass.database.database import iter_completions
 from neutrinomass.database.deduplication import deduplicate_completion_jsonl
 from neutrinomass.database.serialization import (
     dumps_completion,
@@ -400,7 +400,45 @@ def partition_bucketable_historical_records(records):
     return bucketable, invalid
 
 
-def historical_classes(operator_name, historical_path):
+def _historical_projection(operator_name):
+    """Build the operator-specific projection assignment once per artifact."""
+
+    if operator_name in PROJECTED_LORENTZ_OPERATORS:
+        basis = HistoricalDerivativeBasis.from_operator(
+            DERIV_EFF_OPERATORS[operator_name]
+        )
+        return lambda completion: setattr(
+            completion,
+            "lorentz_projection",
+            basis.project_existing_local(completion.operator.operator),
+        )
+
+    derivative_operator = DERIV_EFF_OPERATORS.get(operator_name)
+    projection = (
+        unique_multi_derivative_projection(derivative_operator)
+        if derivative_operator is not None
+        else None
+    )
+    if projection is not None:
+        return lambda completion: setattr(
+            completion, "lorentz_projection", projection
+        )
+    if (
+        derivative_operator is not None
+        and operator_strip_derivs(derivative_operator.operator)["n_derivs"] == 2
+    ):
+        basis = UnreducedSecondDerivativeBasis.from_operator(
+            derivative_operator
+        )
+        return lambda completion: setattr(
+            completion,
+            "lorentz_projection",
+            basis.project_existing_local(completion.operator.operator),
+        )
+    return lambda completion: None
+
+
+def iter_historical_records(operator_name, historical_path):
     # Legacy ``ExoticField(IndexedField(...))`` expressions construct an
     # intermediate generic tensor head before choosing the scalar/fermion
     # completion class.  For repeated higher representations, that head can
@@ -408,42 +446,72 @@ def historical_classes(operator_name, historical_path):
     # ``comm='fermi'``.  Reconstructing through the safe schema creates the
     # concrete field class directly and puts historical validation on the same
     # tensor-statistics footing as fresh generation.
-    records = [
-        loads_completion(dumps_completion(item.force(trusted=True)))
-        for item in read_completions(historical_path, trusted=True)[operator_name]
-    ]
-    if operator_name in PROJECTED_LORENTZ_OPERATORS:
-        basis = HistoricalDerivativeBasis.from_operator(
-            DERIV_EFF_OPERATORS[operator_name]
+    assign_projection = _historical_projection(operator_name)
+    for item in iter_completions(historical_path, trusted=True):
+        if item.operator_name != operator_name:
+            continue
+        completion = loads_completion(
+            dumps_completion(item.force(trusted=True))
         )
-        for completion in records:
-            completion.lorentz_projection = basis.project_existing_local(
-                completion.operator.operator
-            )
-    else:
-        derivative_operator = DERIV_EFF_OPERATORS.get(operator_name)
-        projection = (
-            unique_multi_derivative_projection(derivative_operator)
-            if derivative_operator is not None
-            else None
-        )
-        if projection is not None:
-            for completion in records:
-                completion.lorentz_projection = projection
-        elif derivative_operator is not None and operator_strip_derivs(
-            derivative_operator.operator
-        )["n_derivs"] == 2:
-            basis = UnreducedSecondDerivativeBasis.from_operator(
-                derivative_operator
-            )
-            for completion in records:
-                completion.lorentz_projection = basis.project_existing_local(
-                    completion.operator.operator
-                )
+        assign_projection(completion)
+        yield completion
+
+
+def historical_classes(operator_name, historical_path):
+    records = list(iter_historical_records(operator_name, historical_path))
     bucketable, invalid = partition_bucketable_historical_records(records)
     classes = []
     append_unique_completions(classes, bucketable)
     return records, classes, invalid
+
+
+def write_historical_artifact(operator_name, historical_path, destination):
+    """Normalise legacy records to safe JSONL with a bounded Python working set."""
+
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        prefix=f".{destination.name}.",
+        suffix=".tmp",
+        dir=destination.parent,
+        delete=False,
+    )
+    temporary_path = Path(temporary.name)
+    records = 0
+    bucketable = 0
+    invalid = []
+    try:
+        with temporary:
+            for completion in iter_historical_records(
+                operator_name, historical_path
+            ):
+                records += 1
+                try:
+                    exact_completion_bucket_key(completion)
+                except ValueError:
+                    try:
+                        validate_completion(completion)
+                    except ValueError as error:
+                        invalid.append(
+                            _invalid_historical_class(completion, error)
+                        )
+                    else:
+                        raise
+                    continue
+                bucketable += 1
+                temporary.write(dumps_completion(completion) + "\n")
+        temporary_path.replace(destination)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+    return {
+        "records": records,
+        "bucketable_records": bucketable,
+        "unbucketable_invalid": invalid,
+        "sha256": file_sha256(destination),
+    }
 
 
 def classify_historical_classes(classes):
@@ -599,6 +667,7 @@ def audit_exact_artifact(
     historical,
     *,
     work_dir=None,
+    classify_historical=False,
 ):
     """Audit exact classes and historical coverage with a disk-backed index."""
 
@@ -612,6 +681,11 @@ def audit_exact_artifact(
     propagator_models = set()
     comparisons = 0
     missing = []
+    historical_classes = 0
+    valid_historical = 0
+    reproduced_historical = 0
+    invalid_historical = []
+    unsupported_historical = []
 
     with tempfile.TemporaryDirectory(dir=work_dir) as directory:
         database_path = Path(directory) / "historical-coverage.sqlite3"
@@ -648,6 +722,18 @@ def audit_exact_artifact(
 
             for historical_completion in historical:
                 clear_interaction_graph_cache()
+                historical_classes += 1
+                if classify_historical:
+                    try:
+                        validate_completion(historical_completion)
+                    except ValueError as error:
+                        invalid_historical.append(
+                            _invalid_historical_class(
+                                historical_completion, error
+                            )
+                        )
+                        clear_interaction_graph_cache()
+                        continue
                 rows = connection.execute(
                     "SELECT payload FROM exact_classes WHERE bucket_key = ?",
                     (repr(exact_completion_bucket_key(historical_completion)),),
@@ -657,9 +743,49 @@ def audit_exact_artifact(
                     if are_equivalent_completions(
                         historical_completion, loads_completion(payload)
                     ):
+                        valid_historical += 1
+                        reproduced_historical += 1
                         break
                 else:
-                    missing.append(completion_fingerprint(historical_completion))
+                    if classify_historical:
+                        audit = audit_amplitude_symmetrisation(
+                            historical_completion
+                        )
+                        if audit.status == "unsupported":
+                            valid_historical += 1
+                            unsupported_historical.append(
+                                {
+                                    "fingerprint": repr(
+                                        completion_fingerprint(
+                                            historical_completion
+                                        )
+                                    ),
+                                    "topology": topology_key(
+                                        historical_completion
+                                    ),
+                                    "reason": audit.reason,
+                                }
+                            )
+                            missing.append(
+                                completion_fingerprint(historical_completion)
+                            )
+                        elif audit.is_zero:
+                            invalid_historical.append(
+                                _invalid_historical_class(
+                                    historical_completion,
+                                    ValueError(audit.reason),
+                                )
+                            )
+                        else:
+                            valid_historical += 1
+                            missing.append(
+                                completion_fingerprint(historical_completion)
+                            )
+                    else:
+                        valid_historical += 1
+                        missing.append(
+                            completion_fingerprint(historical_completion)
+                        )
                 clear_interaction_graph_cache()
 
     model_sha256 = _write_models(model_path, models)
@@ -674,6 +800,11 @@ def audit_exact_artifact(
             "sha256": model_sha256,
         },
         "historical_comparisons": comparisons,
+        "historical_classes": historical_classes,
+        "valid_historical_classes": valid_historical,
+        "reproduced_historical_classes": reproduced_historical,
+        "invalid_historical_classes": invalid_historical,
+        "unsupported_historical_classes": unsupported_historical,
         "missing_historical_fingerprints": [repr(item) for item in missing],
     }
 
@@ -866,25 +997,33 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
         **representative_options,
     )
     amplitude_audit = audit_amplitude_artifact(structural_path, exact_path)
-    records, classes, unbucketable_historical = historical_classes(
-        operator_name, historical_path
+    with tempfile.TemporaryDirectory(dir=output_dir) as directory:
+        historical_raw_path = Path(directory) / "historical.jsonl"
+        historical_unique_path = Path(directory) / "historical_unique.jsonl"
+        historical_input = write_historical_artifact(
+            operator_name, historical_path, historical_raw_path
+        )
+        historical_deduplication = deduplicate_completion_jsonl(
+            historical_raw_path,
+            historical_unique_path,
+            work_dir=directory,
+        )
+        exact = audit_exact_artifact(
+            exact_path,
+            model_path,
+            iter_completion_jsonl(historical_unique_path),
+            work_dir=directory,
+            classify_historical=True,
+        )
+    invalid_historical = (
+        historical_input["unbucketable_invalid"]
+        + exact["invalid_historical_classes"]
     )
-    (
-        valid_historical,
-        invalid_historical,
-        unsupported_historical,
-    ) = classify_historical_classes(classes)
-    invalid_historical = unbucketable_historical + invalid_historical
-    exact = audit_exact_artifact(
-        exact_path,
-        model_path,
-        valid_historical,
-        work_dir=output_dir,
-    )
+    valid_historical_classes = exact["valid_historical_classes"]
     if exact["missing_historical_fingerprints"]:
         raise ValueError(
             f"{len(exact['missing_historical_fingerprints'])} of "
-            f"{len(valid_historical)} valid historical classes missing"
+            f"{valid_historical_classes} valid historical classes missing"
         )
     if generated["records"] != deduplication["input_records"]:
         raise ValueError("deduplication input count differs from generated count")
@@ -936,13 +1075,18 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
         "species_models": exact["species_models"],
         "propagator_models": exact["propagator_models"],
         "historical": {
-            "records": len(records),
-            "classes": len(classes) + len(unbucketable_historical),
-            "valid_classes": len(valid_historical),
+            "records": historical_input["records"],
+            "classes": (
+                historical_deduplication["exact_classes"]
+                + len(historical_input["unbucketable_invalid"])
+            ),
+            "valid_classes": valid_historical_classes,
             "invalid_classes": len(invalid_historical),
             "invalid": invalid_historical,
-            "amplitude_unsupported": unsupported_historical,
-            "reproduced": len(valid_historical),
+            "amplitude_unsupported": exact[
+                "unsupported_historical_classes"
+            ],
+            "reproduced": exact["reproduced_historical_classes"],
             "missing": 0,
             "exact_comparisons": exact["historical_comparisons"],
             "artifact": {
