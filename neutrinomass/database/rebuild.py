@@ -284,7 +284,13 @@ def _serialise_stats(stats):
     }
 
 
-def write_generated_artifact(path, completions, *, terms_prevalidated=False):
+def write_generated_artifact(
+    path,
+    completions,
+    *,
+    terms_prevalidated=False,
+    progress=None,
+):
     """Atomically write, validate and stream-audit generated completions.
 
     ``terms_prevalidated`` is reserved for ``completion_stream``: the partition
@@ -320,6 +326,7 @@ def write_generated_artifact(path, completions, *, terms_prevalidated=False):
     decoded_digest = OrderedSignatureDigest()
     decoded_vertex_rejections = 0
     decoded_rejection_topologies = Counter()
+    last_progress_record = 0
     try:
         with source_temporary:
             for completion in completions:
@@ -329,6 +336,15 @@ def write_generated_artifact(path, completions, *, terms_prevalidated=False):
                 _update_stats(source_stats, completion)
                 source_digest.update(round_trip_signature(completion))
                 source_temporary.write(dumps_completion(completion) + "\n")
+                if progress is not None and source_stats["records"] % 1000 == 0:
+                    progress(source_stats["records"])
+                    last_progress_record = source_stats["records"]
+
+        if (
+            progress is not None
+            and source_stats["records"] != last_progress_record
+        ):
+            progress(source_stats["records"])
 
         with decoded_temporary:
             for completion in iter_completion_jsonl(source_temporary_path):
@@ -952,6 +968,23 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
     """Generate and verify one registry operator from first principles."""
 
     started = perf_counter()
+
+    def progress(stage, **details):
+        print(
+            json.dumps(
+                {
+                    "event": "census_progress",
+                    "operator": operator_name,
+                    "stage": stage,
+                    "elapsed_seconds": perf_counter() - started,
+                    "peak_memory_mib": peak_memory_mib(),
+                    **details,
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+
     registry = operator_registry()
     operator = registry[operator_name]
     kind = operator_kind(operator_name)
@@ -970,11 +1003,16 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
     exact_path = output_dir / f"op_{operator_name}_remediated_unique.jsonl"
     model_path = output_dir / f"op_{operator_name}_models.jsonl"
 
+    progress("generation_started")
     generated = write_generated_artifact(
         raw_path,
         completion_stream(operator_name),
         terms_prevalidated=True,
+        progress=lambda records: progress(
+            "generation_records", records=records
+        ),
     )
+    progress("generation_completed", records=generated["records"])
     clear_interaction_graph_cache()
     # A unique multi-derivative projection identifies its IBP-related literal
     # placements as one exact class.  Those representatives can have different
@@ -990,30 +1028,56 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
             "representative_rank": amplitude_survival_rank,
             "maximum_rank": 1,
         }
+    progress("structural_deduplication_started")
     deduplication = deduplicate_completion_jsonl(
         raw_path,
         structural_path,
         work_dir=output_dir,
         **representative_options,
     )
+    progress(
+        "structural_deduplication_completed",
+        classes=deduplication["exact_classes"],
+    )
+    progress("amplitude_audit_started")
     amplitude_audit = audit_amplitude_artifact(structural_path, exact_path)
+    progress(
+        "amplitude_audit_completed",
+        survivors=amplitude_audit["surviving_records"],
+    )
     with tempfile.TemporaryDirectory(dir=output_dir) as directory:
         historical_raw_path = Path(directory) / "historical.jsonl"
         historical_unique_path = Path(directory) / "historical_unique.jsonl"
+        progress("historical_normalisation_started")
         historical_input = write_historical_artifact(
             operator_name, historical_path, historical_raw_path
         )
+        progress(
+            "historical_normalisation_completed",
+            records=historical_input["records"],
+        )
+        progress("historical_deduplication_started")
         historical_deduplication = deduplicate_completion_jsonl(
             historical_raw_path,
             historical_unique_path,
             work_dir=directory,
         )
+        progress(
+            "historical_deduplication_completed",
+            classes=historical_deduplication["exact_classes"],
+        )
+        progress("exact_audit_started")
         exact = audit_exact_artifact(
             exact_path,
             model_path,
             iter_completion_jsonl(historical_unique_path),
             work_dir=directory,
             classify_historical=True,
+        )
+        progress(
+            "exact_audit_completed",
+            reproduced=exact["reproduced_historical_classes"],
+            missing=len(exact["missing_historical_fingerprints"]),
         )
     invalid_historical = (
         historical_input["unbucketable_invalid"]

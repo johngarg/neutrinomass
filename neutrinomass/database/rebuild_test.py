@@ -109,7 +109,10 @@ def test_streamed_generation_and_disk_backed_historical_audit(
     model_path = tmp_path / "models.jsonl"
     completions = list(operator_completions(EFF_OPERATORS["1"]))
 
-    generated = write_generated_artifact(raw_path, iter(completions))
+    progress = []
+    generated = write_generated_artifact(
+        raw_path, iter(completions), progress=progress.append
+    )
     deduplication = deduplicate_completion_jsonl(
         raw_path, exact_path, work_dir=tmp_path
     )
@@ -128,6 +131,7 @@ def test_streamed_generation_and_disk_backed_historical_audit(
     )
 
     assert generated["records"] == 8
+    assert progress == [8]
     assert generated["local"] == 8
     assert generated["routed"] == 0
     assert deduplication["exact_classes"] == 3
