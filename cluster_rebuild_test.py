@@ -1,11 +1,14 @@
 import gzip
 import json
+import os
 from pathlib import Path
+import sys
 
 from cluster_rebuild import (
     build_task_manifest,
     package_report,
     relocate_report_paths,
+    run_with_persistent_log,
     task_array_expression,
     validate_task_manifest,
 )
@@ -111,6 +114,21 @@ def test_worker_manifest_validation_does_not_rehash_entire_legacy_archive(
     )
 
     validate_task_manifest(manifest, tmp_path, verify_inventory=False)
+
+
+def test_worker_command_output_is_persisted_and_forwarded(tmp_path, capsys):
+    log_path = tmp_path / "census.log"
+
+    returncode = run_with_persistent_log(
+        [sys.executable, "-c", "print('generation_started', flush=True)"],
+        cwd=tmp_path,
+        environment=os.environ.copy(),
+        log_path=log_path,
+    )
+
+    assert returncode == 0
+    assert log_path.read_text(encoding="utf-8") == "generation_started\n"
+    assert capsys.readouterr().out == "generation_started\n"
 
 
 def test_package_report_is_deterministic_and_lossless(tmp_path):

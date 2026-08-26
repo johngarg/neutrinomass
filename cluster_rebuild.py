@@ -334,6 +334,29 @@ def relocate_report_paths(report_path, legacy_path):
     return changed
 
 
+def run_with_persistent_log(command, *, cwd, environment, log_path):
+    """Run a worker command while teeing output to scratch and Slurm stdout."""
+
+    with Path(log_path).open("w", encoding="utf-8") as log:
+        process = subprocess.Popen(
+            command,
+            cwd=cwd,
+            env=environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        if process.stdout is None:
+            raise RuntimeError("Could not capture census output")
+        with process.stdout:
+            for line in process.stdout:
+                log.write(line)
+                log.flush()
+                print(line, end="", flush=True)
+        return process.wait()
+
+
 def run_task(manifest_path, task_id, output_root, legacy_dir, scratch_root):
     manifest = load_json(manifest_path)
     # The plan and final consolidation hash all 243 legacy inputs. A worker
@@ -396,15 +419,13 @@ def run_task(manifest_path, task_id, output_root, legacy_dir, scratch_root):
             "--report",
             str(scratch_report),
         ]
-        with (scratch_dir / "census.log").open("w", encoding="utf-8") as log:
-            result = subprocess.run(
-                command,
-                cwd=REPOSITORY,
-                env=environment,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-            )
-        if result.returncode:
+        returncode = run_with_persistent_log(
+            command,
+            cwd=REPOSITORY,
+            environment=environment,
+            log_path=scratch_dir / "census.log",
+        )
+        if returncode:
             print(
                 (scratch_dir / "census.log").read_text(
                     encoding="utf-8", errors="replace"
@@ -412,7 +433,7 @@ def run_task(manifest_path, task_id, output_root, legacy_dir, scratch_root):
                 file=sys.stderr,
             )
             raise RuntimeError(
-                f"Task {task_id} failed with exit code {result.returncode}"
+                f"Task {task_id} failed with exit code {returncode}"
             )
         report = package_report(scratch_report)
         provenance = {

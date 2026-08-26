@@ -55,8 +55,8 @@ export NEUTRINOMASS_WALLTIME=24:00:00
 export NEUTRINOMASS_HIGH_CONCURRENCY=4
 export NEUTRINOMASS_HIGH_MEMORY=16G
 export NEUTRINOMASS_HIGH_WALLTIME=48:00:00
-export NEUTRINOMASS_LEGACY_DIR=/data/gpfs/projects/punim0011/garj/exploding-operators/raw_completions
-export NEUTRINOMASS_OUTPUT_ROOT=/data/gpfs/projects/punim0011/garj/exploding-operators/priority4-rebuild-v9
+export NEUTRINOMASS_LEGACY_DIR=/data/gpfs/projects/punim0011/garj/exploding-ops/raw_completions
+export NEUTRINOMASS_OUTPUT_ROOT=/data/gpfs/projects/punim0011/garj/exploding-ops/priority4-rebuild-v10
 source cluster/submit_spartan.sh
 ```
 
@@ -65,8 +65,12 @@ The high-resource operators are `71p`, `77p`, `78p`, `79a`, `79b`, `7p`,
 reached the 16 GiB allocation and the 48-hour limit while materialising and
 re-auditing tens of thousands of historical records. The historical census is
 now streamed through a disk-backed exact-class index, and an already matched
-class inherits the amplitude result of its audited exact survivor. The
-16 GiB, 48-hour tier remains as headroom for these large inputs.
+class inherits the amplitude result of its audited exact survivor. V9 showed a
+second list-backed bottleneck in raw regular-operator partition generation:
+seven tasks again reached essentially 16 GiB and 48 hours. That partition
+stream is now consumed one furnished graph at a time. Census phase and record
+progress is also forwarded to the persistent Slurm output. The 16 GiB,
+48-hour tier remains as headroom for these large inputs.
 
 The download is pinned to Zenodo record `4054618`, byte size `198689883`, and
 published MD5 `f7a199f7718607e3740137e85c1d488b`. A cached archive is reused only
@@ -87,12 +91,12 @@ is repaired without manual deletion.
 The workflow is restartable: sourcing the submitter again creates new arrays,
 but valid completed task reports are checksum-verified and skipped. The source
 commit for the scientific census is pinned to
-`b1872e57e5f72091d80405f90c8f19e9ce3f5b85`. This merge pins scientific
-commit `e240f77b242fde84267b88beebe588a99fe27846`. In addition to the earlier
+`ab84e6d3d279a562c42e008b862c3416e1040613`. This merge pins scientific
+commit `d77831f645d926b3502bd71c76ad04050d7c20dd`. In addition to the earlier
 propagator, tensor-statistics, and amplitude checks, it streams and
 disk-deduplicates legacy records, avoids redundant historical amplitude
-audits, and restricts pre-furnishing derivative-partition canonicalisation to
-operators checked against a complete raw baseline. The latter restores the
-missing D5b class while retaining the verified D20 optimisation. Later commits
-on the cluster branch may add only orchestration around those scientific
-sources.
+audits, streams raw regular-operator partitions, and restricts pre-furnishing
+derivative-partition canonicalisation to operators checked against a complete
+raw baseline. The latter restores the missing D5b class while retaining the
+verified D20 optimisation. Later commits on the cluster branch may add only
+orchestration around those scientific sources.
