@@ -486,6 +486,28 @@ print(len(operator_partitions), hashlib.sha256(data.encode()).hexdigest())
     assert outputs[0] == outputs[1]
 
 
+def test_raw_operator_completions_stream_partitions(monkeypatch):
+    completions_module = import_module("neutrinomass.completions.completions")
+    first = partitions(EFF_OPERATORS["1"])[0]
+
+    monkeypatch.setattr(
+        completions_module,
+        "partition_stream",
+        lambda operator: iter((first,)),
+    )
+    monkeypatch.setattr(
+        completions_module,
+        "partitions",
+        lambda *args, **kwargs: pytest.fail(
+            "raw completion generation materialized the partition list"
+        ),
+    )
+
+    streamed = list(operator_completions(EFF_OPERATORS["1"]))
+
+    assert len(streamed) == 1
+
+
 def test_quick_remove_equivalent_partitions_preserves_first_occurrence():
     partitions_ = [("second",), ("first",), ("second",)]
 

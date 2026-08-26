@@ -226,8 +226,8 @@ def indexed_fields_with_counters(op: Operator) -> Dict[IndexedField, int]:
     return dict(flat)
 
 
-def partitions(operator: EffectiveOperator, verbose=False) -> List[dict]:
-    """Returns a list of operator partitions, epsilons and graphs of the form:
+def partition_stream(operator: EffectiveOperator, verbose=False) -> Iterable[dict]:
+    """Yield operator partitions, epsilons and graphs of the form:
 
     {"fields": ((L(u0, I_0), 18), ...)
     "epsilons": (...),
@@ -249,7 +249,6 @@ def partitions(operator: EffectiveOperator, verbose=False) -> List[dict]:
             + f"{len(topology_data_list)} relevant topologies."
         )
 
-    out = []
     counter = 1
     fields_and_counters = indexed_fields_with_counters(operator.operator)
     fields = list(fields_and_counters)
@@ -275,14 +274,18 @@ def partitions(operator: EffectiveOperator, verbose=False) -> List[dict]:
                     "topology": topology_data["topology"],
                     "canonical_topology": topology_data["canonical_topology"],
                 }
-                out.append(data)
+                yield data
 
             # if remove_isomorphic_diagrams:
             #     col_out = remove_isomorphic(col_out)
 
             # out += col_out
 
-    return out
+
+def partitions(operator: EffectiveOperator, verbose=False) -> List[dict]:
+    """Return the operator partition stream as a compatibility list."""
+
+    return list(partition_stream(operator, verbose=verbose))
 
 
 def are_equivalent_partitions(a, b):
@@ -2212,12 +2215,24 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
 
 def operator_completions(
     operator: EffectiveOperator, verbose=False, canonical_partitions=False
-) -> List[Completion]:
-    """Return a list of the completions of an effective operator."""
+) -> Iterable[Completion]:
+    """Yield completions of an effective operator.
 
-    parts = partitions(operator, verbose=verbose)
+    Raw generation consumes furnished partitions as a stream so large regular
+    operators do not retain every deep-copied partition graph.  Canonical
+    preflight remains list-backed because its isomorphism pass compares the
+    complete partition collection.
+    """
+
     if canonical_partitions:
+        parts = partitions(operator, verbose=verbose)
         parts = remove_isomorphic(parts)
+    elif verbose:
+        # The progress bar requires a known total.  Production census calls are
+        # deliberately non-verbose and use the bounded-memory stream below.
+        parts = partitions(operator, verbose=verbose)
+    else:
+        parts = partition_stream(operator)
     if verbose:
         mode = "canonical" if canonical_partitions else "raw"
         print(f"Starting with {len(parts)} {mode} partitions...")
