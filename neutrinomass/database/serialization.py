@@ -27,7 +27,7 @@ from neutrinomass.tensormethod.core import IndexedField, Operator, delta, eps
 
 
 SCHEMA_NAME = "neutrinomass.completion"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 _RATIONAL_PATTERN = re.compile(r"[+-]?\d+(?:/[1-9]\d*)?\Z")
@@ -311,6 +311,8 @@ def projection_from_data(data):
 
 
 def completion_to_record(completion):
+    from neutrinomass.completions.routing import validate_routed_completion
+    validate_routed_completion(completion)
     return {
         "schema": SCHEMA_NAME,
         "version": SCHEMA_VERSION,
@@ -344,7 +346,7 @@ def completion_from_record(record):
     if record.get("schema") != SCHEMA_NAME:
         raise ValueError("Not a neutrinomass completion record")
     version = record.get("version")
-    if version not in {1, SCHEMA_VERSION}:
+    if version not in {1, 2, SCHEMA_VERSION}:
         raise ValueError(f"Unsupported completion schema {record.get('version')}")
 
     operator = EffectiveOperator(
@@ -362,7 +364,7 @@ def completion_from_record(record):
             contribution_from_data(contribution)
             for contribution in record["momentum_contributions"]
         )
-    return Completion(
+    completion = Completion(
         operator=operator,
         partition=partition_from_data(record["partition"]),
         graph=graph_from_data(record["graph"]),
@@ -377,6 +379,10 @@ def completion_from_record(record):
         momentum_contributions=contributions,
         lorentz_projection=projection_from_data(record.get("lorentz_projection")),
     )
+    if version == SCHEMA_VERSION:
+        from neutrinomass.completions.routing import validate_routed_completion
+        validate_routed_completion(completion)
+    return completion
 
 
 def dumps_completion(completion):

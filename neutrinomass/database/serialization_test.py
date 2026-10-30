@@ -41,32 +41,10 @@ from neutrinomass.tensormethod.core import FERMI, eps
 
 
 def completion_with_route():
-    completion = next(operator_completions(EFF_OPERATORS["1"]))
-    exotic = next(iter(completion.exotics))
-    edge = next(
-        edge
-        for edge, particle in nx.get_edge_attributes(
-            completion.graph, "particle"
-        ).items()
-        if base_exotic_label(particle) == base_exotic_label(exotic.label)
-    )
-    route = DerivativeRoute(
-        edge=edge,
-        numerator_field=exotic.label,
-        numerator_lorentz=exotic.dynkin[:2],
-        differentiated_field="L",
-        differentiated_lorentz="10",
-    )
-    return Completion(
-        operator=completion.operator,
-        partition=completion.partition,
-        graph=completion.graph,
-        exotics=completion.exotics,
-        terms=completion.terms,
-        topology=completion.topology,
-        canonical_topology=completion.canonical_topology,
-        derivative_routes=(route,),
-    )
+    from pathlib import Path
+    from neutrinomass.completions.routing import migrate_legacy_one_derivative
+    path = Path(__file__).parents[2] / "tests/fixtures/scalar-n-routing.jsonl"
+    return migrate_legacy_one_derivative(loads_completion(path.read_text().splitlines()[1]))
 
 
 def test_completion_json_round_trip_is_exact_and_non_executable():

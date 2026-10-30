@@ -161,6 +161,7 @@ def external_leg_provenance(completion):
             == Counter(key for _, key in occurrences)
             and vertex_heavy_signature(vertex)
             == term_heavy_signature(term_index)
+            and completion.graph.nodes[vertex].get("interaction", term_index) == term_index
         ]
         for term_index, occurrences in term_occurrences.items()
     }
@@ -307,6 +308,16 @@ def _interaction_vertices(completion, provenance, exotic_labels):
 
     leaf_nodes = {leaf.node for leaf in partition_leaves(completion.partition)}
     internal_vertices = set(completion.graph) - leaf_nodes
+    explicit = {
+        data["interaction"]: vertex
+        for vertex, data in completion.graph.nodes(data=True)
+        if "interaction" in data
+    }
+    if explicit:
+        if (set(explicit) != set(range(len(completion.terms)))
+                or set(explicit.values()) != internal_vertices):
+            raise UnsupportedAmplitudeAudit("Incomplete explicit interaction provenance")
+        return explicit
     term_vertices = {}
     external_by_term = defaultdict(list)
     for leg in provenance.values():
@@ -390,6 +401,14 @@ def _internal_occurrence_edges(completion, provenance, exotic_labels):
     occurrence_edges = {}
     for term_index, term in enumerate(completion.terms):
         vertex = term_vertices[term_index]
+        ports = completion.graph.nodes[vertex].get("heavy_ports")
+        if ports is not None:
+            for port in ports:
+                key = (term_index, port["tensor"])
+                if key in occurrence_edges:
+                    raise UnsupportedAmplitudeAudit("Duplicate heavy occurrence port")
+                occurrence_edges[key] = tuple(sorted(port["edge"]))
+            continue
         occurrences = defaultdict(list)
         for tensor_index, tensor in enumerate(term.tensors):
             if not isinstance(tensor, IndexedField):
@@ -509,6 +528,8 @@ def derivative_placement_polynomial(completion):
     irrelevant to whether the complete tensor is zero.
     """
 
+    from neutrinomass.completions.routing import validate_routed_completion
+    validate_routed_completion(completion)
     contributions = tuple(getattr(completion, "momentum_contributions", ()))
     if not contributions:
         placement = _operator_derivative_placement(completion)

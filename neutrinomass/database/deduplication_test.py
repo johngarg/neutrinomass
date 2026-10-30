@@ -209,7 +209,7 @@ def test_disk_deduplication_keeps_distinct_propagator_orders(tmp_path):
     assert report["exact_classes"] == 2
 
 
-def test_disk_deduplication_can_collapse_local_and_routed_representatives(tmp_path):
+def test_serialization_rejects_fabricated_route_before_deduplication(tmp_path):
     local = next(operator_completions(EFF_OPERATORS["1"]))
     routed = Completion(
         operator=local.operator,
@@ -225,11 +225,9 @@ def test_disk_deduplication_can_collapse_local_and_routed_representatives(tmp_pa
     )
     source = tmp_path / "routes.jsonl"
     destination = tmp_path / "unique.jsonl"
-    write_completion_jsonl(source, [local, routed])
-
-    report = deduplicate_completion_jsonl(source, destination, work_dir=tmp_path)
-
-    assert report["exact_classes"] == 1
+    from neutrinomass.completions.routing import InvalidMomentumGraph
+    with pytest.raises(InvalidMomentumGraph, match="disagree"):
+        write_completion_jsonl(source, [local, routed])
 
 
 def test_disk_deduplication_cleans_temporary_files_after_malformed_input(tmp_path):

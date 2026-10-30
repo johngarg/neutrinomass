@@ -86,6 +86,8 @@ def lagrangian_fingerprint(completion: Completion) -> Tuple[str, ...]:
 def completion_fingerprint(completion: Completion) -> tuple:
     """Return the deterministic physics and provenance fingerprint of a completion."""
 
+    from neutrinomass.completions.routing import validate_routed_completion
+    validate_routed_completion(completion)
     derivative_edges = tuple(
         sorted(tuple(sorted(edge)) for edge in completion.derivative_edges)
     )

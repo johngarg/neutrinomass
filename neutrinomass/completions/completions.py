@@ -1317,12 +1317,17 @@ def derivative_route_alternatives(fields):
     alternatives = []
     selected_numerators = set()
     for candidate in derivative_route_candidates(fields):
-        if isinstance(candidate, FieldType):
-            numerator = candidate
-        elif len(internal_fermions) == 1:
-            numerator = internal_fermions[0]
-        else:
+        # Processing strips the helper derivative and changes the *other*,
+        # undifferentiated heavy endpoint (conjugation for Majorana; partner
+        # conjugation for Dirac). That endpoint supplies the kinetic numerator.
+        # Selecting a heavy helper with only a light companion cannot produce
+        # a renormalizable vertex via this processing convention.
+        changed_endpoints = tuple(
+            field for field in internal_fermions if field is not candidate
+        )
+        if len(changed_endpoints) != 1:
             continue
+        numerator = changed_endpoints[0]
 
         if numerator in selected_numerators:
             continue
@@ -1767,6 +1772,9 @@ def contract(
 
     consume_routed_derivative(derivative_state, derivative_route)
 
+    if derivative_state is not None:
+        derivative_state["term_sources"] = (*fields, partner)
+
     return exotic, no_deriv_maybe_term, spectator_gauge_eps, lorentz_epsilons
 
 
@@ -1803,6 +1811,45 @@ def get_connecting_edge(graph: nx.Graph, nodes: List[int]) -> Tuple[int, int]:
 
     assert len(other_nodes) == 1
     return (connecting_node, other_nodes[0])
+
+
+def record_vertex_ports(graph, vertex, term_index, term, sources, edges):
+    """Carry concrete input occurrences through the endpoint transformation.
+
+    Match full physical states and spectator gauge indices. If tensor algebra
+    erased the distinction between equal occurrences, fail visibly rather than
+    assigning their edges by sorting species labels.
+    """
+    from neutrinomass.completions.routing import state_key, InvalidMomentumGraph
+
+    has_derivative = any(f.derivs for f in sources)
+    available = set(range(len(term.tensors)))
+    ports = []
+    for source, edge in zip(sources, edges):
+        if edge is None:
+            continue
+        if source.derivs:
+            target = source.strip_derivs_with_indices()
+        elif has_derivative and isinstance(source, VectorLikeDiracFermion):
+            target = source.dirac_partner().conj
+        elif has_derivative and isinstance(source, MajoranaFermion):
+            target = source.conj
+        else:
+            target = source
+        matches = [i for i in available
+                   if isinstance(term.tensors[i], IndexedField)
+                   and state_key(term.tensors[i]) == state_key(target)]
+        if len(matches) > 1:
+            matches = [i for i in matches
+                       if tuple(map(str, term.tensors[i].gauge_indices))
+                       == tuple(map(str, target.gauge_indices))]
+        if len(matches) != 1:
+            raise InvalidMomentumGraph("Unresolved equal heavy occurrences during vertex processing")
+        index = matches[0]
+        available.remove(index)
+        ports.append({"tensor": index, "edge": list(edge)})
+    graph.nodes[vertex]["interaction"] = term_index
+    graph.nodes[vertex]["heavy_ports"] = ports
 
 
 def replace_and_mutate(
@@ -1868,8 +1915,28 @@ def replace_and_mutate(
     # species-level bookkeeping can discard an earlier propagator edge.
     graph.edges[exotic_edge]["particle"] = exotic_field.label
 
+    vertex = exotic_edge[0]
+    incoming_edges = [
+        (node, vertex) if isinstance(field, FieldType) else None
+        for field, node in zip(fields, nodes)
+    ]
+    try:
+        if derivative_state is not None:
+            record_vertex_ports(graph, vertex, len(terms) - 1, term,
+                                derivative_state["term_sources"],
+                                (*incoming_edges, exotic_edge))
+    except ValueError as error:
+        return Leaf(f"Unsupported momentum provenance: {error}", None)
+
     if derivative_state is not None and derivative_state["pending_route"] is not None:
-        record_routed_derivative_edges(derivative_state, edge_dict)
+        # Resolve from this vertex's concrete input occurrence, never from the
+        # global species-keyed dictionary (which may already be overwritten).
+        numerator, _ = derivative_state["pending_route"]
+        selected = [edge for field, edge in zip(fields, incoming_edges)
+                    if field is numerator]
+        if len(selected) != 1 or selected[0] is None:
+            return Leaf("Unsupported momentum provenance: unresolved numerator occurrence", None)
+        record_routed_derivative_edges(derivative_state, {numerator: selected[0]})
 
     return Leaf(exotic_field, exotic_edge[0])
 
@@ -2066,8 +2133,44 @@ def construct_completion(
     # append the processed term to terms
     terms.append(proc_term)
 
+    vertices = set.intersection(*(set(graph.neighbors(leaf.node))
+                                  for leaf in reduced_partition))
+    if len(vertices) != 1:
+        return "Unsupported momentum provenance: unresolved final interaction vertex"
+    vertex = vertices.pop()
+    incoming_edges = [
+        (leaf.node, vertex) if isinstance(leaf.field, FieldType) else None
+        for leaf in reduced_partition
+    ]
+    # Product ordering need not coincide with the reduced partition ordering.
+    source_edges = []
+    for source in fields:
+        original = source.strip_derivs_with_indices() if source.derivs else source
+        candidates = [i for i, leaf in enumerate(reduced_partition)
+                      if leaf.field.label == original.label
+                      and tuple(map(str, leaf.field.gauge_indices))
+                      == tuple(map(str, original.gauge_indices))]
+        if len(candidates) != 1:
+            # Equal external legs have no heavy port; their permutation is
+            # handled by the separate external provenance/symmetrisation path.
+            if not any(isinstance(reduced_partition[i].field, FieldType) for i in candidates):
+                source_edges.append(None)
+                continue
+            return "Unsupported momentum provenance: repeated final heavy occurrence"
+        source_edges.append(incoming_edges[candidates[0]])
+    try:
+        record_vertex_ports(graph, vertex, len(terms) - 1, proc_term, fields, source_edges)
+    except ValueError as error:
+        return f"Unsupported momentum provenance: {error}"
+
     consume_routed_derivative(derivative_state, derivative_route)
-    record_routed_derivative_edges(derivative_state, edge_dict)
+    if derivative_route is not None:
+        numerator, _ = derivative_route
+        candidates = [incoming_edges[i] for i, leaf in enumerate(reduced_partition)
+                      if leaf.field is numerator or leaf.field == numerator]
+        if len(candidates) != 1 or candidates[0] is None:
+            return "Unsupported momentum provenance: unresolved final numerator occurrence"
+        record_routed_derivative_edges(derivative_state, {numerator: candidates[0]})
     if derivative_state["remaining"]:
         return "Unresolved derivative insertion."
     if len(derivative_state["routes"]) != derivative_count:
@@ -2169,7 +2272,21 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
     if not isinstance(args, str):
         terms, edge_dict, field_dict, lorentz_epsilons, derivative_routes = args
     else:
+        if args.startswith("Unsupported momentum provenance:"):
+            from neutrinomass.completions.routing import InvalidMomentumGraph
+            raise InvalidMomentumGraph(args)
         return FailedCompletion(args)
+
+    # Validate the completed UV graph before historical projection can discard
+    # a candidate on the strength of a wrong momentum cut.
+    if derivative_count:
+        from neutrinomass.completions.routing import validate_routes
+        provisional = Completion(
+            operator=op, partition=part, graph=graph,
+            exotics=set(edge_dict), terms=terms, topology=topo,
+            derivative_routes=derivative_routes,
+        )
+        validate_routes(provisional, derivative_order=derivative_count)
 
     completion_operator = partition.get("completion_operator")
     historical_basis = partition.get("historical_derivative_basis")
@@ -2475,6 +2592,9 @@ def compare_terms(comp1: Completion, comp2: Completion) -> Dict[str, str]:
        {"φ": "φ", "η": "η", ...}
 
     """
+    from neutrinomass.completions.routing import validate_routed_completion
+    validate_routed_completion(comp1)
+    validate_routed_completion(comp2)
     # cannot be equivalent
     if len(comp1.terms) != len(comp2.terms):
         return {}

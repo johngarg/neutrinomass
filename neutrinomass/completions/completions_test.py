@@ -811,7 +811,7 @@ def test_d6a_projected_routing_has_a_positive_uv_model(monkeypatch):
         DERIV_EFF_OPERATORS["D6a"]
     )
 
-    assert len(completions) == 4
+    assert len(completions) == 2  # wrong-cut duplicates now collapse
     assert {
         completion.lorentz_projection.coordinates for completion in completions
     } == {
@@ -955,22 +955,22 @@ def test_d3_full_census_baseline_is_stable():
     unique = []
     append_unique_completions(unique, completions)
 
-    assert len(completions) == 26
-    assert sum(bool(item.derivative_routes) for item in completions) == 2
+    assert len(completions) == 25
+    assert sum(bool(item.derivative_routes) for item in completions) == 1
     assert Counter(
         (item.topology, item.canonical_topology) for item in completions
     ) == {
-        ("3s2f_3", "3s2f_3"): 18,
+        ("3s2f_3", "3s2f_3"): 17,
         ("3s2f_4", "3s2f_4"): 8,
     }
     assert completion_digest(completions) == (
-        "dd82599a00ecd0ed202fa9c677e66ae06801828fa7b2b723f275e3515f5e1d4b"
+        "02c93669fa7257d92d6a713551301bb3d64e8657a3163f4561fc26e310134dd9"
     )
 
-    assert len(unique) == 7
-    assert sum(bool(item.derivative_routes) for item in unique) == 2
+    assert len(unique) == 6
+    assert sum(bool(item.derivative_routes) for item in unique) == 1
     assert completion_digest(unique) == (
-        "db7f3b19d4a595b62bf008a98829030e9ae44c199764c70217bba39fb4db7ebf"
+        "7c985f6358007201b77c0d748d6245616e67027c931e0755355fa099ed87f51f"
     )
 
     canonical = exact_completions(DERIV_EFF_OPERATORS["D3"])

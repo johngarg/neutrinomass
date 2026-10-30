@@ -1,0 +1,21 @@
+{
+  "source": ".Data/dm-nu-interactions/tree-uv-20261028/distinct-edges/scalar-n.jsonl",
+  "source_sha256": "06489e7b409a334a7462b72cff501807e48e730e2657775e1a7052e241ba924c",
+  "lines": [
+    115,
+    116
+  ],
+  "base_commit": "d77831f645d926b3502bd71c76ad04050d7c20dd",
+  "producer_manifest": {
+    "sector": "scalar",
+    "weak_pairing": "n",
+    "distinct_heavy_edges": true,
+    "complete": true,
+    "records": 293,
+    "seconds": 16.623650875058956,
+    "source_commit": "d77831f645d926b3502bd71c76ad04050d7c20dd",
+    "python": "3.11.17 (main, Oct  1 2026, 00:48:48) [Clang 21.0.0 (clang-2100.3.34.2)]",
+    "source": "/Users/johngargalionis/Workbench/.Projects/exploding-operators/neutrinomass",
+    "sha256": "06489e7b409a334a7462b72cff501807e48e730e2657775e1a7052e241ba924c"
+  }
+}
