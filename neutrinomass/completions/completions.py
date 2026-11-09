@@ -1840,6 +1840,12 @@ def record_vertex_ports(graph, vertex, term_index, term, sources, edges):
                    if isinstance(term.tensors[i], IndexedField)
                    and state_key(term.tensors[i]) == state_key(target)]
         if len(matches) > 1:
+            # Untransformed factors can retain the original object even when
+            # two identical heavy singlets have no gauge indices to compare.
+            original = [i for i in matches if term.tensors[i] is target]
+            if len(original) == 1:
+                matches = original
+        if len(matches) > 1:
             matches = [i for i in matches
                        if tuple(map(str, term.tensors[i].gauge_indices))
                        == tuple(map(str, target.gauge_indices))]

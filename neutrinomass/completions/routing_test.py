@@ -1,10 +1,11 @@
 """Physical endpoint regressions for the October 2026 routing defect."""
 from functools import reduce
 
+import networkx as nx
 import pytest
 
 from neutrinomass.completions.completions import (
-    derivative_route_alternatives, process_derivative_term,
+    derivative_route_alternatives, process_derivative_term, record_vertex_ports,
 )
 from neutrinomass.completions.core import (
     MajoranaFermion, VectorLikeDiracFermion, RealScalar,
@@ -83,6 +84,27 @@ def test_wrong_edge_with_matching_particle_rejected_by_consumers():
                     lambda c: are_equivalent_completions(c, c)]:
         with pytest.raises(InvalidMomentumGraph, match="disagree"):
             consume(corrupted)
+
+
+def test_repeated_singlet_ports_follow_the_original_factors():
+    from neutrinomass.completions.routing import InvalidMomentumGraph
+    from neutrinomass.tensormethod.core import eps
+
+    left = MajoranaFermion("N", "u0")
+    right = MajoranaFermion("N", "u1")
+    term = right * left * eps("-u1 -u0")
+    graph = nx.path_graph(3)
+    edges = ((0, 1), (1, 2))
+    record_vertex_ports(graph, 1, 0, term, (left, right), edges)
+    for port, source, edge in zip(graph.nodes[1]["heavy_ports"], (left, right), edges):
+        assert term.tensors[port["tensor"]] is source
+        assert tuple(port["edge"]) == edge
+
+    # With both original occurrences lost, the singlets have identical
+    # quantum numbers and no spectator gauge indices to distinguish them.
+    detached = (MajoranaFermion("N", "u2"), MajoranaFermion("N", "u3"))
+    with pytest.raises(InvalidMomentumGraph, match="Unresolved equal heavy occurrences"):
+        record_vertex_ports(graph, 1, 0, term, detached, edges)
 
 
 def test_repeated_species_ports_and_relabelling_survive_serialization():
