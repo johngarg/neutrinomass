@@ -55,16 +55,29 @@ first. The local contributions themselves are unchanged in that comparison.
 before/after witnesses. These are implementation benchmark counts, not
 publication-wide physical model counts.
 
+## Local one-derivative construction, November 2026
+
+At `fd31ac3`, each newly furnished local one-derivative tree gets its kinetic
+fermion edge and canonical cut from the processed UV endpoints. Historical
+Lorentz projection sews the Weyl chains through mass propagators and expands
+the remaining momentum over the cut. The differentiated external field in the
+partition records the construction placement. The stored propagator term
+supplies the momentum used for projection and amplitude checks.
+
+The Higgs-seeded `DHdduL` regression checks the four published mediator pairs
+and the `S3 F13` cut separating Higgs and up quark from lepton and two down
+quarks. D3 has 24 local placement records. Their five exact classes also
+occur in explicit numerator construction, which supplies a sixth class.
+
 ## Unresolved scope
 
-The legacy *local derivative* path can produce a physical momentum edge
-without any route metadata. In the saved 745-class D20 structural artifact,
-156 records have that omission; among the other 589, 360 routes disagree and
-229 agree. Current consumer guards validate supplied routes, and do not yet
-certify that local derivative path. Merely attaching a reconstructed edge
-after `project_local` would not establish the correctness of its earlier
-projection or candidate selection. That integration is required before this
-branch can be considered a package-wide repair.
+Historical local records can omit the physical edge. In the saved 745-class
+D20 structural artifact, 156 records have that omission. Of the other 589,
+360 stored routes disagree with the endpoints and 229 agree. Reproducing a
+projected census requires regeneration wherever the old projection could
+have removed candidates. Higher-order local construction also requires
+assigning any remaining derivative degree to propagator denominators or
+additional kinetic numerators.
 
 The stored D5b files inspected here contain 432 raw/43 reduced records, all
 without their physical momentum-route metadata. They are not the requested
