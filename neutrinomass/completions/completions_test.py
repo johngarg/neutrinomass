@@ -813,6 +813,11 @@ def test_d6a_projected_routing_has_a_positive_uv_model(monkeypatch):
     )
 
     assert len(completions) == 2  # wrong-cut duplicates now collapse
+    basis = HistoricalDerivativeBasis.from_operator(DERIV_EFF_OPERATORS["D6a"])
+    for completion in completions:
+        # Sewing the UV chains independently reproduces the explicit
+        # open-spinor contraction for both known numerator placements.
+        assert basis.project_local_numerator(completion) == completion.lorentz_projection
     assert {
         completion.lorentz_projection.coordinates for completion in completions
     } == {
@@ -895,6 +900,19 @@ def test_d6a_historical_local_basis_keeps_every_derivative_placement():
         )
 
 
+def test_d6a_local_generation_projects_the_verified_cut():
+    local = next(deriv_operator_completion_stream(
+        DERIV_EFF_OPERATORS["D6a"], canonical_partitions=True
+    ))
+    assert any(leaf.field.derivs for leaf in partition_leaves(local.partition))
+    validate_routes(local, derivative_order=1)
+    # The D on a lepton was the construction seed. The cut also carries the
+    # charged-lepton momenta, which project onto two other placement blocks.
+    assert local.lorentz_projection.coordinates == (
+        "0", "1", "0", "0", "1", "0", "0", "1", "0"
+    )
+
+
 def test_operator_strip_derivs_preserves_field_statistics():
     stripped = operator_strip_derivs(DERIV_EFF_OPERATORS["D20"].operator)
     higgs_fields = [
@@ -956,27 +974,29 @@ def test_d3_full_census_baseline_is_stable():
     unique = []
     append_unique_completions(unique, completions)
 
-    # The 24 local records share five exact classes. Six routed witnesses
-    # survive, including five previously discarded against a local record.
-    assert len(completions) == 30
-    assert sum(bool(item.derivative_routes) for item in completions) == 6
+    # All 24 local placements now carry a verified route. They represent
+    # five of the six classes independently produced by explicit routing.
+    assert len(completions) == 25
+    local = [
+        item for item in completions
+        if any(leaf.field.derivs for leaf in partition_leaves(item.partition))
+    ]
+    assert len(local) == 24
+    for item in completions:
+        validate_routes(item, derivative_order=1)
     assert Counter(
         (item.topology, item.canonical_topology) for item in completions
     ) == {
-        ("3s2f_3", "3s2f_3"): 20,
-        ("3s2f_4", "3s2f_4"): 10,
+        ("3s2f_3", "3s2f_3"): 17,
+        ("3s2f_4", "3s2f_4"): 8,
     }
     assert completion_digest(completions) == (
-        "842f620213c3ad258f917154f50efff21723dda47d043a2b59eb0497a5281851"
+        "a8feeecca74277eba11031017da284abf6cc11988ce70e46c6583b201e73ddf6"
     )
 
-    assert len(unique) == 11
-    routed = [item for item in unique if item.momentum_contributions]
-    assert len(routed) == 6
-    for item in routed:
-        validate_routes(item, derivative_order=1)
+    assert len(unique) == 6
     assert completion_digest(unique) == (
-        "9f5d171975dfe20ce5a722e5f764b90b97d04d3bfcac1845feb824612bf2e02b"
+        "abb5a39db05fff81f2ab6704697c7b13370b01acd2848bfe6adef07ac882db1a"
     )
 
     canonical = exact_completions(DERIV_EFF_OPERATORS["D3"])

@@ -12,8 +12,10 @@ import networkx as nx
 from neutrinomass.completions.amplitudes import (
     external_leg_provenance, _internal_occurrence_edges, _interaction_vertices,
 )
-from neutrinomass.completions.completions import canonical_propagator_cut, partition_leaves
-from neutrinomass.completions.core import VectorLikeDiracFermion
+from neutrinomass.completions.completions import (
+    _edge_particle_field, canonical_propagator_cut, partition_leaves,
+)
+from neutrinomass.completions.core import PropagatorContribution, VectorLikeDiracFermion
 from neutrinomass.completions.equivalence import field_label_parts
 
 
@@ -171,6 +173,23 @@ def inspect_endpoints(completion):
     stored = tuple(sorted(tuple(sorted(p.edge)) for p in completion.momentum_contributions
                           if p.numerator_kind == "momentum"))
     return EndpointAudit(occurrences, vertices, momentum, stored, kinds)
+
+
+def local_fermion_numerator(completion, differentiated):
+    """Resolve a local one-derivative placement on its finished UV tree."""
+    audit = inspect_endpoints(completion)
+    if len(audit.momentum_edges) != 1:
+        return None
+    edge, = audit.momentum_edges
+    # Use the state recorded on the propagator for its Lorentz convention.
+    particle, field = _edge_particle_field(completion, edge)
+    helper = differentiated.strip_derivs_with_indices()
+    return PropagatorContribution(
+        edge=edge, particle=particle, numerator_kind="momentum", denominator_order=0,
+        numerator_lorentz=field.dynkin[:2], differentiated_field=helper.label,
+        differentiated_lorentz=helper.dynkin[:2],
+        cut_side=canonical_propagator_cut(completion.partition, completion.graph, edge),
+    )
 
 
 def validate_routes(completion, *, derivative_order=None):

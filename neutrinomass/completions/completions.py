@@ -867,17 +867,8 @@ class HistoricalDerivativeBasis:
 
     def project_routed(self, explicit, partition, graph, route):
         contraction = self._closed_routed_contraction(explicit)
-        cut_graph = graph.copy()
-        cut_graph.remove_edge(*route.edge)
         external = {leaf.node: leaf.field for leaf in partition_leaves(partition)}
-        sides = []
-        for component in nx.connected_components(cut_graph):
-            nodes = tuple(sorted(node for node in component if node in external))
-            if nodes:
-                sides.append(nodes)
-        if len(sides) != 2:
-            raise ValueError("A routed propagator must split external fields in two")
-        side = min(sides)
+        side = canonical_propagator_cut(partition, graph, route.edge)
 
         by_occurrence = {
             placement.occurrence_key: placement for placement in self.placements
@@ -895,6 +886,42 @@ class HistoricalDerivativeBasis:
         if not any(coordinates):
             return None
         return self._metadata(coordinates)
+
+    def project_local_numerator(self, completion):
+        """Sew the UV Weyl chains and project the full momentum on the cut."""
+        from neutrinomass.completions.routing import validate_routes
+
+        audit = validate_routes(completion, derivative_order=1)
+        route, = completion.derivative_routes
+        external = {
+            leaf.node: leaf.field.strip_derivs_with_indices()
+            for leaf in partition_leaves(completion.partition)
+        }
+        # Yukawa vertices pair two Weyl ports. Mass propagators continue the
+        # epsilon chain. The kinetic propagator leaves its two spinor ports open.
+        chains = nx.Graph()
+        for node, field in external.items():
+            if field.is_fermion:
+                chains.add_edges_from(completion.graph.edges(node))
+        chains.add_edges_from(
+            edge for edge, kind in audit.edge_kinds.items() if kind == "mass"
+        )
+        contractions = []
+        for component in nx.connected_components(chains):
+            ends = sorted(component & external.keys())
+            if len(ends) == 1:
+                continue
+            if len(ends) != 2:
+                raise ValueError("A UV fermion chain must end on external Weyl fields")
+            left, right = (external[node] for node in ends)
+            if left.lorentz_irrep != right.lorentz_irrep:
+                raise ValueError("A mass-propagator chain must join like chiralities")
+            kind = "Undotted" if left.dynkin[:2] == "10" else "Dotted"
+            a, = left.indices_by_type[kind]
+            b, = right.indices_by_type[kind]
+            contractions.append(eps(f"{-a} {-b}"))
+        explicit = Operator(*external.values(), *contractions)
+        return self.project_routed(explicit, completion.partition, completion.graph, route)
 
 
 def _derivative_irrep_dynkins(field):
@@ -2283,16 +2310,27 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
             raise InvalidMomentumGraph(args)
         return FailedCompletion(args)
 
-    # Validate the completed UV graph before historical projection can discard
-    # a candidate on the strength of a wrong momentum cut.
+    new_edge_attrs = {v: {"particle": k.label} for k, v in edge_dict.items()}
+    nx.set_edge_attributes(graph, new_edge_attrs)
+    completion = Completion(
+        operator=op, partition=part, graph=graph, exotics=set(edge_dict),
+        terms=terms, topology=topo, canonical_topology=canonical_topo,
+        derivative_routes=derivative_routes,
+    )
+    # The local constructor uses an external D to furnish each vertex. The
+    # processed interactions determine which propagator actually carries p.
+    from neutrinomass.completions.routing import local_fermion_numerator, validate_routes
+
     if derivative_count:
-        from neutrinomass.completions.routing import validate_routes
-        provisional = Completion(
-            operator=op, partition=part, graph=graph,
-            exotics=set(edge_dict), terms=terms, topology=topo,
-            derivative_routes=derivative_routes,
-        )
-        validate_routes(provisional, derivative_order=derivative_count)
+        validate_routes(completion, derivative_order=derivative_count)
+    else:
+        differentiated = [f for f in op.operator.indexed_fields if f.derivs]
+        if len(differentiated) == 1 and differentiated[0].derivs == 1:
+            numerator = local_fermion_numerator(completion, differentiated[0])
+            if numerator is None:
+                return FailedCompletion("Local tree does not supply one kinetic numerator.")
+            completion = _completion_with_momentum_contributions(completion, (numerator,))
+            validate_routes(completion, derivative_order=1)
 
     completion_operator = partition.get("completion_operator")
     historical_basis = partition.get("historical_derivative_basis")
@@ -2317,23 +2355,9 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
         explicit_op = reduce(lambda a, b: a * b, lorentz_epsilons, op.operator)
     else:
         explicit_op = completion_operator.operator
-    exotics = set(f for f in edge_dict.keys())
-    eff_operator = EffectiveOperator(op.name, explicit_op)
-
-    new_edge_attrs = {v: {"particle": k.label} for k, v in edge_dict.items()}
-    nx.set_edge_attributes(graph, new_edge_attrs)
-
-    return Completion(
-        operator=eff_operator,
-        partition=part,
-        graph=graph,
-        exotics=exotics,
-        terms=terms,
-        topology=topo,
-        canonical_topology=canonical_topo,
-        derivative_routes=derivative_routes,
-        lorentz_projection=lorentz_projection,
-    )
+    completion.operator = EffectiveOperator(op.name, explicit_op)
+    completion.lorentz_projection = lorentz_projection
+    return completion
 
 
 def operator_completions(
@@ -3238,22 +3262,19 @@ def deriv_operator_completion_stream(
         and unique_lorentz_completion_operator(operator) is None
     ):
         historical_basis = HistoricalDerivativeBasis.from_operator(operator)
-        placements = historical_basis.placements
-        deriv_combos = [placement.operator for placement in placements]
+        deriv_combos = [placement.operator for placement in historical_basis.placements]
     elif unique_projection is None and derivative_count == 2:
         second_derivative_basis = UnreducedSecondDerivativeBasis.from_operator(
             operator
         )
-        placements = second_derivative_basis.placements
-        deriv_combos = [placement.operator for placement in placements]
+        deriv_combos = [placement.operator for placement in second_derivative_basis.placements]
     else:
-        placements = None
         deriv_combos = derivative_combinations(operator)
 
     if verbose:
         print(f"Finding completions of {len(deriv_combos)} IBP-related operators...")
 
-    for combo_number, combo in enumerate(deriv_combos):
+    for combo in deriv_combos:
         if combo.operator.simplify() == 0:
             continue
         for completion in operator_completions(
@@ -3262,10 +3283,10 @@ def deriv_operator_completion_stream(
             canonical_partitions=canonical_partitions,
         ):
             if historical_basis is not None:
-                placement = placements[combo_number]
-                completion.lorentz_projection = historical_basis.project_local(
-                    placement, completion.operator.operator
-                )
+                projection = historical_basis.project_local_numerator(completion)
+                if projection is None:
+                    continue
+                completion.lorentz_projection = projection
             elif unique_projection is not None:
                 completion.lorentz_projection = unique_projection
             elif second_derivative_basis is not None:
@@ -3301,10 +3322,13 @@ def deriv_operator_completions(
         verbose=verbose,
         canonical_partitions=canonical_partitions,
     ):
-        if completion.momentum_contributions:
-            routed.append(completion)
-        else:
+        # Local placement multiplicities belong to the compatibility list.
+        # Both producers record propagator terms; only the local producer
+        # furnishes the partition with differentiated external fields.
+        if any(leaf.field.derivs for leaf in partition_leaves(completion.partition)):
             local.append(completion)
+        else:
+            routed.append(completion)
     append_unique_completions(local, routed)
 
     return local
