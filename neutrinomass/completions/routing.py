@@ -29,7 +29,7 @@ def validate_routed_completion(completion):
         raise InvalidMomentumGraph("Legacy edge-only routing requires explicit migration")
 
 
-def state_key(field):
+def state_key(field, ignored_charges=()):
     """Actual field state, without dummy indices or derivative helper labels."""
     field = field.strip_derivs() if field.derivs else field
     # strip_derivs returns an unindexed Field, whose conjugation lives in
@@ -37,19 +37,23 @@ def state_key(field):
     label = field.label
     if field.is_conj and not label.endswith("†"):
         label += "†"
-    return (label, field.dynkin, tuple(sorted(field.charges.items())), field.is_conj)
+    charges = tuple(sorted(
+        (name, value) for name, value in field.charges.items()
+        if name not in ignored_charges
+    ))
+    return (label, field.dynkin, charges, field.is_conj)
 
 
-def species_states(exotics):
+def species_states(exotics, ignored_charges=()):
     """Resolve states by explicit conjugation/partner operations, not suffixes."""
     states = {}
     for exotic in exotics:
         orbit = [exotic, exotic.conj]
         if isinstance(exotic, VectorLikeDiracFermion):
             orbit.extend([exotic.dirac_partner(), exotic.dirac_partner().conj])
-        family = frozenset(state_key(f) for f in orbit)
+        family = frozenset(state_key(f, ignored_charges) for f in orbit)
         for field in orbit:
-            key = state_key(field)
+            key = state_key(field, ignored_charges)
             value = (family, type(exotic).__name__, getattr(field, "is_unbarred", None))
             if key in states and states[key] != value:
                 raise InvalidMomentumGraph("Ambiguous species/partner state")
@@ -57,19 +61,25 @@ def species_states(exotics):
     return states
 
 
-def classify_fermion_pair(left, right, states):
+def _conjugate_gauge_states(left, right, ignored_charges):
+    return left.dynkin[2:] == right.conj.dynkin[2:] and all(
+        left.charges.get(k, 0) + right.charges.get(k, 0) == 0
+        for k in (left.charges.keys() | right.charges.keys()) - set(ignored_charges)
+    )
+
+
+def classify_fermion_pair(left, right, states, ignored_charges=()):
     """Check the Majorana or vectorlike mass/kinetic pairing independently."""
     if not left.is_fermion or not right.is_fermion:
         raise InvalidMomentumGraph("A fermion propagator has a nonfermion endpoint")
     try:
-        a, b = states[state_key(left)], states[state_key(right)]
+        a = states[state_key(left, ignored_charges)]
+        b = states[state_key(right, ignored_charges)]
     except KeyError as error:
         raise InvalidMomentumGraph("Endpoint is not an explicit registered Weyl state") from error
     if a[:2] != b[:2]:
         raise InvalidMomentumGraph("Propagator connects different species")
-    if left.dynkin[2:] != right.conj.dynkin[2:] or any(
-            left.charges.get(k, 0) + right.charges.get(k, 0) != 0
-            for k in set(left.charges) | set(right.charges)):
+    if not _conjugate_gauge_states(left, right, ignored_charges):
         raise InvalidMomentumGraph("Propagator gauge representations/charges are not conjugate")
     momentum = left.lorentz_irrep != right.lorentz_irrep
     if left.dynkin[:2] not in {"10", "01"} or right.dynkin[:2] not in {"10", "01"}:
@@ -98,7 +108,12 @@ class EndpointAudit:
 def inspect_endpoints(completion):
     if not nx.is_tree(completion.graph):
         raise InvalidMomentumGraph("Matching requires a connected tree")
-    states = species_states(completion.exotics)
+    external = partition_leaves(completion.partition)
+    # 3B is a bookkeeping charge. On a B-violating tree the two sides of
+    # a cut can infer different 3B assignments for the same gauge multiplet.
+    total_3b = sum(leaf.field.charges.get("3b", 0) for leaf in external)
+    ignored_charges = ("3b",) if total_3b else ()
+    states = species_states(completion.exotics, ignored_charges)
     labels = {label for key in states for label in [key[0]]}
     bases = {field_label_parts(label)[0] for label in labels}
     provenance = external_leg_provenance(completion)
@@ -122,7 +137,7 @@ def inspect_endpoints(completion):
     endpoints = defaultdict(list)
     for occurrence, edge in occurrences.items():
         endpoints[tuple(sorted(edge))].append(occurrence)
-    leaves = {leaf.node for leaf in partition_leaves(completion.partition)}
+    leaves = {leaf.node for leaf in external}
     internal = {tuple(sorted((a, b))) for a, b in completion.graph.edges
                 if a not in leaves and b not in leaves}
     if set(endpoints) != internal:
@@ -138,17 +153,16 @@ def inspect_endpoints(completion):
         if left.derivs or right.derivs:
             raise InvalidMomentumGraph("Differentiated heavy endpoints require the signed-vertex route validator")
         if left.is_fermion or right.is_fermion:
-            kinds[edge] = classify_fermion_pair(left, right, states)
+            kinds[edge] = classify_fermion_pair(left, right, states, ignored_charges)
         else:
             try:
-                a, b = states[state_key(left)], states[state_key(right)]
+                a = states[state_key(left, ignored_charges)]
+                b = states[state_key(right, ignored_charges)]
             except KeyError as error:
                 raise InvalidMomentumGraph("Unregistered bosonic endpoint") from error
             if a[:2] != b[:2] or left.lorentz_irrep != right.lorentz_irrep:
                 raise InvalidMomentumGraph("Bosonic endpoint species/spins disagree")
-            if left.dynkin[2:] != right.conj.dynkin[2:] or any(
-                    left.charges.get(k, 0) + right.charges.get(k, 0) != 0
-                    for k in set(left.charges) | set(right.charges)):
+            if not _conjugate_gauge_states(left, right, ignored_charges):
                 raise InvalidMomentumGraph("Bosonic endpoint gauge states are not conjugate")
             if a[1].startswith("Complex") and left.is_conj == right.is_conj:
                 raise InvalidMomentumGraph("Complex propagator has equally oriented endpoints")

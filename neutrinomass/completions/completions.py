@@ -2526,10 +2526,12 @@ def momentum_contributions_equivalent(comp1, comp2, oriented_remapping):
 
     contributions1 = getattr(comp1, "momentum_contributions", ())
     contributions2 = getattr(comp2, "momentum_contributions", ())
-    if not contributions1 or not contributions2:
-        return True
+    # An unrecorded route cannot establish equality with a specific
+    # propagator term, even if the two UV interaction lists coincide.
     if len(contributions1) != len(contributions2):
         return False
+    if not contributions1:
+        return True
 
     legacy_numerators = all(
         contribution.numerator_kind == "momentum"
@@ -2612,12 +2614,8 @@ def compare_terms(comp1: Completion, comp2: Completion) -> Dict[str, str]:
 
 
 def are_equivalent_completions(comp1: Completion, comp2: Completion) -> bool:
-    """Checks to see if the Lagrangian terms describing two completions are
-    equivalent.
-
-    Two completions are equivalent if their exact contraction graphs are the same
-    up to representation-preserving field relabellings.
-
+    """Compare the interaction graphs, projections and recorded propagator
+    contributions up to representation-preserving field relabellings.
     """
     return bool(compare_terms(comp1, comp2))
 
@@ -3307,7 +3305,8 @@ def deriv_operator_completions(
 
 
 def exact_completions(operator: EffectiveOperator, verbose=False) -> List[Completion]:
-    """Return exact UV-Lagrangian classes after symbolic construction.
+    """Return exact completions after symbolic construction. Distinct recorded
+    propagator terms can give multiple representatives of one UV Lagrangian.
 
     The canonical-partition preflight is safe for ordinary operators and
     one-dimensional one-derivative spaces.  Historical projected spaces retain

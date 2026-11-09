@@ -5,6 +5,7 @@ from neutrinomass.tensormethod.sm import L, Q, H, eb, ub, db
 from neutrinomass.tensormethod.core import D
 
 from neutrinomass.completions.operators import EFF_OPERATORS, DERIV_EFF_OPERATORS
+from neutrinomass.completions.routing import validate_routes
 from neutrinomass.completions.fingerprints import (
     completion_digest,
     propagator_model_fingerprint,
@@ -955,22 +956,27 @@ def test_d3_full_census_baseline_is_stable():
     unique = []
     append_unique_completions(unique, completions)
 
-    assert len(completions) == 25
-    assert sum(bool(item.derivative_routes) for item in completions) == 1
+    # The 24 local records share five exact classes. Six routed witnesses
+    # survive, including five previously discarded against a local record.
+    assert len(completions) == 30
+    assert sum(bool(item.derivative_routes) for item in completions) == 6
     assert Counter(
         (item.topology, item.canonical_topology) for item in completions
     ) == {
-        ("3s2f_3", "3s2f_3"): 17,
-        ("3s2f_4", "3s2f_4"): 8,
+        ("3s2f_3", "3s2f_3"): 20,
+        ("3s2f_4", "3s2f_4"): 10,
     }
     assert completion_digest(completions) == (
-        "02c93669fa7257d92d6a713551301bb3d64e8657a3163f4561fc26e310134dd9"
+        "842f620213c3ad258f917154f50efff21723dda47d043a2b59eb0497a5281851"
     )
 
-    assert len(unique) == 6
-    assert sum(bool(item.derivative_routes) for item in unique) == 1
+    assert len(unique) == 11
+    routed = [item for item in unique if item.momentum_contributions]
+    assert len(routed) == 6
+    for item in routed:
+        validate_routes(item, derivative_order=1)
     assert completion_digest(unique) == (
-        "7c985f6358007201b77c0d748d6245616e67027c931e0755355fa099ed87f51f"
+        "9f5d171975dfe20ce5a722e5f764b90b97d04d3bfcac1845feb824612bf2e02b"
     )
 
     canonical = exact_completions(DERIV_EFF_OPERATORS["D3"])
