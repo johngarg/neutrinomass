@@ -1,6 +1,7 @@
 """Bounded historical-projection witnesses, usable with either checkout."""
 import argparse
 from importlib import import_module
+from itertools import islice
 import json
 from pathlib import Path
 import sys
@@ -12,10 +13,17 @@ parser = argparse.ArgumentParser()
 parser.add_argument("output", type=Path)
 args = parser.parse_args()
 module = import_module("neutrinomass.completions.completions")
-original = module.partitions
-module.partitions = lambda op, verbose=False: original(op, verbose=verbose)[144:145]
-bounded = module.momentum_routed_completions(DERIV_EFF_OPERATORS["D6a"])
-module.partitions = original
+partition_source = "partition_stream" if hasattr(module, "partition_stream") else "partitions"
+original = getattr(module, partition_source)
+def witness_partition(op, verbose=False):
+    return islice(original(op, verbose=verbose), 144, 145)
+
+
+setattr(module, partition_source, witness_partition)
+try:
+    bounded = module.momentum_routed_completions(DERIV_EFF_OPERATORS["D6a"])
+finally:
+    setattr(module, partition_source, original)
 result = {"interpreter": sys.executable, "source": module.__file__,
           "D6a": [completion_to_record(c) for c in bounded]}
 args.output.write_text(json.dumps(result, indent=2) + "\n")

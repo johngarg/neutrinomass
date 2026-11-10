@@ -1,9 +1,13 @@
 from copy import deepcopy
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from neutrinomass.completions.completions import operator_completions
+from neutrinomass.completions.completions import (
+    are_equivalent_completions, operator_completions,
+)
+from neutrinomass.completions.routing import InvalidMomentumGraph, validate_routes
 from neutrinomass.completions.core import (
     ComplexScalar,
     VectorLikeDiracFermion,
@@ -20,11 +24,13 @@ from neutrinomass.database.serialization import (
     loads_completion,
 )
 from neutrinomass.database.rebuild import (
+    _restore_historical_local_numerator,
     audit_exact_artifact,
     classify_historical_classes,
     completion_stream,
     file_sha256,
     filter_democratic_registry,
+    iter_historical_records,
     operator_inventory,
     operator_registry,
     partition_bucketable_historical_records,
@@ -141,6 +147,24 @@ def test_streamed_generation_and_disk_backed_historical_audit(
     assert audit["reproduced_historical_classes"] == 1
     assert audit["missing_historical_fingerprints"] == []
     assert model_path.read_text(encoding="utf-8").count("\n") == 3
+
+
+def test_archived_local_d3_recovers_the_verified_cut():
+    # First original op_D3.dat record, including its graph without port metadata.
+    legacy = Path(__file__).resolve().parents[2] / "tests/fixtures/legacy-d3-first.dat"
+    restored, = iter_historical_records("D3", legacy)
+    validate_routes(restored, derivative_order=1)
+    numerator, = restored.momentum_contributions
+    assert numerator.edge == (5832, 52488)
+    assert numerator.cut_side == (6, 54)
+    assert any(are_equivalent_completions(restored, c) for c in completion_stream("D3"))
+
+    restored.momentum_contributions = ()
+    restored.derivative_edges = ()
+    restored.derivative_routes = ()
+    restored.graph.remove_edge(*numerator.edge)
+    with pytest.raises(InvalidMomentumGraph):
+        _restore_historical_local_numerator(restored)
 
 
 def test_legacy_historical_normalisation_is_streamed_to_safe_jsonl(tmp_path):

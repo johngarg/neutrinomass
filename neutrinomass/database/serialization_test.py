@@ -193,12 +193,13 @@ def test_version_one_derivative_route_is_upgraded_on_read():
     )
 
 
-def test_completion_jsonl_round_trip(tmp_path):
+@pytest.mark.parametrize("filename", ["completions.jsonl", "completions.jsonl.gz"])
+def test_completion_jsonl_round_trip(tmp_path, filename):
     completions = [
         completion_with_route(),
         next(operator_completions(EFF_OPERATORS["2"])),
     ]
-    path = tmp_path / "completions.jsonl"
+    path = tmp_path / filename
 
     write_completion_jsonl(path, completions)
     restored = read_completion_jsonl(path)

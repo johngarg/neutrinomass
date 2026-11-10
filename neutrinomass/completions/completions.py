@@ -136,19 +136,43 @@ def quick_remove_equivalent_partitions(partitions):
     return list(dict.fromkeys(partitions))
 
 
-def distribute_fields(fields, partition):
-    """Takes the fields and puts them in place of the strings in the partition
-    template in every possible way.
+def _field_assignments(fields, partition):
+    """Yield distinct assignments of indexed field occurrences in historical order.
 
-        >>> distribute_fields([H('i0_'), H('i1_'), L('u0_ i2_'), L('u1_ i3_')], (('F', 18), ('S', 162), (('F', 6), ('S', 54))))
-        [((L(u0_, i2_), 18), (H(i0_), 162), ...), ((L(u1_, i3_), 18), (H(i0_), 162), ...), ...]
-
-    Returns lots of double ups.
-
+    Only the order *within* each statistics group affects the partition. The
+    first interleaving of two such orders in itertools.permutations always
+    takes the smaller of their two head indices. Visit exactly those merges
+    in source-index order.
     """
-    perms = permutations(fields)
-    parts = (replace_fields(permutation, partition) for permutation in perms)
-    return quick_remove_equivalent_partitions(parts)
+    bosons = tuple(field.is_boson for field in fields)
+
+    def visit(remaining, limits, current):
+        if not remaining:
+            yield current
+            return
+
+        for offset, index in enumerate(remaining):
+            kind = bosons[index]
+            if index < limits[kind]:
+                continue
+            rest = remaining[:offset] + remaining[offset + 1:]
+            # The next head of the other group has to follow all the indices
+            # emitted while it waited. Prune if it has no eligible head.
+            other = [i for i in rest if bosons[i] != kind]
+            threshold = max(index, limits[not kind])
+            if other and max(other) < threshold:
+                continue
+            next_limits = [-1, -1]
+            next_limits[not kind] = threshold
+            updated, _ = replace(current, "S" if kind else "F", fields[index])
+            yield from visit(rest, next_limits, updated)
+
+    yield from visit(tuple(range(len(fields))), (-1, -1), partition)
+
+
+def distribute_fields(fields, partition):
+    """Return the ordered assignments, including for repeated equal fields."""
+    return quick_remove_equivalent_partitions(_field_assignments(tuple(fields), partition))
 
 
 def node_dictionary(
@@ -257,12 +281,10 @@ def partition_stream(operator: EffectiveOperator, verbose=False) -> Iterable[dic
             print(f"Furnishing topology {counter}...")
             counter += 1
 
-        perms = distribute_fields(fields, topology_data["partition"])
         for op in colour_ops:
-            # col_out = []
             epsilons = op.operator.epsilons
 
-            for perm in perms:
+            for perm in _field_assignments(fields, topology_data["partition"]):
                 g = topology_data["graph"]
                 g = set_external_fields(perm, g, fields_and_counters)
 
@@ -275,11 +297,6 @@ def partition_stream(operator: EffectiveOperator, verbose=False) -> Iterable[dic
                     "canonical_topology": topology_data["canonical_topology"],
                 }
                 yield data
-
-            # if remove_isomorphic_diagrams:
-            #     col_out = remove_isomorphic(col_out)
-
-            # out += col_out
 
 
 def partitions(operator: EffectiveOperator, verbose=False) -> List[dict]:
@@ -307,11 +324,12 @@ def graph_fingerprint(part):
 
 
 def remove_isomorphic(partitions: List[dict]) -> List[dict]:
-    """Same algorithm as removeIsomorphic in ``wolfram/`` directory. Remove
-    isomorphic graphs (by side effect) to reduce double-ups of completions.
+    """Return the first representative of each bare-graph class."""
+    return list(_nonisomorphic_partitions(partitions))
 
-    """
-    retained = []
+
+def _nonisomorphic_partitions(partitions):
+    """Keep bare reference graphs independent of later furnishing mutations."""
     by_coarse_key = defaultdict(list)
     for partition in partitions:
         graph = partition["graph"]
@@ -328,9 +346,8 @@ def remove_isomorphic(partitions: List[dict]) -> List[dict]:
             for known in by_coarse_key[coarse_key]
         ):
             continue
-        retained.append(partition)
-        by_coarse_key[coarse_key].append(partition)
-    return retained
+        by_coarse_key[coarse_key].append({"graph": graph.copy()})
+        yield partition
 
 
 # The approach to finding the completions is the following: contract off fields
@@ -2365,44 +2382,23 @@ def operator_completions(
 ) -> Iterable[Completion]:
     """Yield completions of an effective operator.
 
-    Raw generation consumes furnished partitions as a stream so large regular
-    operators do not retain every deep-copied partition graph.  Canonical
-    preflight remains list-backed because its isomorphism pass compares the
-    complete partition collection.
+    Both raw and canonical modes furnish partitions incrementally.
     """
-
+    parts = partition_stream(operator, verbose=verbose)
     if canonical_partitions:
-        parts = partitions(operator, verbose=verbose)
-        parts = remove_isomorphic(parts)
-    elif verbose:
-        # The progress bar requires a known total.  Production census calls are
-        # deliberately non-verbose and use the bounded-memory stream below.
-        parts = partitions(operator, verbose=verbose)
-    else:
-        parts = partition_stream(operator)
+        parts = _nonisomorphic_partitions(parts)
     if verbose:
-        mode = "canonical" if canonical_partitions else "raw"
-        print(f"Starting with {len(parts)} {mode} partitions...")
-
-    if verbose:
-        print(f"Finding completions of {len(parts)} partitions...")
-        with alive_bar(len(parts)) as bar:
-            for p in parts:
-                # completions.append(partition_completion(p))
-                comp = partition_completion(p)
-                if not isinstance(comp, FailedCompletion):
-                    yield comp
+        with alive_bar() as bar:
+            for part in parts:
+                completion = partition_completion(part)
+                if not isinstance(completion, FailedCompletion):
+                    yield completion
                 bar()
     else:
-        for p in parts:
-            comp = partition_completion(p)
-            if not isinstance(comp, FailedCompletion):
-                yield comp
-
-        # completions = [partition_completion(p) for p in parts]
-
-    # good_completions = [c for c in completions if not isinstance(c, FailedCompletion)]
-    # return good_completions
+        for part in parts:
+            completion = partition_completion(part)
+            if not isinstance(completion, FailedCompletion):
+                yield completion
 
 
 def check_remapping_on_terms(terms1, terms2, remapping):
@@ -3004,9 +3000,9 @@ def momentum_routed_completion_stream(
     stripped_operator = EffectiveOperator(
         operator.name, construct_operator(fields, epsilons)
     )
-    routed_partitions = partitions(stripped_operator, verbose=verbose)
+    routed_partitions = partition_stream(stripped_operator, verbose=verbose)
     if canonical_partitions:
-        routed_partitions = remove_isomorphic(routed_partitions)
+        routed_partitions = _nonisomorphic_partitions(routed_partitions)
     for partition in routed_partitions:
         partition_candidates = []
         for numerator_count in range(n_derivs % 2, n_derivs + 1, 2):

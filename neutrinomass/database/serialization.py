@@ -3,6 +3,7 @@
 """Versioned, non-executable JSON serialisation for completion records."""
 
 from pathlib import Path
+import gzip
 import json
 import re
 
@@ -399,7 +400,8 @@ def loads_completion(payload):
 
 def write_completion_jsonl(path, completions):
     path = Path(path)
-    with path.open("w", encoding="utf-8") as stream:
+    opener = gzip.open if path.suffix == ".gz" else open
+    with opener(path, "wt", encoding="utf-8") as stream:
         for completion in completions:
             stream.write(dumps_completion(completion) + "\n")
 
@@ -412,7 +414,8 @@ def iter_completion_jsonl(path):
     """Yield completions from a JSONL artifact without retaining the full file."""
 
     path = Path(path)
-    with path.open("r", encoding="utf-8") as stream:
+    opener = gzip.open if path.suffix == ".gz" else open
+    with opener(path, "rt", encoding="utf-8") as stream:
         for line_number, line in enumerate(stream, start=1):
             if not line.strip():
                 continue
