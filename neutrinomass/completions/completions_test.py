@@ -1611,3 +1611,14 @@ def test_remove_duplicate_completions():
     comps_len = len(comps)
     comps = clean_completions(comps)
     assert comps_len > len(comps)
+
+
+def test_71p_final_vertex_keeps_both_mass_edges(monkeypatch):
+    module = import_module("neutrinomass.completions.completions")
+    operator = EFF_OPERATORS["71p"]
+    topology = next(t for t in module.get_topology_data(**operator.topology_type)
+                    if t["canonical_topology"] == "5s4f_38")
+    monkeypatch.setattr(module, "get_topology_data", lambda **kwargs: [topology])
+    completion = module.partition_completion(next(module.partition_stream(operator)))
+    audit = validate_routes(completion, derivative_order=0)
+    assert list(audit.edge_kinds.values()).count("mass") == 2

@@ -2200,6 +2200,12 @@ def construct_completion(
                       if leaf.field.label == original.label
                       and tuple(map(str, leaf.field.gauge_indices))
                       == tuple(map(str, original.gauge_indices))]
+        if len(candidates) > 1 and isinstance(source, FieldType):
+            # Untransformed factors can carry their precise occurrence through
+            # multiplication, including singlets with distinct spinor indices.
+            identical = [i for i in candidates if reduced_partition[i].field is source]
+            if len(identical) == 1:
+                candidates = identical
         if len(candidates) != 1:
             # Equal external legs have no heavy port; their permutation is
             # handled by the separate external provenance/symmetrisation path.
