@@ -28,7 +28,7 @@ def worker_limit(path,limit):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("config",type=Path)
-    parser.add_argument("kind",choices=("generation","coverage"))
+    parser.add_argument("kind",choices=("generation","reduction","coverage"))
     parser.add_argument("--unit",type=int,required=True)
     parser.add_argument("--seed",type=int,choices=(0,1),default=0)
     args=parser.parse_args()
@@ -40,7 +40,8 @@ def main():
     work_id=f"{config['campaign_id']}/hard-fault/{args.kind}/seed-{args.seed}/unit-{args.unit}"
     reference=root/f"seed-{args.seed}"/"71p"
     checkpoint=(reference/"units"/f"{args.unit:08d}"/"structural/checkpoint.json"
-                if args.kind=="generation" else reference/"coverage/shards"/f"{args.unit:08d}"/"checkpoint.json")
+                if args.kind=="generation" else reference/"structural/checkpoint.json" if args.kind=="reduction"
+                else reference/"coverage/shards"/f"{args.unit:08d}"/"checkpoint.json")
     if not json.loads(checkpoint.read_text())["complete"]:
         raise ValueError("REFERENCE_UNIT_NOT_COMPLETE")
     print(json.dumps(dict(event="waiting_for_fault_slot",work_id=work_id)),flush=True)

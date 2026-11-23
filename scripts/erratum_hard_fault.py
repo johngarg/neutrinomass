@@ -14,7 +14,7 @@ from neutrinomass.database.checkpoints import atomic_json,digest_file
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("kind",choices=("generation","coverage"))
+    parser.add_argument("kind",choices=("generation","reduction","coverage"))
     parser.add_argument("config",type=Path);parser.add_argument("reference",type=Path)
     parser.add_argument("replica",type=Path);parser.add_argument("--unit",type=int,required=True)
     args=parser.parse_args()
@@ -45,14 +45,18 @@ def main():
     if not previous:
         if checkpoint.exists():
             parser.error("Use a fresh replica for a new hard-fault experiment")
-        child=subprocess.Popen(command+["--checkpoint-seconds","1"])
+        injection=["--checkpoint-seconds","1"]
+        if args.kind=="reduction":injection.append("--pause-after-pending-checkpoint")
+        child=subprocess.Popen(command+injection)
         started=time.monotonic()
         while child.poll() is None:
             if stopping:
                 child.wait();return 75
             if checkpoint.exists():
                 data=json.loads(checkpoint.read_text())
-                if not data["complete"] and data["progress"]:
+                pending=data["progress"].get("pending")
+                in_bucket=bool(pending and pending["cursor"][1]>=0)
+                if not data["complete"] and data["progress"] and (args.kind!="reduction" or in_bucket):
                     # Let the child perform work after this checkpoint; that
                     # uncommitted work is deliberately lost by SIGKILL.
                     time.sleep(0.2)
@@ -65,6 +69,8 @@ def main():
                             shutil.copyfile(checkpoint.parent/artifact["path"],archive/artifact["path"])
                         atomic_json(evidence,dict(kind=args.kind,unit=args.unit,injected=True,
                             method="SIGKILL",child_returncode=child.returncode,
+                            in_bucket_reduction=args.kind=="reduction",
+                            instrumentation="pause-after-durable-pending-checkpoint" if args.kind=="reduction" else None,
                             job_id=os.environ["SLURM_JOB_ID"],validator_sha256=digest_file(__file__),
                             checkpoints=[dict(path=str(archive/"checkpoint.json"),sha256=digest_file(archive/"checkpoint.json"),
                                               progress=data["progress"])]))

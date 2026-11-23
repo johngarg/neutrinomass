@@ -7,12 +7,13 @@ import argparse
 import json
 import os
 from pathlib import Path
+import time
 
 from neutrinomass.database.checkpoints import WorkBudget,BudgetExpired,atomic_json,digest_file,CheckpointStore
 from neutrinomass.database.provenance import runtime_provenance,scientific_contract
 from neutrinomass.database.pipeline import run_operator,artifact_path
 from neutrinomass.database.coverage import historical_coverage
-from neutrinomass.database.resumable_reduction import lines_from_paths,input_contract
+from neutrinomass.database.resumable_reduction import lines_from_paths,input_contract,reduce_resumable
 from neutrinomass.database.serialization import loads_completion
 from neutrinomass.completions.completions import are_equivalent_completions
 from neutrinomass.database.global_equivalence import equivalent_global_lagrangians
@@ -151,6 +152,30 @@ def coverage_replica(reference,replica,unit,budget,contract):
         full_coverage_substitution_agreement=True,substituted_coverage_sha256=digest_file(substituted))
 
 
+def reduction_replica(reference,replica,budget,contract):
+    """Repeat the actual global structural merge, including its bucket cursor."""
+    plan=json.loads((reference/"plan.json").read_text())
+    source=reference/"structural";original=state(source)
+    paths=[]
+    for unit in range(len(plan["units"])):
+        stage=reference/"units"/f"{unit:08d}"/"structural"
+        paths.append(artifact_path(stage,state(stage)))
+    if original["contract"].get("ranking") is not None:
+        raise ValueError("REDUCTION_REPLICA_REQUIRES_UNRANKED_PILOT")
+    expected=dict(contract,algorithm="exact-reduction-v1",relation="physical",inputs=input_contract(paths),
+                  ranking=None,maximum_rank=None)
+    if original["contract"]!=expected:raise ValueError("REDUCTION_REPLICA_INPUT_CONTRACT_CHANGED")
+    completed=reduce_resumable(paths,replica,contract,budget=budget,scratch=os.environ.get("SLURM_TMPDIR"))
+    a=artifact_path(source,original);b=artifact_path(replica,completed)
+    identical=bytes_equal(a,b)
+    count=sum(1 for _ in lines_from_paths([b])) if identical else ordered_exact(a,b)
+    if original["progress"]!=completed["progress"]:raise ValueError("RECOVERED_REDUCTION_PROGRESS_DIFFERS")
+    return dict(kind="reduction",unit=0,ordered_exact_agreement=True,byte_identical=identical,
+        records=count,progress=completed["progress"],
+        original_output=dict(path=str(a),sha256=digest_file(a)),
+        recovered_output=dict(path=str(b),sha256=digest_file(b)))
+
+
 def substitute(config,reference,replica,recovered_generation,unit,budget,contract):
     if replica.resolve() in {reference.resolve(),recovered_generation.resolve()}:
         raise ValueError("SUBSTITUTION_REPLICA_OVERLAPS_SOURCE")
@@ -191,11 +216,12 @@ def substitute(config,reference,replica,recovered_generation,unit,budget,contrac
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("kind",choices=("generation","coverage","substitution"))
+    parser.add_argument("kind",choices=("generation","reduction","coverage","substitution"))
     parser.add_argument("config",type=Path);parser.add_argument("reference",type=Path)
     parser.add_argument("replica",type=Path);parser.add_argument("--unit",type=int,required=True)
     parser.add_argument("--fault-after",type=int);parser.add_argument("--recovered-generation",type=Path)
     parser.add_argument("--checkpoint-seconds",type=float,default=300)
+    parser.add_argument("--pause-after-pending-checkpoint",action="store_true",help=argparse.SUPPRESS)
     args=parser.parse_args()
     if not os.environ.get("SLURM_JOB_ID"):
         parser.error("Recovery acceptance must run in Slurm")
@@ -208,12 +234,27 @@ def main():
     operator=config.get("recovery_operator","71p")
     stage_contract=dict(contract,operator=operator,historical_sha256=digest_file(Path(config["historical"])/f"op_{operator}.dat"))
     budget=WorkBudget(3300,fault_after=args.fault_after,checkpoint_seconds=args.checkpoint_seconds)
+    if args.pause_after_pending_checkpoint:
+        if args.kind!="reduction":parser.error("Pending-checkpoint instrumentation only applies to reduction")
+        snapshot=CheckpointStore.snapshot
+        def observed_snapshot(store,database,progress,**kwargs):
+            result=snapshot(store,database,progress,**kwargs)
+            pending=progress.get("pending")
+            if pending and pending["cursor"][1]>=0:
+                # Fault instrumentation only: the durable checkpoint is already
+                # published. Give the parent a deterministic SIGKILL window.
+                time.sleep(2)
+            return result
+        CheckpointStore.snapshot=observed_snapshot
     try:
         with budget.signals():
             if args.kind=="generation":
                 result=generation_replica(config,args.reference,args.replica,args.unit,budget,contract)
             elif args.kind=="coverage":
                 result=coverage_replica(args.reference,args.replica,args.unit,budget,stage_contract)
+            elif args.kind=="reduction":
+                if args.unit!=0:parser.error("The global structural merge has unit index zero")
+                result=reduction_replica(args.reference,args.replica,budget,stage_contract)
             else:
                 if args.recovered_generation is None:
                     parser.error("Substitution needs a verified recovered generation replica")
