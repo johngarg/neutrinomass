@@ -3244,7 +3244,7 @@ def deriv_operator_completion_stream(
     operator: EffectiveOperator, verbose=False, canonical_partitions=False
 ) -> Iterable[Completion]:
     """Stream local placements and explicit physical propagator expansions."""
-    derivative_count, deriv_combos, historical_basis, unique_projection, second_derivative_basis = _build_derivative_generation_context(operator)
+    derivative_count, deriv_combos, historical_basis, unique_projection, second_derivative_basis = derivative_generation_context(operator)
 
     if verbose:
         print(f"Finding completions of {len(deriv_combos)} IBP-related operators...")
@@ -3429,3 +3429,25 @@ def _build_derivative_generation_context(operator):
         deriv_combos = derivative_combinations(operator)
 
     return derivative_count, deriv_combos, historical_basis, unique_projection, second_derivative_basis
+
+
+_DERIVATIVE_CONTEXT_CACHE = {}
+
+
+def derivative_generation_context(operator):
+    """Bounded cache of immutable placement bases with complete tensor keys."""
+    import json
+    from neutrinomass.database.serialization import operator_to_data
+    key=(id(operator),operator.name,json.dumps(operator_to_data(operator.operator),sort_keys=True))
+    cached=_DERIVATIVE_CONTEXT_CACHE.get(key)
+    if cached is not None and cached[0] is operator:
+        # Insertion order supplies a bounded LRU without hashing the mutable
+        # EffectiveOperator (whose __hash__ also simplifies its tensor).
+        _DERIVATIVE_CONTEXT_CACHE.pop(key)
+        _DERIVATIVE_CONTEXT_CACHE[key]=cached
+        return cached[1]
+    result=_build_derivative_generation_context(operator)
+    _DERIVATIVE_CONTEXT_CACHE[key]=(operator,result)
+    if len(_DERIVATIVE_CONTEXT_CACHE)>4:
+        _DERIVATIVE_CONTEXT_CACHE.pop(next(iter(_DERIVATIVE_CONTEXT_CACHE)))
+    return result
