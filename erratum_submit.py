@@ -99,6 +99,9 @@ def submit(ledger,config,config_path,*,command,seed):
     with ledger.transaction() as state:
         if state.get("submission_block"):
             raise RuntimeError("SUBMISSION_BLOCKED: diagnose the previous worker failure")
+        if config["phase"]=="production" and (not state["production_gate"] or
+                state["production_gate"]["producer_commit"]!=config["source_commit"]):
+            raise ValueError("PRODUCTION_SOURCE_DIFFERS_FROM_TESTED_PILOT")
         ordinal=len(state["jobs"])
         retry_of=next((key for key,job in reversed(list(state["jobs"].items()))
             if job.get("queue_config")==str(config_path) and job.get("seed")==seed

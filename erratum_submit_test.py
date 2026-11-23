@@ -81,3 +81,12 @@ def test_pilot_worker_is_not_a_retry_of_an_unrelated_validation_job(tmp_path,mon
     monkeypatch.setattr(controller.subprocess,"run",lambda *a,**k:SimpleNamespace(returncode=0,stdout="102\n",stderr=""))
     result=controller.submit(ledger,config,path,command="work",seed=0)
     assert ledger.summary()["jobs"][result["work_id"]]["retry_of"] is None
+
+
+def test_production_configuration_must_use_the_pilot_scientific_producer(tmp_path):
+    path,config=configuration(tmp_path);ledger=CampaignLedger(config["ledger"])
+    with ledger.transaction() as state:
+        state["production_gate"]=dict(producer_commit="tested")
+    with pytest.raises(ValueError,match="SOURCE_DIFFERS"):
+        controller.submit(ledger,dict(config,phase="production",source_commit="untested"),path,command="work",seed=0)
+    assert not ledger.summary()["jobs"]

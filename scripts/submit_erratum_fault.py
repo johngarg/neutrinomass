@@ -14,6 +14,7 @@ from neutrinomass.database.checkpoints import atomic_json,digest_file
 
 def worker_limit(path,limit):
     config=json.loads(path.read_text())
+    if config.get("worker_limit",4)==limit:return config
     digest=digest_file(path)
     archive=path.parent/"config-revisions"/(digest+".json")
     archive.parent.mkdir(exist_ok=True)
