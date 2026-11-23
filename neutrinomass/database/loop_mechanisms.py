@@ -22,7 +22,7 @@ from neutrinomass.database.serialization import tensor_to_data,tensor_from_data,
 from neutrinomass.database.global_equivalence import species_descriptors
 from neutrinomass.database.filtering import ONE_LOOP_SCALE_TEV
 from neutrinomass.tensormethod import L,H
-from neutrinomass.tensormethod.core import IndexedField,Operator
+from neutrinomass.tensormethod.core import IndexedField,Operator,delta
 from neutrinomass.tensormethod.contract import unsimplified_invariants
 
 
@@ -54,7 +54,7 @@ def concrete_vertices(fields):
     concrete={field.label:field for field in fields if isinstance(field,IndexedField)}
     result=[]
     for term in unsimplified_invariants(*(field.field if isinstance(field,IndexedField) else field
-                                         for field in fields),ignore=[]):
+                                         for field in fields),ignore=["c"]):
         tensors=[]
         for tensor in term.tensors:
             if isinstance(tensor,IndexedField) and tensor.label in concrete:
@@ -62,6 +62,26 @@ def concrete_vertices(fields):
                 data["indices"]=[str(index) for index in tensor.indices]
                 tensor=tensor_from_data(data)
             tensors.append(tensor)
+        # External LLHH is colourless. At every loop vertex, Schur's lemma
+        # gives the unique R x R-bar inner product. Generic delta enumeration
+        # also creates self-traces for mixed-index irreps (e.g. the octet),
+        # which SymPy does not know are zero. Exclude those trace channels by
+        # constructing only the cross-contraction between the two heavy legs.
+        coloured=[t for t in tensors if isinstance(t,IndexedField) and t.indices_by_type["Colour"]]
+        if coloured:
+            if len(coloured)!=2:
+                raise ValueError("UNSUPPORTED_LOOP_COLOUR_VERTEX")
+            left,right=coloured
+            if left.dynkin[2:4]!=right.conj.dynkin[2:4]:
+                raise ValueError("LOOP_COLOUR_PAIR_IS_NOT_CONJUGATE")
+            for raised in (True,False):
+                a=[i for i in left.indices_by_type["Colour"] if i.is_up==raised]
+                b=[i for i in right.indices_by_type["Colour"] if i.is_up!=raised]
+                if len(a)!=len(b):
+                    raise ValueError("LOOP_COLOUR_INNER_PRODUCT_SLOTS_DIFFER")
+                for x,y in zip(a,b):
+                    upper,lower=(-x,-y) if not x.is_up else (-y,-x)
+                    tensors.append(delta(f"{upper} {lower}"))
         term=Operator(*tensors)
         if term.safe_simplify() != 0:
             # fun_eval reconstructs generic IndexedFields without their charge
@@ -151,6 +171,39 @@ def loop_records(fields):
                         topology="T1" if size==4 else "T3"),tuple(edge[2] for edge in edges)
 
 
+def colour_reduced_record(record):
+    """Factor the closed irreducible colour trace before sewing weak indices.
+
+    The colour inner products in ``concrete_vertices`` have already fixed the
+    unique invariant at each vertex. Sewing a mixed-index tensor as unconstrained
+    fundamental slots would omit its traceless projector. Factoring the trace
+    analytically also handles real irreps with same-state mass endpoints.
+    """
+    def strip(field):
+        data=tensor_to_data(field)
+        data["indices"]=[str(i) for i in field.indices if i.index_type!="Colour"]
+        data["symmetry"]=None
+        return tensor_from_data(data)
+
+    graph=record.graph.copy()
+    terms=[]
+    for term_index,term in enumerate(record.terms):
+        tensors=[];positions={}
+        for index,tensor in enumerate(term.tensors):
+            if isinstance(tensor,IndexedField):
+                positions[index]=len(tensors)
+                tensors.append(strip(tensor))
+            elif not any(i.index_type=="Colour" for i in tensor.indices):
+                tensors.append(tensor)
+        terms.append(Operator(*tensors))
+        for node,data in graph.nodes(data=True):
+            if data.get("interaction")==term_index:
+                data["heavy_ports"]=[dict(port,tensor=positions[port["tensor"]])
+                                     for port in data["heavy_ports"]]
+    return Completion(record.operator,record.partition,graph,
+        {strip(field) for field in record.exotics},terms,topology=record.topology)
+
+
 def candidate_loop_witness(candidate):
     """Return a fully contracted nonzero heavy-loop template, or exhaust them.
 
@@ -162,7 +215,14 @@ def candidate_loop_witness(candidate):
     """
     available=species_descriptors(candidate)
     for record,numerators in loop_records(candidate.exotics):
-        amplitude=induced_amplitude_operator(record).safe_simplify()
+        # The closed irreducible colour line contributes Tr(1_R)=dim(R), not
+        # the dimension of an unprojected tensor product such as 3 x 3-bar.
+        colours={tuple(sorted(map(int,f.dynkin[2:4]))) for f in record.exotics}
+        if len(colours)!=1:
+            raise ValueError("LOOP_COLOUR_IRREP_CHANGES_AROUND_CYCLE")
+        p,q=next(iter(colours));colour_dimension=(p+1)*(q+1)*(p+q+2)//2
+        weak=induced_amplitude_operator(colour_reduced_record(record))
+        amplitude=colour_dimension*weak.safe_simplify()
         if amplitude == 0:
             continue
         required=species_descriptors(record)
@@ -172,5 +232,6 @@ def candidate_loop_witness(candidate):
             scale_tev=ONE_LOOP_SCALE_TEV,required_species=tuple(sorted(required.values(),key=repr)),
             species_assignment=dict(sorted(required.items())),record=dumps_completion(record),
             numerator_kinds=numerators,amplitude_witness=str(amplitude),
+            colour_dimension=colour_dimension,
             template_domain="heavy T1/T3; generic allowed couplings")
     return None

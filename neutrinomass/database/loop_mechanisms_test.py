@@ -35,3 +35,19 @@ def test_antisymmetric_scalar_vertex_needs_two_admitted_copies():
     rho=ComplexScalar("rho","",charges={"y":1,"3b":0})
     assert not concrete_vertices((eta,eta,rho))
     assert concrete_vertices((eta,other,rho))
+
+
+def test_coloured_loop_uses_irreducible_colour_inner_product_without_self_traces():
+    from neutrinomass.tensormethod.core import IndexedField
+    candidate=SimpleNamespace(exotics={
+        ComplexScalar("eta8","c710 -c711 i710",charges={"y":Rational(1,2),"3b":0}),
+        MajoranaFermion("N8","u710 c712 -c713",charges={"y":0,"3b":0})})
+    witness=candidate_loop_witness(candidate)
+    assert witness and witness["colour_dimension"]==8
+    record=loads_completion(witness["record"])
+    for term in record.terms:
+        for field in term.indexed_fields:
+            slots=set(map(str,field.indices_by_type["Colour"]))
+            for tensor in term.tensors:
+                if not isinstance(tensor,IndexedField) and tensor.indices and all(i.index_type=="Colour" for i in tensor.indices):
+                    assert not {str(-i) for i in tensor.indices}<=slots
