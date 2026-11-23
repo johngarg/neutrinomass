@@ -50,6 +50,9 @@ def test_byte_identical_substitution_reuses_verified_stages_and_resumes_setup(tm
     import json
     from neutrinomass.database.checkpoints import atomic_json,identity_hash
     checkpoint=Path(result["dependency_compatibility"]["path"])
+    substituted=json.loads(Path(result["substituted_report"]["path"]).read_text())
+    assert all(Path(artifact["path"]).is_relative_to(tmp_path/"replica") for artifact in substituted["artifacts"].values())
+    assert substituted["recovery_substitution"]["retained_producer"]=="tested"
     proof=json.loads(checkpoint.read_text())
     proof["contract"]["consumer_inputs"].pop()
     proof["contract_sha256"]=identity_hash(proof["contract"])

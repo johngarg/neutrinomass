@@ -108,6 +108,10 @@ def substitution_compatibility_gate(data,producer,*,operator="71p"):
         require(manifest["complete"] and manifest["contract"]["source_commit"]==producer,
                 "GATE_SUBSTITUTION_SOURCE_STAGE_INCOMPLETE")
         with CheckpointStore(path.parent,manifest["contract"]):pass
+        copied=proof_path.parent.parent/reference["relative"]
+        require((copied/"checkpoint.json").is_file(),"GATE_SUBSTITUTION_COPIED_STAGE_MISSING")
+        with CheckpointStore(copied,manifest["contract"]) as store:
+            require(store.state["complete"],"GATE_SUBSTITUTION_COPIED_STAGE_INCOMPLETE")
 
 
 def recovery_gate(directories,producer):
@@ -155,6 +159,8 @@ def recovery_gate(directories,producer):
                 require(data["ordered_exact_classes"]["exact_classes"]==report["exact_classes"]["all"]
                         and data["ordered_exact_classes"]["global_lagrangians"]==report["global_lagrangians"],
                         "GATE_SUBSTITUTION_CLASS_COUNTS_DIFFER")
+                for artifact in report["artifacts"].values():verify_reference(artifact)
+                verify_reference(report["stage_manifest"]["plan"])
             require(data.get("method") in {"byte-identical-input-reuse","full-downstream-recomputation"},
                     "GATE_SUBSTITUTION_METHOD_UNSPECIFIED")
             if data["method"]=="byte-identical-input-reuse":substitution_compatibility_gate(data,producer)

@@ -195,7 +195,14 @@ def substitute(config,reference,replica,recovered_generation,unit,budget,contrac
     old=json.loads((reference/"report.json").read_text())
     if stable_report_data(old)!=stable_report_data(report):
         raise ValueError("SUBSTITUTION_CHANGED_SCIENTIFIC_REPORT")
-    atomic_json(replica/"report.json",report)
+    if compatibility["all_downstream_inputs_identical"]:
+        # The original publication remains immutable. Give this validation
+        # report explicit references to the substituted replica's actual bytes.
+        report=json.loads(json.dumps(report))
+        for artifact in (*report["artifacts"].values(),report["stage_manifest"]["plan"]):
+            artifact["path"]=str(replica/Path(artifact["path"]).relative_to(reference))
+        report["recovery_substitution"]=dict(original_report=str(reference/"report.json"),
+            validator_sha256=digest_file(__file__),retained_producer=report["source_commit"])
     counts={}
     for key,relation in (("exact_classes",are_equivalent_completions),
                          ("global_lagrangians",equivalent_global_lagrangians)):
@@ -206,6 +213,13 @@ def substitute(config,reference,replica,recovered_generation,unit,budget,contrac
             counts[key]=sum(1 for _ in lines_from_paths([copied]))
         else:
             counts[key]=ordered_exact(original,report["artifacts"][key]["path"],relation)
+    publication=dict(contract,algorithm="substitution-validation-publication-v1",
+        report=report,compatibility_sha256=digest_file(replica/"substitution-setup/checkpoint.json"))
+    with CheckpointStore(replica/"substitution-publication",publication) as store:
+        if not store.state["complete"]:
+            output=store.publish_lines([json.dumps(report,sort_keys=True)])
+            store.save(dict(ordered_exact_classes=counts),artifacts={"report":output},complete=True)
+    atomic_json(replica/"report.json",report)
     return dict(kind="substitution",scientific_report_agreement=True,ordered_exact_classes=counts,
         method="byte-identical-input-reuse" if compatibility["all_downstream_inputs_identical"] else "full-downstream-recomputation",
         dependency_compatibility=dict(path=str(replica/"substitution-setup/checkpoint.json"),
