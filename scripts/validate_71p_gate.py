@@ -60,6 +60,56 @@ def verify_tree(root,producer):
     return dict(verified_stages=stages,peak_checkpoint_rss_mib=peak)
 
 
+def substitution_compatibility_gate(data,producer,*,operator="71p"):
+    """Validate the actual dependency bytes behind a downstream reuse claim."""
+    proof_path=verify_reference(data["dependency_compatibility"])
+    proof=json.loads(proof_path.read_text())
+    identity=proof["contract"]
+    require(proof["complete"] and identity.get("source_commit")==producer
+            and identity.get("algorithm")=="recovery-substitution-setup-v2",
+            "GATE_SUBSTITUTION_COMPATIBILITY_INCOMPLETE")
+    with CheckpointStore(proof_path.parent,identity):pass
+    require(identity["all_downstream_inputs_identical"],"GATE_SUBSTITUTION_INPUTS_CHANGED")
+    require(identity["original_report_sha256"]==data["original_report"]["sha256"],
+            "GATE_SUBSTITUTION_REFERENCE_CHANGED")
+    original_root=Path(data["original_report"]["path"]).parent
+    require(digest_file(original_root/"plan.json")==identity["original_plan_sha256"],
+            "GATE_SUBSTITUTION_PLAN_CHANGED")
+    generation={key:json.loads(verify_reference(ref).read_text())
+                for key,ref in identity["generation_inputs"].items()}
+    a,b=generation["original"],generation["recovered"]
+    require(a["complete"] and b["complete"] and a["contract"]==b["contract"]
+            and a["contract"]["source_commit"]==producer and a["contract"]["operator"]==operator
+            and a["progress"]["records"]==b["progress"]["records"],
+            "GATE_SUBSTITUTION_GENERATION_CHANGED")
+    roots={key:Path(ref["path"]).parent.parent for key,ref in identity["generation_inputs"].items()}
+    require(roots["original"].resolve()==(original_root/"units"/f'{identity["unit"]:08d}').resolve(),
+            "GATE_SUBSTITUTION_UNIT_CHANGED")
+    pairs=identity["consumer_inputs"]
+    require(len(pairs)==3 and {(p["stage"],p["artifact"]) for p in pairs}==
+            {("decoded","output"),("decoded","evidence"),("structural","output")},
+            "GATE_SUBSTITUTION_CONSUMER_INPUTS_MISSING")
+    for pair in pairs:
+        paths={}
+        for key in ("original","recovered"):
+            path=verify_reference(pair[key]);stage=roots[key]/pair["stage"]
+            manifest=json.loads((stage/"checkpoint.json").read_text())
+            with CheckpointStore(stage,manifest["contract"]) as store:
+                require(store.state["complete"] and artifact_path(stage,store.state,pair["artifact"]).resolve()==path.resolve(),
+                        "GATE_SUBSTITUTION_CONSUMER_PATH_CHANGED")
+            paths[key]=path
+        with paths["original"].open("rb") as left,paths["recovered"].open("rb") as right:
+            while True:
+                x,y=left.read(1024**2),right.read(1024**2)
+                require(x==y,"GATE_SUBSTITUTION_CONSUMER_BYTES_CHANGED")
+                if not x:break
+    for reference in identity["source_checkpoints"]:
+        path=verify_reference(reference);manifest=json.loads(path.read_text())
+        require(manifest["complete"] and manifest["contract"]["source_commit"]==producer,
+                "GATE_SUBSTITUTION_SOURCE_STAGE_INCOMPLETE")
+        with CheckpointStore(path.parent,manifest["contract"]):pass
+
+
 def recovery_gate(directories,producer):
     found={};references=[]
     for directory in directories:
@@ -96,6 +146,9 @@ def recovery_gate(directories,producer):
                 require(data["ordered_exact_classes"]["exact_classes"]==report["exact_classes"]["all"]
                         and data["ordered_exact_classes"]["global_lagrangians"]==report["global_lagrangians"],
                         "GATE_SUBSTITUTION_CLASS_COUNTS_DIFFER")
+            require(data.get("method") in {"byte-identical-input-reuse","full-downstream-recomputation"},
+                    "GATE_SUBSTITUTION_METHOD_UNSPECIFIED")
+            if data["method"]=="byte-identical-input-reuse":substitution_compatibility_gate(data,producer)
         found[kind]=data
         references.append(dict(path=str(path),sha256=digest_file(path)))
     require(set(found)=={"generation","coverage","substitution"},"GATE_RECOVERY_EVIDENCE_INCOMPLETE")

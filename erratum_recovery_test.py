@@ -24,3 +24,46 @@ def test_recovered_generation_substitution_preserves_the_complete_scientific_res
     substituted=substitute(config,original,tmp_path/"substituted",tmp_path/"generation",0,WorkBudget(),contract)
     assert substituted["scientific_report_agreement"]
     assert substituted["ordered_exact_classes"]=={"exact_classes":3,"global_lagrangians":3}
+
+
+def test_byte_identical_substitution_reuses_verified_stages_and_resumes_setup(tmp_path):
+    historical=Path(__file__).parent/"tests/fixtures/historical"
+    config=dict(historical=str(historical),assignment_size=2,recovery_operator="1")
+    contract=dict(hash_seed="0",source_commit="tested",test="identical-input-substitution")
+    original=tmp_path/"original"
+    run_operator("1",historical/"op_1.dat",original,contract,assignment_size=2)
+    before=(original/"report.json").read_bytes()
+    with pytest.raises(BudgetExpired):
+        substitute(config,original,tmp_path/"replica",original,0,WorkBudget(fault_after=2),contract)
+    result=substitute(config,original,tmp_path/"replica",original,0,WorkBudget(),contract)
+    assert result["method"]=="byte-identical-input-reuse"
+    assert result["scientific_report_agreement"]
+    assert result["ordered_exact_classes"]=={"exact_classes":3,"global_lagrangians":3}
+    assert (original/"report.json").read_bytes()==before
+    from scripts.validate_71p_gate import substitution_compatibility_gate,GateFailure
+    substitution_compatibility_gate(result,"tested",operator="1")
+    import json
+    from neutrinomass.database.checkpoints import atomic_json,identity_hash
+    checkpoint=Path(result["dependency_compatibility"]["path"])
+    proof=json.loads(checkpoint.read_text())
+    proof["contract"]["consumer_inputs"].pop()
+    proof["contract_sha256"]=identity_hash(proof["contract"])
+    atomic_json(checkpoint,proof)
+    result["dependency_compatibility"]["sha256"]=digest_file(checkpoint)
+    with pytest.raises(GateFailure,match="CONSUMER_INPUTS_MISSING"):
+        substitution_compatibility_gate(result,"tested",operator="1")
+
+
+def test_substitution_rejects_overlapping_source_and_recovers_initial_lock(tmp_path):
+    historical=Path(__file__).parent/"tests/fixtures/historical"
+    config=dict(historical=str(historical),assignment_size=2,recovery_operator="1")
+    contract=dict(hash_seed="0",test="initial-setup-crash")
+    original=tmp_path/"original"
+    run_operator("1",historical/"op_1.dat",original,contract,assignment_size=2)
+    with pytest.raises(ValueError,match="OVERLAPS_SOURCE"):
+        substitute(config,original,original,original,0,WorkBudget(),contract)
+    replica=tmp_path/"replica"
+    (replica/"substitution-setup").mkdir(parents=True)
+    (replica/"substitution-setup/worker.lock").touch()
+    result=substitute(config,original,replica,original,0,WorkBudget(),contract)
+    assert result["method"]=="byte-identical-input-reuse"

@@ -7,7 +7,6 @@ import argparse
 import json
 import os
 from pathlib import Path
-import shutil
 
 from neutrinomass.database.checkpoints import WorkBudget,BudgetExpired,atomic_json,digest_file,CheckpointStore
 from neutrinomass.database.provenance import runtime_provenance,scientific_contract
@@ -32,6 +31,76 @@ def ordered_exact(left,right,relation=are_equivalent_completions):
             raise ValueError("RECOVERED_ORDERED_CLASSES_DIFFER")
         count+=1
     return count
+
+
+def bytes_equal(left,right):
+    """Actual byte comparison, not a scientific fingerprint equality test."""
+    with Path(left).open("rb") as a,Path(right).open("rb") as b:
+        while True:
+            x,y=a.read(1024**2),b.read(1024**2)
+            if x!=y:return False
+            if not x:return True
+
+
+def substitution_setup(reference,replica,recovered,unit,budget,contract):
+    selected=f"{unit:08d}"
+    old=reference/"units"/selected;new=recovered/"units"/selected
+    pairs=[]
+    for stage,keys in (("decoded",("output","evidence")),("structural",("output",))):
+        a,b=state(old/stage),state(new/stage)
+        for key in keys:
+            left=artifact_path(old/stage,a,key);right=artifact_path(new/stage,b,key)
+            pairs.append(dict(stage=stage,artifact=key,
+                original=dict(path=str(left),sha256=digest_file(left)),
+                recovered=dict(path=str(right),sha256=digest_file(right)),
+                bytes_identical=bytes_equal(left,right)))
+    a,b=state(old/"generation"),state(new/"generation")
+    generation_compatible=(a["complete"] and b["complete"] and a["contract"]==b["contract"]
+                           and a["progress"]["records"]==b["progress"]["records"])
+    identical=generation_compatible and all(pair["bytes_identical"] for pair in pairs)
+    # When the actual consumer inputs are byte-identical, retain the original
+    # downstream producer and validate every immutable artifact on reuse. This
+    # avoids paying for an unnecessary third complete late-stage calculation.
+    # If this stronger condition fails, recompute every downstream stage.
+    sources=[]
+    for checkpoint in sorted(reference.rglob("checkpoint.json")):
+        relative=checkpoint.parent.relative_to(reference)
+        if not identical and relative.parts[0]!="units":continue
+        source=(recovered/relative if relative.parts[:2]==("units",selected) else checkpoint.parent)
+        sources.append((relative,source))
+    identity=dict(contract,algorithm="recovery-substitution-setup-v2",unit=unit,
+        original_report_sha256=digest_file(reference/"report.json"),
+        original_plan_sha256=digest_file(reference/"plan.json"),
+        all_downstream_inputs_identical=identical,consumer_inputs=pairs,
+        generation_inputs={key:dict(path=str(path/"checkpoint.json"),sha256=digest_file(path/"checkpoint.json"))
+            for key,path in (("original",old/"generation"),("recovered",new/"generation"))},
+        source_checkpoints=[dict(relative=str(relative),path=str(source/"checkpoint.json"),
+            sha256=digest_file(source/"checkpoint.json")) for relative,source in sources])
+    with CheckpointStore(replica/"substitution-setup",identity) as setup:
+        if not setup.state["complete"]:
+            progress=dict(setup.state["progress"] or dict(copied_stages=0))
+            # Certify the identity before any copied output can survive a kill.
+            # Repeating an unrecorded copy is safe: its bytes are checked below.
+            if not (setup.directory/"checkpoint.json").exists():setup.save(progress)
+            for ordinal,(relative,source) in enumerate(sources,1):
+                if ordinal<=progress["copied_stages"]:continue
+                original=state(source)
+                with CheckpointStore(source,original["contract"]) as verified:
+                    if not verified.state["complete"]:raise ValueError("SUBSTITUTION_SOURCE_STAGE_INCOMPLETE")
+                    target=replica/relative;target.mkdir(parents=True,exist_ok=True)
+                    for artifact in verified.state["artifacts"].values():
+                        before=source/artifact["path"];after=target/artifact["path"]
+                        if after.exists():
+                            if not bytes_equal(before,after):raise ValueError("SUBSTITUTION_PARTIAL_COPY_CORRUPT")
+                        else:os.link(before,after)
+                    # Independent locks/manifests; immutable payloads can be
+                    # hardlinked on GPFS without changing the original run.
+                    atomic_json(target/"checkpoint.json",verified.state)
+                progress["copied_stages"]=ordinal
+                budget.boundary(lambda:setup.save(progress),progress=dict(stage="substitution-setup",**progress))
+            atomic_json(replica/"plan.json",json.loads((reference/"plan.json").read_text()))
+            setup.save(progress,complete=True)
+    return identity
 
 
 def generation_replica(config,reference,replica,unit,budget,contract):
@@ -83,16 +152,17 @@ def coverage_replica(reference,replica,unit,budget,contract):
 
 
 def substitute(config,reference,replica,recovered_generation,unit,budget,contract):
-    # Copy only verified generation units into a fresh directory. Every global
-    # reduction, amplitude, historical comparison and publication is rerun.
-    if not (replica/"plan.json").exists():
-        if replica.exists() and any(replica.iterdir()):
-            raise ValueError("Substitution directory is not empty")
-        replica.mkdir(parents=True,exist_ok=True)
-        for source in sorted((reference/"units").iterdir()):
-            chosen=(recovered_generation/"units"/source.name if source.name==f"{unit:08d}" else source)
-            shutil.copytree(chosen,replica/"units"/source.name,copy_function=os.link)
-        shutil.copyfile(reference/"plan.json",replica/"plan.json")
+    if replica.resolve() in {reference.resolve(),recovered_generation.resolve()}:
+        raise ValueError("SUBSTITUTION_REPLICA_OVERLAPS_SOURCE")
+    if replica.exists() and any(replica.iterdir()) and not (replica/"substitution-setup/checkpoint.json").exists():
+        # A kill between creating the setup lock and its initial manifest may
+        # leave only this lock (or an incomplete atomic-publication temporary).
+        files=list(replica.rglob("*"))
+        safe=all(p==replica/"substitution-setup" or
+                 (p.parent==replica/"substitution-setup" and p.is_file() and
+                  (p.name=="worker.lock" or p.name.startswith(".publish-"))) for p in files)
+        if not safe:raise ValueError("Substitution directory is not empty or has no resumable setup")
+    compatibility=substitution_setup(reference,replica,recovered_generation,unit,budget,contract)
     operator=config.get("recovery_operator","71p")
     report=run_operator(operator,Path(config["historical"])/f"op_{operator}.dat",replica,contract,
         assignment_size=config["assignment_size"],resume=True,budget=budget,
@@ -100,11 +170,21 @@ def substitute(config,reference,replica,recovered_generation,unit,budget,contrac
     old=json.loads((reference/"report.json").read_text())
     if stable_report_data(old)!=stable_report_data(report):
         raise ValueError("SUBSTITUTION_CHANGED_SCIENTIFIC_REPORT")
+    atomic_json(replica/"report.json",report)
     counts={}
     for key,relation in (("exact_classes",are_equivalent_completions),
                          ("global_lagrangians",equivalent_global_lagrangians)):
-        counts[key]=ordered_exact(old["artifacts"][key]["path"],report["artifacts"][key]["path"],relation)
+        original=Path(old["artifacts"][key]["path"])
+        if compatibility["all_downstream_inputs_identical"]:
+            copied=replica/original.relative_to(reference)
+            if not bytes_equal(original,copied):raise ValueError("SUBSTITUTED_OUTPUT_BYTES_CHANGED")
+            counts[key]=sum(1 for _ in lines_from_paths([copied]))
+        else:
+            counts[key]=ordered_exact(original,report["artifacts"][key]["path"],relation)
     return dict(kind="substitution",scientific_report_agreement=True,ordered_exact_classes=counts,
+        method="byte-identical-input-reuse" if compatibility["all_downstream_inputs_identical"] else "full-downstream-recomputation",
+        dependency_compatibility=dict(path=str(replica/"substitution-setup/checkpoint.json"),
+            sha256=digest_file(replica/"substitution-setup/checkpoint.json")),
         original_report=dict(path=str(reference/"report.json"),sha256=digest_file(reference/"report.json")),
         substituted_report=dict(path=str(replica/"report.json"),sha256=digest_file(replica/"report.json")))
 
