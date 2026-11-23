@@ -3066,8 +3066,8 @@ def momentum_routed_completion_stream(
                     branch["derivative_count"] = numerator_count
                     branch["derivative_route_choices"] = route_choices
                     branch["derivative_partition_is_canonical"] = True
-                    from neutrinomass.completions.species import partition_candidates
-                    for completion in partition_candidates(branch):
+                    from neutrinomass.completions.species import partition_candidates as furnish_partition_candidates
+                    for completion in furnish_partition_candidates(branch):
                         if unique_projection is not None:
                             completion.lorentz_projection = unique_projection
                         expanded = expand_propagator_denominators(

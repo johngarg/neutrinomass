@@ -48,3 +48,31 @@ def candidate_tree_witness(candidate,higher_operators,*,topology=None,progress=N
         if progress is not None:
             progress(dict(operator=name,complete=True,generated=generated))
     return None
+
+
+def filter_candidate_registry(registry,scales,*,progress=None):
+    """Apply the explicit species-aware mode to operator completion lists."""
+    from neutrinomass.database.filtering import filter_species_registry
+    from neutrinomass.database.loop_mechanisms import candidate_loop_witness
+    indexed={}
+    candidates={}
+    for operator,records in registry.items():
+        indexed[operator]={}
+        for record in records:
+            key=tuple(sorted(species_descriptors(record).values(),key=repr))
+            indexed[operator].setdefault(key,[]).append(dumps_completion(record))
+            candidates.setdefault(key,record)
+    tree_cache={};loop_cache={}
+    def tree(operator,species,higher):
+        key=(species,higher)
+        if key not in tree_cache:
+            tree_cache[key]=candidate_tree_witness(candidates[species],higher,progress=progress)
+        return tree_cache[key]
+    def loop(species):
+        if species not in loop_cache:
+            loop_cache[species]=candidate_loop_witness(candidates[species])
+        return loop_cache[species]
+    result=filter_species_registry(indexed,scales,mechanism_search=tree,loop_search=loop)
+    result["mechanism_domain"]="published 243-operator trees and heavy T1/T3 Weinberg loops"
+    result["low_scale_genuineness_proved"]=False
+    return result
