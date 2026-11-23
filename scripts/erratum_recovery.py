@@ -9,11 +9,11 @@ import os
 from pathlib import Path
 import shutil
 
-from neutrinomass.database.checkpoints import WorkBudget,BudgetExpired,atomic_json,digest_file
+from neutrinomass.database.checkpoints import WorkBudget,BudgetExpired,atomic_json,digest_file,CheckpointStore
 from neutrinomass.database.provenance import runtime_provenance,scientific_contract
 from neutrinomass.database.pipeline import run_operator,artifact_path
 from neutrinomass.database.coverage import historical_coverage
-from neutrinomass.database.resumable_reduction import lines_from_paths
+from neutrinomass.database.resumable_reduction import lines_from_paths,input_contract
 from neutrinomass.database.serialization import loads_completion
 from neutrinomass.completions.completions import are_equivalent_completions
 from neutrinomass.database.global_equivalence import equivalent_global_lagrangians
@@ -64,8 +64,22 @@ def coverage_replica(reference,replica,unit,budget,contract):
     a=artifact_path(source,original);b=artifact_path(replica,completed)
     if list(lines_from_paths([a]))!=list(lines_from_paths([b])) or original["progress"]!=completed["progress"]:
         raise ValueError("RECOVERED_COVERAGE_DIFFERS")
+    replacement=[]
+    for directory in sorted((reference/"coverage/shards").iterdir()):
+        replacement.append(b if directory.name==f"{unit:08d}" else artifact_path(directory,state(directory)))
+    merge=replica/"substituted-coverage"
+    with CheckpointStore(merge,dict(contract,algorithm="coverage-substitution-v1",inputs=input_contract(replacement))) as store:
+        if not store.state["complete"]:
+            output=store.publish_lines(lines_from_paths(replacement))
+            store.save(dict(substituted_unit=unit),artifacts={"output":output},complete=True)
+        substituted=artifact_path(merge,store.state)
+    original_merged=report["artifacts"]["historical_coverage"]["path"]
+    from itertools import zip_longest
+    if any(a!=b for a,b in zip_longest(lines_from_paths([original_merged]),lines_from_paths([substituted]))):
+        raise ValueError("SUBSTITUTED_COVERAGE_PUBLICATION_DIFFERS")
     return dict(kind="coverage",unit=unit,exact_output_agreement=True,
-        original_sha256=digest_file(a),recovered_sha256=digest_file(b),progress=completed["progress"])
+        original_sha256=digest_file(a),recovered_sha256=digest_file(b),progress=completed["progress"],
+        full_coverage_substitution_agreement=True,substituted_coverage_sha256=digest_file(substituted))
 
 
 def substitute(config,reference,replica,recovered_generation,unit,budget,contract):
