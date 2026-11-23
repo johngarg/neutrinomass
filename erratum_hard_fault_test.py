@@ -33,3 +33,13 @@ else:
     assert evidence["method"]=="SIGKILL" and evidence["child_returncode"]==-9
     assert (replica/"interruptions/test-job/piece").read_text()=="durable"
     assert (replica/"recovered-process.json").exists()
+    # A later Slurm allocation resumes the same replica without injecting a
+    # second fault or overwriting the original durable fault certificate.
+    old=(replica/"interruptions/test-job.json").read_bytes()
+    monkeypatch.setenv("SLURM_JOB_ID","next-job")
+    try:
+        assert erratum_hard_fault.main()==0
+    finally:
+        for sig,handler in previous.items():signal.signal(sig,handler)
+    assert (replica/"interruptions/test-job.json").read_bytes()==old
+    assert not (replica/"interruptions/next-job.json").exists()

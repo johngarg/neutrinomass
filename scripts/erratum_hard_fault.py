@@ -27,13 +27,22 @@ def main():
                 if args.kind=="generation" else args.replica/"checkpoint.json")
     archive=args.replica/"interruptions"/os.environ["SLURM_JOB_ID"]
     evidence=archive.with_suffix(".json")
+    previous=[]
+    for path in (args.replica/"interruptions").glob("*.json"):
+        item=json.loads(path.read_text())
+        if (item.get("method")=="SIGKILL" and item.get("injected")
+                and item.get("kind")==args.kind and item.get("unit")==args.unit):
+            for saved in item["checkpoints"]:
+                if digest_file(saved["path"])!=saved["sha256"]:
+                    raise ValueError("HARD_FAULT_EVIDENCE_CORRUPT")
+            previous.append(path)
     child=None;stopping=False
     def stop(signum,frame):
         nonlocal stopping
         stopping=True
         if child is not None and child.poll() is None:child.send_signal(signal.SIGUSR1)
     signal.signal(signal.SIGUSR1,stop);signal.signal(signal.SIGTERM,stop)
-    if not evidence.exists():
+    if not previous:
         if checkpoint.exists():
             parser.error("Use a fresh replica for a new hard-fault experiment")
         child=subprocess.Popen(command+["--checkpoint-seconds","1"])

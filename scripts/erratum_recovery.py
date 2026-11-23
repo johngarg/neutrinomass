@@ -141,7 +141,8 @@ def main():
     except BudgetExpired:
         checkpoints=[dict(path=str(p),sha256=digest_file(p),progress=json.loads(p.read_text())["progress"])
                      for p in sorted(args.replica.rglob("checkpoint.json"))]
-        atomic_json(args.replica/"interruptions"/(os.environ["SLURM_JOB_ID"]+".json"),dict(kind=args.kind,unit=args.unit,
+        # Keep a parent's earlier SIGKILL certificate in the same allocation.
+        atomic_json(args.replica/"interruptions"/("continuation-"+os.environ["SLURM_JOB_ID"]+".json"),dict(kind=args.kind,unit=args.unit,
             injected=args.fault_after is not None,job_id=os.environ["SLURM_JOB_ID"],checkpoints=checkpoints,
             validator_sha256=digest_file(__file__),producer=provenance))
         return 75

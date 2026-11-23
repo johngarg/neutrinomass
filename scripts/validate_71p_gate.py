@@ -70,7 +70,19 @@ def recovery_gate(directories,producer):
         kind=data["kind"]
         if kind in {"generation","coverage"}:
             interruptions=[json.loads(p.read_text()) for p in (Path(directory)/"interruptions").glob("*.json")]
-            require(any(item.get("injected") and item["checkpoints"] for item in interruptions),"GATE_NO_INJECTED_RECOVERY")
+            injected=[item for item in interruptions if item.get("injected") and
+                      item.get("method")=="SIGKILL" and item.get("child_returncode")==-9
+                      and item.get("kind")==kind and item.get("unit")==data["unit"] and item.get("checkpoints")]
+            require(injected,"GATE_NO_INJECTED_RECOVERY")
+            for interruption in injected:
+                for reference in interruption["checkpoints"]:
+                    checkpoint=verify_reference(reference)
+                    original=json.loads(checkpoint.read_text())
+                    require(not original["complete"] and original["progress"]==reference["progress"],
+                            "GATE_FAULT_CHECKPOINT_NOT_PARTIAL")
+                    require(original["contract"]["source_commit"]==producer,"GATE_FAULT_PRODUCER_MISMATCH")
+                    require(original["contract"].get("operator")=="71p","GATE_FAULT_OPERATOR_MISMATCH")
+                    with CheckpointStore(checkpoint.parent,original["contract"]):pass
         if kind=="generation":
             require(data["ordered_exact_agreement"],"GATE_GENERATION_RECOVERY_DIFFERS")
         elif kind=="coverage":
@@ -78,7 +90,12 @@ def recovery_gate(directories,producer):
         elif kind=="substitution":
             require(data["scientific_report_agreement"] and data["ordered_exact_classes"],"GATE_SUBSTITUTED_RESULT_DIFFERS")
             for key in ("original_report","substituted_report"):
-                verify_reference(data[key])
+                report=json.loads(verify_reference(data[key]).read_text())
+                require(report["operator"]=="71p" and report["source_commit"]==producer,
+                        "GATE_SUBSTITUTION_OPERATOR_MISMATCH")
+                require(data["ordered_exact_classes"]["exact_classes"]==report["exact_classes"]["all"]
+                        and data["ordered_exact_classes"]["global_lagrangians"]==report["global_lagrangians"],
+                        "GATE_SUBSTITUTION_CLASS_COUNTS_DIFFER")
         found[kind]=data
         references.append(dict(path=str(path),sha256=digest_file(path)))
     require(set(found)=={"generation","coverage","substitution"},"GATE_RECOVERY_EVIDENCE_INCOMPLETE")
