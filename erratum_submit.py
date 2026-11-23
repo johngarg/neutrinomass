@@ -86,6 +86,7 @@ cd {source}
 export PYTHONPATH={source}
 export MPLCONFIGDIR=${{SLURM_TMPDIR:-/tmp}}/erratum-mpl-${{SLURM_JOB_ID}}
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+{interpreter} -c 'import json,os; p=os.environ.get("SLURM_TMPDIR",os.environ.get("TMPDIR","/tmp")); s=os.statvfs(p); print(json.dumps(dict(event="scratch_capacity",root=p,total_bytes=s.f_blocks*s.f_frsize,free_bytes=s.f_bavail*s.f_frsize)),flush=True)'
 exec {interpreter} -u erratum_worker.py {command} {config_arg}
 """)
     return path
