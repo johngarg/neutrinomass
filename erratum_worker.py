@@ -60,7 +60,9 @@ def work(config,provenance,*,seconds=5400):
             with budget.signals():
                 result=run_operator(operator,Path(config["historical"])/f"op_{operator}.dat",
                     output,contract,unit=payload["unit"],stage=payload["stage"],
-                    assignment_size=config["assignment_size"],resume=(output/"plan.json").exists(),
+                    # Queue ownership already authorizes continuation. Another
+                    # worker may publish the shared plan while this one starts.
+                    assignment_size=config["assignment_size"],resume=True,
                     budget=budget,scratch=scratch)
         except BudgetExpired:
             owned=(output if payload["unit"] is None else
@@ -88,6 +90,8 @@ def main():
     if not os.environ.get("SLURM_JOB_ID"):
         parser.error("Spartan computations require Slurm")
     provenance=runtime_provenance()
+    provenance["worker_driver_sha256"]=digest_file(__file__)
+    provenance["worker_driver_path"]=str(Path(__file__).resolve())
     branch=subprocess.run(["git","symbolic-ref","-q","HEAD"],capture_output=True,text=True)
     if branch.returncode==0:
         parser.error("Worker checkout must be detached")

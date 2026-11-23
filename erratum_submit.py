@@ -70,6 +70,9 @@ def launcher(config,config_path,command):
     source=shlex.quote(config["source"])
     interpreter=shlex.quote(config["interpreter"])
     config_arg=shlex.quote(str(config_path))
+    driver=config.get("worker_driver")
+    entry=("-c "+shlex.quote("import runpy; runpy.run_path("+repr(driver)+", run_name='__main__')")
+           if driver else "erratum_worker.py")
     path.write_text(f"""#!/bin/bash
 #SBATCH --partition=sapphire
 #SBATCH --account=punim0011
@@ -87,7 +90,7 @@ export PYTHONPATH={source}
 export MPLCONFIGDIR=${{SLURM_TMPDIR:-/tmp}}/erratum-mpl-${{SLURM_JOB_ID}}
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
 {interpreter} -c 'import json,os; p=os.environ.get("SLURM_TMPDIR",os.environ.get("TMPDIR","/tmp")); s=os.statvfs(p); print(json.dumps(dict(event="scratch_capacity",root=p,total_bytes=s.f_blocks*s.f_frsize,free_bytes=s.f_bavail*s.f_frsize)),flush=True)'
-exec {interpreter} -u erratum_worker.py {command} {config_arg}
+exec {interpreter} -u {entry} {command} {config_arg}
 """)
     return path
 
