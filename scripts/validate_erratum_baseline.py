@@ -12,7 +12,7 @@ from pathlib import Path
 from neutrinomass.database.database import DATA, EXOTICS
 from neutrinomass.database.filtering import filter_published_registry, published_model_key
 from neutrinomass.database.rebuild import (
-    operator_registry, operator_scale_gev, filter_democratic_registry,
+    operator_registry, operator_scale_tev, filter_democratic_registry,
     generated_one_loop_weinberg_models,
 )
 
@@ -54,7 +54,7 @@ def main():
         manifest[name] = dict(sha256=digest.hexdigest(), records=records, models=len(models))
         print(json.dumps(dict(event="baseline_input", operator=name, records=records)), flush=True)
     operators = operator_registry()
-    scales = {name: operator_scale_gev(op) for name, op in operators.items()}
+    scales = {name: operator_scale_tev(op) for name, op in operators.items()}
     result = filter_published_registry(registry, scales)
     baseline = defaultdict(set)
     for operator, number in zip(DATA["op"], DATA["democratic_num"]):

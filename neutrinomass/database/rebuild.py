@@ -401,10 +401,12 @@ def write_generated_artifact(
 
 
 def _invalid_historical_class(completion, error):
+    from neutrinomass.database.reports import diagnostic
     return {
         "fingerprint": repr(completion_fingerprint(completion)),
         "topology": topology_key(completion),
         "reason": str(error),
+        "diagnostic": diagnostic(error),
         "vanishing_term_indices": [
             index
             for index, term in enumerate(completion.terms)
@@ -855,12 +857,8 @@ def audit_exact_artifact(
 
 
 def operator_scale_gev(operator):
-    return float(
-        max(
-            numerical_np_scale_estimate(estimate)
-            for estimate in neutrino_mass_estimate(operator)
-        )
-    )
+    """Physical GeV value; new report schema explicitly stores TeV instead."""
+    return 1000 * operator_scale_tev(operator)
 
 
 def read_model_artifact(path):
@@ -951,7 +949,7 @@ def filter_democratic_registry(registry, scales, one_loop_models):
         "removed_by_one_loop_weinberg": dict(
             sorted(removed_by_one_loop.items())
         ),
-        "one_loop_scale_gev": one_loop_scale,
+        "one_loop_scale_tev": one_loop_scale,
     }
 
 
@@ -1134,7 +1132,8 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
         raise ValueError("physical exact artifact hash changed after amplitude audit")
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
+        "scale_unit": "TeV",
         "operator": operator_name,
         "kind": kind,
         "derivatives": derivative_count,
@@ -1145,7 +1144,7 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
         ),
         "wall_time_seconds": perf_counter() - started,
         "peak_memory_mib": peak_memory_mib(),
-        "operator_scale_gev": operator_scale_gev(operator),
+        "operator_scale_tev": operator_scale_tev(operator),
         "records": {
             "generator": generated["records"],
             "local": generated["local"],
@@ -1262,3 +1261,12 @@ def historical_record_normalizer(operator_name):
         assign_projection(completion)
         yield completion
     return normalize
+
+
+def operator_scale_tev(operator):
+    return float(
+        max(
+            numerical_np_scale_estimate(estimate)
+            for estimate in neutrino_mass_estimate(operator)
+        )
+    )

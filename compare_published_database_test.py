@@ -3,7 +3,7 @@ from compare_published_database import build_operator_rows, build_report
 
 def test_comparison_reports_common_operator_deltas_and_current_only_rows():
     census = {
-        "historical": {"records": 5},
+        "historical": {"records": 5, "democratic_models": 3},
         "structural_exact_classes": 8,
         "amplitude_symmetrisation": {"rejected_records": 2},
         "exact_classes": {"all": 6},
@@ -43,7 +43,7 @@ def test_comparison_reports_common_operator_deltas_and_current_only_rows():
     )
 
     by_name = {row["operator"]: row for row in rows}
-    assert by_name["D3"]["model_delta"] == -1
+    assert by_name["D3"]["model_delta"] == 1
     assert by_name["D3"]["filtered_delta"] == -1
     assert by_name["D13c"]["published_models"] is None
     assert by_name["D13c"]["filtered_delta"] is None

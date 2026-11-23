@@ -11,7 +11,8 @@ from pathlib import Path
 import sqlite3
 import tempfile
 
-from neutrinomass.completions.fingerprints import lagrangian_fingerprint
+from neutrinomass.database.global_equivalence import GlobalLagrangianIndex
+from neutrinomass.database.filtering import published_model_key
 from neutrinomass.database.rebuild import model_strings, read_model_artifact
 from neutrinomass.database.serialization import loads_completion
 from rebuild_completion_database import atomic_write_json, load_json
@@ -61,7 +62,7 @@ def build_operator_rows(manifest, filtering_report, published_filtered):
         filtering = filtering_report["operators"][operator]
         has_published_table_baseline = operator not in current_only
         published_models = (
-            census["historical"]["records"]
+            census["historical"].get("democratic_models")
             if has_published_table_baseline
             else None
         )
@@ -128,7 +129,7 @@ def scan_current_totals(output_root, manifest, filtered_models, work_dir):
 
     output_root = Path(output_root).resolve()
     input_models = set()
-    filtered_model_union = set().union(*filtered_models.values())
+    filtered_model_union = {published_model_key(fields) for models in filtered_models.values() for fields in models}
     physical_incidences = 0
     filtered_incidences = 0
     database = tempfile.NamedTemporaryFile(
@@ -141,41 +142,24 @@ def scan_current_totals(output_root, manifest, filtered_models, work_dir):
     database.close()
     try:
         with sqlite3.connect(database_path) as connection:
-            connection.execute(
-                "CREATE TABLE physical (fingerprint TEXT PRIMARY KEY)"
-            )
-            connection.execute(
-                "CREATE TABLE filtered (fingerprint TEXT PRIMARY KEY)"
-            )
+            index = GlobalLagrangianIndex(connection)
             for operator, entry in sorted(manifest["operators"].items()):
                 model_path = output_root / entry["artifacts"][
                     "democratic_models"
                 ]["path"]
-                input_models.update(fields for fields, _ in read_model_artifact(model_path))
+                input_models.update(published_model_key(fields) for fields, _ in read_model_artifact(model_path))
                 exact_path = output_root / entry["artifacts"]["exact_classes"][
                     "path"
                 ]
                 operator_survivors = filtered_models.get(operator, set())
                 for completion in _iter_artifact_records(exact_path):
                     physical_incidences += 1
-                    fingerprint = repr(lagrangian_fingerprint(completion))
-                    connection.execute(
-                        "INSERT OR IGNORE INTO physical(fingerprint) VALUES (?)",
-                        (fingerprint,),
-                    )
-                    if model_strings(completion) in operator_survivors:
+                    survives = model_strings(completion) in operator_survivors
+                    index.add(completion, filtered=survives)
+                    if survives:
                         filtered_incidences += 1
-                        connection.execute(
-                            "INSERT OR IGNORE INTO filtered(fingerprint) VALUES (?)",
-                            (fingerprint,),
-                        )
             connection.commit()
-            physical = connection.execute(
-                "SELECT COUNT(*) FROM physical"
-            ).fetchone()[0]
-            filtered = connection.execute(
-                "SELECT COUNT(*) FROM filtered"
-            ).fetchone()[0]
+            physical, filtered = index.counts()
     finally:
         database_path.unlink(missing_ok=True)
     return {
@@ -274,11 +258,13 @@ def write_markdown(path, report, rows):
         ]
     )
     for row in changed:
+        model_delta = "unavailable" if row["model_delta"] is None else f"{row['model_delta']:+}"
+        filtered_delta = "unavailable" if row["filtered_delta"] is None else f"{row['filtered_delta']:+}"
         lines.append(
             f"| {row['operator']} | {row['published_models']} | "
-            f"{row['updated_democratic_models']} | {row['model_delta']:+} | "
+            f"{row['updated_democratic_models']} | {model_delta} | "
             f"{row['published_filtered_models']} | "
-            f"{row['updated_filtered_models']} | {row['filtered_delta']:+} |"
+            f"{row['updated_filtered_models']} | {filtered_delta} |"
         )
     lines.extend(
         [

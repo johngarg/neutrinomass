@@ -21,6 +21,8 @@ from neutrinomass.database.rebuild import (
     read_model_artifact,
     write_filtered_registry,
 )
+from neutrinomass.database.reports import normalize_census_report, stable_diagnostic_record
+from neutrinomass.database.filtering import filter_published_registry, published_one_loop_templates
 
 
 REPOSITORY = Path(__file__).resolve().parent
@@ -88,9 +90,7 @@ def completed_report_is_valid(report_path, inventory_item, seed):
     if not report_path.exists():
         return False
     try:
-        report = load_json(report_path)
-        if report["schema_version"] != 1:
-            return False
+        report = normalize_census_report(load_json(report_path))
         if report["operator"] != inventory_item["operator"]:
             return False
         if report["kind"] != inventory_item["kind"]:
@@ -235,7 +235,9 @@ def run_seed(
 
 
 def stable_report_data(report):
+    report = normalize_census_report(report)
     historical = deepcopy(report["historical"])
+    historical["invalid"] = [stable_diagnostic_record(item) for item in historical.get("invalid",[])]
     historical.pop("exact_comparisons", None)
     historical["artifact"] = {
         "sha256": historical["artifact"]["sha256"]
@@ -248,7 +250,8 @@ def stable_report_data(report):
         "operator": report["operator"],
         "kind": report["kind"],
         "derivatives": report["derivatives"],
-        "operator_scale_gev": report["operator_scale_gev"],
+        "scale_unit": "TeV",
+        "operator_scale_tev": report["operator_scale_tev"],
         "records": report["records"],
         "provisional_records": report["provisional_records"],
         "generation_rejections": report["generation_rejections"],
@@ -408,17 +411,19 @@ def filter_rebuilt_registry(output_root, manifest, output_dir):
                 f"expected {expected}, found {len(models)}"
             )
         registry[operator] = models
-        scales[operator] = entry["census"]["operator_scale_gev"]
+        scales[operator] = entry["census"]["operator_scale_tev"]
         input_counts[operator] = len(models)
 
-    one_loop_models = generated_one_loop_weinberg_models()
-    filtered = filter_democratic_registry(registry, scales, one_loop_models)
+    one_loop_models = tuple(fields for _,fields in published_one_loop_templates())
+    filtered = filter_published_registry(registry, scales)
     survivor_path = output_dir / "filtered_democratic_models.jsonl"
     survivor_artifact = write_filtered_registry(
         survivor_path, filtered["survivors"]
     )
     one_loop_path = output_dir / "one_loop_weinberg_models.jsonl"
     one_loop_sha256 = write_one_loop_models(one_loop_path, one_loop_models)
+    witness_path = output_dir / "published_filter_witnesses.json"
+    atomic_write_json(witness_path, filtered["witnesses"])
     per_operator = {}
     for operator in sorted(registry):
         removed_mass = filtered["removed_by_mass"].get(operator, 0)
@@ -433,11 +438,14 @@ def filter_rebuilt_registry(output_root, manifest, output_dir):
             "survivors": survivors,
         }
     return {
-        "schema_version": 1,
+        "schema_version": 2,
+        "mode": "published",
+        "scale_unit": "TeV",
         "source_commit": manifest["source_commit"],
         "complete_registry": manifest["complete"],
         "operator_count": len(registry),
-        "one_loop_scale_gev": filtered["one_loop_scale_gev"],
+        "one_loop_scale_tev": filtered["one_loop_scale_tev"],
+        "witnesses": {"path":str(witness_path),"sha256":file_sha256(witness_path)},
         "one_loop_models": {
             "records": len(one_loop_models),
             "path": str(one_loop_path),
