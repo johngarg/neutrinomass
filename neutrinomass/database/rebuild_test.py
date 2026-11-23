@@ -167,6 +167,41 @@ def test_archived_local_d3_recovers_the_verified_cut():
         _restore_historical_local_numerator(restored)
 
 
+@pytest.mark.parametrize("name,expected", [("D6a",1),("D15",2)])
+def test_historical_derivatives_follow_physical_endpoints(name,expected):
+    from neutrinomass.database.rebuild import validate_completion
+    from neutrinomass.completions.completions import HistoricalDerivativeBasis
+    legacy=Path(__file__).resolve().parents[2]/f"tests/fixtures/historical/op_{name}-first.dat"
+    records=list(iter_historical_records(name,legacy))
+    assert len(records) == expected
+    for record in records:
+        validate_completion(record)
+        assert record.momentum_contributions
+    if name == "D6a":
+        basis=HistoricalDerivativeBasis.from_operator(DERIV_EFF_OPERATORS[name])
+        assert records[0].lorentz_projection == basis.project_local_numerator(records[0])
+    else:
+        assert len({dumps_completion(record) for record in records}) == expected
+
+
+def test_historical_proved_rejection_is_saved_but_unsupported_still_blocks(tmp_path,monkeypatch):
+    from neutrinomass.database.rebuild import HistoricalRecordRejection
+    legacy=Path(__file__).resolve().parents[2]/"tests/fixtures/historical/op_1.dat"
+    def reject(record):
+        raise HistoricalRecordRejection(record,"HISTORICAL_ZERO_LORENTZ_PROJECTION")
+    monkeypatch.setattr("neutrinomass.database.rebuild.historical_record_normalizer",lambda _:reject)
+    with pytest.raises(HistoricalRecordRejection):
+        list(iter_historical_records("1",legacy))
+    report=write_historical_artifact("1",legacy,tmp_path/"rejected.jsonl")
+    assert report["unbucketable_invalid"]
+    assert report["unbucketable_invalid"][0]["diagnostic"]["code"] == "HISTORICAL_ZERO_LORENTZ_PROJECTION"
+    def unsupported(record):
+        raise InvalidMomentumGraph("missing endpoint provenance")
+    monkeypatch.setattr("neutrinomass.database.rebuild.historical_record_normalizer",lambda _:unsupported)
+    with pytest.raises(InvalidMomentumGraph):
+        write_historical_artifact("1",legacy,tmp_path/"unsupported.jsonl")
+
+
 def test_legacy_historical_normalisation_is_streamed_to_safe_jsonl(tmp_path):
     completion = next(operator_completions(EFF_OPERATORS["1"]))
     legacy = tmp_path / "op_1.dat"

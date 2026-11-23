@@ -406,7 +406,7 @@ def _invalid_historical_class(completion, error):
         "fingerprint": repr(completion_fingerprint(completion)),
         "topology": topology_key(completion),
         "reason": str(error),
-        "diagnostic": diagnostic(error),
+        "diagnostic": getattr(error,"diagnostic",diagnostic(error)),
         "vanishing_term_indices": [
             index
             for index, term in enumerate(completion.terms)
@@ -442,11 +442,13 @@ def _historical_projection(operator_name):
         basis = HistoricalDerivativeBasis.from_operator(
             DERIV_EFF_OPERATORS[operator_name]
         )
-        return lambda completion: setattr(
-            completion,
-            "lorentz_projection",
-            basis.project_existing_local(completion.operator.operator),
-        )
+        def project(completion):
+            projection=basis.project_local_numerator(completion)
+            if projection is None:
+                raise HistoricalRecordRejection(completion,
+                    "HISTORICAL_ZERO_LORENTZ_PROJECTION",basis_labels=basis.labels)
+            completion.lorentz_projection=projection
+        return project
 
     derivative_operator = DERIV_EFF_OPERATORS.get(operator_name)
     projection = (
@@ -496,6 +498,14 @@ def _restore_historical_local_numerator(completion):
     return restored
 
 
+class HistoricalRecordRejection(ValueError):
+    """A concrete archived tree with a proved invalid derivative budget/projection."""
+    def __init__(self,completion,code,**details):
+        super().__init__(code)
+        self.completion=completion
+        self.diagnostic=dict(code=code,**details)
+
+
 def historical_record_normalizer(operator_name):
     # Legacy ``ExoticField(IndexedField(...))`` expressions construct an
     # intermediate generic tensor head before choosing the scalar/fermion
@@ -519,7 +529,7 @@ def historical_record_normalizer(operator_name):
     def normalize(completion):
         completion = loads_completion(dumps_completion(completion))
         if order >= 2:
-            from neutrinomass.completions.physical_routes import local_physical_expansions
+            from neutrinomass.completions.physical_routes import local_physical_expansions,physical_numerators
             if unique is None and basis is None:
                 raise RuntimeError(f"UNSUPPORTED_HISTORICAL_ROUTING: {operator_name}")
             emitted = False
@@ -529,7 +539,11 @@ def historical_record_normalizer(operator_name):
                     expanded.lorentz_projection = unique
                 yield expanded
             if not emitted:
-                raise RuntimeError(f"HISTORICAL_ROUTING_REQUIRES_DIAGNOSIS: {operator_name}; no physical expansion at order {order}")
+                numerator_count=len(physical_numerators(completion))
+                impossible=numerator_count>order or (order-numerator_count)%2
+                raise HistoricalRecordRejection(completion,
+                    "HISTORICAL_DERIVATIVE_BUDGET_IMPOSSIBLE" if impossible else "HISTORICAL_ZERO_LORENTZ_PROJECTION",
+                    derivative_order=order,physical_numerators=numerator_count)
             return
         if restore_numerator:
             completion = _restore_historical_local_numerator(completion)
@@ -538,12 +552,17 @@ def historical_record_normalizer(operator_name):
     return normalize
 
 
-def iter_historical_records(operator_name, historical_path):
+def iter_historical_records(operator_name, historical_path, *, on_rejection=None):
     normalize = historical_record_normalizer(operator_name)
     for item in iter_completions(historical_path, trusted=True):
         if item.operator_name != operator_name:
             raise ValueError("Historical archive contains another operator")
-        yield from normalize(item.force(trusted=True))
+        try:
+            yield from normalize(item.force(trusted=True))
+        except HistoricalRecordRejection as error:
+            if on_rejection is None:
+                raise
+            on_rejection(error)
 
 
 def historical_classes(operator_name, historical_path):
@@ -571,10 +590,14 @@ def write_historical_artifact(operator_name, historical_path, destination):
     records = 0
     bucketable = 0
     invalid = []
+    def reject(error):
+        nonlocal records
+        records+=1
+        invalid.append(_invalid_historical_class(error.completion,error))
     try:
         with temporary:
             for completion in iter_historical_records(
-                operator_name, historical_path
+                operator_name, historical_path,on_rejection=reject
             ):
                 records += 1
                 try:

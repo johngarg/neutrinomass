@@ -145,7 +145,7 @@ def historical_transform(operator_name):
     """Only for hash-verified package-controlled historical archives."""
     import ast
     from neutrinomass.database.database import LazyCompletion
-    from neutrinomass.database.rebuild import historical_record_normalizer, validate_completion, _invalid_historical_class
+    from neutrinomass.database.rebuild import historical_record_normalizer, validate_completion, _invalid_historical_class, HistoricalRecordRejection
     from neutrinomass.completions.completions import exact_completion_bucket_key
     normalize=historical_record_normalizer(operator_name)
     def transform(line):
@@ -158,18 +158,21 @@ def historical_transform(operator_name):
         item=LazyCompletion(**values)
         records=[]
         invalid=[]
-        for completion in normalize(item.force(trusted=True)):
-            try:
-                exact_completion_bucket_key(completion)
-            except ValueError:
+        try:
+            for completion in normalize(item.force(trusted=True)):
                 try:
-                    validate_completion(completion)
-                except ValueError as error:
-                    invalid.append(_invalid_historical_class(completion,error))
+                    exact_completion_bucket_key(completion)
+                except ValueError:
+                    try:
+                        validate_completion(completion)
+                    except ValueError as error:
+                        invalid.append(_invalid_historical_class(completion,error))
+                    else:
+                        raise
                 else:
-                    raise
-            else:
-                records.append(dumps_completion(completion))
+                    records.append(dumps_completion(completion))
+        except HistoricalRecordRejection as error:
+            invalid.append(_invalid_historical_class(error.completion,error))
         return records,dict(code="HISTORICAL_NORMALIZED",normalized_records=len(records),
                             invalid=invalid,representation_set=sorted(set(item.head["quantum_numbers"])))
     return transform

@@ -24,9 +24,11 @@ def main():
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     registry, manifest, legacy_terms, literal_union = {}, {}, set(), set()
+    first_terms={}
     for name in sorted(operator_registry()):
         path = args.legacy_dir / f"op_{name}.dat"
         models, records = {}, 0
+        first_terms[name]={}
         digest = hashlib.sha256()
         with path.open("rb") as stream:
             for line in stream:
@@ -48,6 +50,7 @@ def main():
                 terms = tuple(sorted(min(tuple(sorted(t)), conjugate_term(tuple(t)))
                                      for t in head["terms"]))
                 legacy_terms.add(terms)
+                first_terms[name].setdefault(fields,terms)
                 records += 1
         registry[name] = models
         literal_union.update(models)
@@ -74,6 +77,7 @@ def main():
         for name in registry
         if set(legacy_v10["survivors"][name]) != set(result["survivors"][name])
     }
+    filtered_first_terms={first_terms[name][fields] for name,models in result["survivors"].items() for fields in models}
     report = dict(schema_version=2, scale_unit="TeV", inputs=manifest,
         literal_unfiltered_models=len(literal_union),
         conjugacy_unfiltered_models=result["distinct_input_models"],
@@ -81,12 +85,16 @@ def main():
         per_operator_differences=mismatches, v10_filtered_models=len(v10_union),
         v10_filter_differences=comparison, historical_interaction_multisets=len(legacy_terms),
         published_lagrangians=430810,
+        historical_filtered_first_representative_lagrangians=len(filtered_first_terms),
+        packaged_filtered_lagrangians=len(set(DATA["stringent_num"])),
         historical_interaction_scope="243 raw archive operators; contraction-blind published term keys",
         explanations=["Published conjugate fields share identity.",
             "Published loop prefix lookup inherits archived baryon assignments; v10 forces 3B=0.",
             "Published loop templates retain repeated factors; v10 collapses them."])
     report["passed"] = (report["literal_unfiltered_models"] == 141989
         and report["filtered_models"] == 11216 and not mismatches
+        and report["historical_interaction_multisets"] == 430810
+        and report["historical_filtered_first_representative_lagrangians"] == 11483
         and not (set(baseline)-set(registry)))
     (args.output_dir/"baseline.json").write_text(json.dumps(report, indent=2, sort_keys=True)+"\n")
     with (args.output_dir/"published-models.jsonl").open("w") as stream:
