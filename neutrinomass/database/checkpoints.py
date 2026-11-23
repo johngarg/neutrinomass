@@ -161,14 +161,20 @@ class CheckpointStore:
         self.contract = json.loads(canonical_json(contract))
         self.state = None
         self.lock = None
+        self.read_only = False
 
     def __enter__(self):
         self.last_saved=time.monotonic()
         self.directory.mkdir(parents=True, exist_ok=True)
         self.lock = (self.directory/"worker.lock").open("a+")
         try:
-            fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             manifest = self.directory/"checkpoint.json"
+            # Completed stages are immutable. Multiple dependent workers may
+            # verify/read them concurrently; only unfinished stages have an
+            # exclusive publisher. Re-read the manifest after obtaining the
+            # lock so an atomic publication cannot race the validation below.
+            self.read_only = manifest.exists() and json.loads(manifest.read_text()).get("complete") is True
+            fcntl.flock(self.lock, fcntl.LOCK_SH if self.read_only else fcntl.LOCK_EX | fcntl.LOCK_NB)
             if manifest.exists():
                 state = json.loads(manifest.read_text())
                 if state.get("schema_version") != SCHEMA_VERSION or state.get("contract") != self.contract:
@@ -178,6 +184,7 @@ class CheckpointStore:
                 for artifact in state.get("artifacts", {}).values():
                     self.verify(artifact)
                 self.state = state
+                self.read_only = state["complete"]
             else:
                 self.state = dict(schema_version=SCHEMA_VERSION, contract=self.contract,
                     contract_sha256=identity_hash(self.contract), complete=False, artifacts={}, progress={})
@@ -199,6 +206,7 @@ class CheckpointStore:
         return path
 
     def publish_file(self, source, *, suffix):
+        self.require_writable()
         source = Path(source)
         digest = digest_file(source)
         destination = self.directory/(digest+suffix)
@@ -222,6 +230,7 @@ class CheckpointStore:
         return dict(path=destination.name, sha256=digest, bytes=destination.stat().st_size)
 
     def publish_lines(self, lines):
+        self.require_writable()
         fd, name = tempfile.mkstemp(prefix=".chunk-", dir=self.directory)
         count = 0
         plain = hashlib.sha256()
@@ -242,6 +251,7 @@ class CheckpointStore:
             Path(name).unlink(missing_ok=True)
 
     def save(self, progress, *, artifacts=None, complete=False):
+        self.require_writable()
         retained = dict(self.state["artifacts"])
         retained.update(artifacts or {})
         self.state = dict(self.state, progress=progress, artifacts=retained,
@@ -249,8 +259,16 @@ class CheckpointStore:
             active_seconds=self.state.get("active_seconds",0)+time.monotonic()-self.last_saved)
         atomic_json(self.directory/"checkpoint.json", self.state)
         self.last_saved=time.monotonic()
+        if complete:
+            self.read_only=True
+            fcntl.flock(self.lock,fcntl.LOCK_SH)
+
+    def require_writable(self):
+        if self.read_only:
+            raise ValueError("Completed checkpoint is immutable")
 
     def snapshot(self, connection, progress, *, complete=False):
+        self.require_writable()
         connection.commit()
         fd, name = tempfile.mkstemp(prefix=".snapshot-", dir=self.directory)
         os.close(fd)

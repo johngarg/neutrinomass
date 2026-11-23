@@ -62,3 +62,23 @@ def test_complete_checkpoint_and_compression_are_deterministic(tmp_path):
     with CheckpointStore(tmp_path,{}) as store:
         assert store.state["complete"]
         assert store.state["artifacts"]["output"]["records"] == 2
+
+
+def test_completed_checkpoint_allows_parallel_readers_but_no_further_publication(tmp_path):
+    with CheckpointStore(tmp_path,{}) as publisher:
+        artifact=publisher.publish_lines(["verified"])
+        publisher.save(dict(cursor=1),artifacts={"output":artifact},complete=True)
+        before=(tmp_path/"checkpoint.json").read_bytes()
+        # The publisher downgrades its lock only after atomic publication.
+        with CheckpointStore(tmp_path,{}) as first,CheckpointStore(tmp_path,{}) as second:
+            assert first.read_only and second.read_only
+            assert first.verify(artifact)==second.verify(artifact)
+            for reader in (publisher,first,second):
+                with pytest.raises(ValueError,match="immutable"):
+                    reader.save(dict(cursor=2))
+                with pytest.raises(ValueError,match="immutable"):
+                    reader.publish_lines(["replacement"])
+                with sqlite3.connect(":memory:") as database:
+                    with pytest.raises(ValueError,match="immutable"):
+                        reader.snapshot(database,{})
+        assert (tmp_path/"checkpoint.json").read_bytes()==before
