@@ -5,6 +5,7 @@ from contextvars import ContextVar
 from copy import deepcopy
 
 _assignment = ContextVar("completion_species_assignment",default=None)
+_candidate = ContextVar("completion_candidate_inventory",default=None)
 
 
 class SpeciesChoiceRequired(Exception):
@@ -36,7 +37,15 @@ def assign_candidate_species(field):
 
 class CandidateAssignment:
     def __init__(self, fields, choices):
-        self.states = tuple(state for field in fields for state in species_orbit(field))
+        from neutrinomass.completions.completions import exotic_species_kind
+        states={}
+        for field in fields:
+            for state in species_orbit(field):
+                key=(state.label,exotic_species_kind(state),state.dynkin,
+                     tuple(sorted(state.charges.items())),state.is_conj,
+                     getattr(state,"is_unbarred",None))
+                states[key]=state
+        self.states = tuple(states[key] for key in sorted(states,key=repr))
         self.choices = choices
         self.cursor = 0
 
@@ -94,6 +103,21 @@ def candidate_partition_completions(partition, fields):
                 yield completion
 
 
+def partition_candidates(partition):
+    """One ordinary branch, or every admitted species assignment of it."""
+    from neutrinomass.completions.completions import partition_completion
+    from neutrinomass.completions.core import FailedCompletion
+    selection=_candidate.get()
+    if selection is None:
+        completion=partition_completion(partition)
+        if not isinstance(completion,FailedCompletion):
+            yield completion
+    else:
+        fields,topology=selection
+        if topology is None or partition["canonical_topology"] == topology:
+            yield from candidate_partition_completions(partition,fields)
+
+
 def candidate_completion_stream(operator, fields, *, topology=None):
     """Use the ordinary complete tree enumeration with fixed admitted species.
 
@@ -101,7 +125,13 @@ def candidate_completion_stream(operator, fields, *, topology=None):
     symmetry/vanishing check. Standard completion entry points are unchanged
     when no candidate context is active.
     """
-    from neutrinomass.completions.completions import partition_stream
-    for partition in partition_stream(operator):
-        if topology is None or partition["canonical_topology"] == topology:
-            yield from candidate_partition_completions(partition,fields)
+    from neutrinomass.completions.completions import (
+        operator_completions,deriv_operator_completion_stream,operator_strip_derivs,
+    )
+    generate=(deriv_operator_completion_stream if
+              operator_strip_derivs(operator.operator)["n_derivs"] else operator_completions)
+    token=_candidate.set((tuple(fields),topology))
+    try:
+        yield from generate(operator)
+    finally:
+        _candidate.reset(token)

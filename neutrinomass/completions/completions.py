@@ -2402,6 +2402,7 @@ def operator_completions(
     Both raw and canonical modes furnish partitions incrementally.
     """
     from neutrinomass.completions.selection import selected_assignment, assignment_boundary
+    from neutrinomass.completions.species import partition_candidates
     parts = partition_stream(operator, verbose=verbose)
     if canonical_partitions:
         parts = _nonisomorphic_partitions(parts)
@@ -2410,18 +2411,14 @@ def operator_completions(
             for part in parts:
                 if not selected_assignment(part):
                     continue
-                completion = partition_completion(part)
-                if not isinstance(completion, FailedCompletion):
-                    yield completion
+                yield from partition_candidates(part)
                 assignment_boundary(part)
                 bar()
     else:
         for part in parts:
             if not selected_assignment(part):
                 continue
-            completion = partition_completion(part)
-            if not isinstance(completion, FailedCompletion):
-                yield completion
+            yield from partition_candidates(part)
             assignment_boundary(part)
 
 
@@ -3069,26 +3066,25 @@ def momentum_routed_completion_stream(
                     branch["derivative_count"] = numerator_count
                     branch["derivative_route_choices"] = route_choices
                     branch["derivative_partition_is_canonical"] = True
-                    completion = partition_completion(branch)
-                    if isinstance(completion, FailedCompletion):
-                        continue
-                    if unique_projection is not None:
-                        completion.lorentz_projection = unique_projection
-                    expanded = expand_propagator_denominators(
-                        completion, denominator_order
-                    )
-                    if second_derivative_basis is not None:
-                        from neutrinomass.completions.physical_routes import project_second_derivative_tree
-                        projected = []
-                        for candidate in expanded:
-                            projection = project_second_derivative_tree(second_derivative_basis, candidate)
-                            if projection is None:
-                                continue
-                            candidate.operator = operator
-                            candidate.lorentz_projection = projection
-                            projected.append(candidate)
-                        expanded = projected
-                    partition_candidates.extend(expanded)
+                    from neutrinomass.completions.species import partition_candidates
+                    for completion in partition_candidates(branch):
+                        if unique_projection is not None:
+                            completion.lorentz_projection = unique_projection
+                        expanded = expand_propagator_denominators(
+                            completion, denominator_order
+                        )
+                        if second_derivative_basis is not None:
+                            from neutrinomass.completions.physical_routes import project_second_derivative_tree
+                            projected = []
+                            for candidate in expanded:
+                                projection = project_second_derivative_tree(second_derivative_basis, candidate)
+                                if projection is None:
+                                    continue
+                                candidate.operator = operator
+                                candidate.lorentz_projection = projection
+                                projected.append(candidate)
+                            expanded = projected
+                        partition_candidates.extend(expanded)
         partition_branches = []
         append_unique_completions(partition_branches, partition_candidates)
         yield from partition_branches

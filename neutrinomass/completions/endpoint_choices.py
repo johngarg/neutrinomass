@@ -53,17 +53,16 @@ def physical_edge_completion_stream(operator,*,second_derivative_basis=None,uniq
         for count in range(order%2,min(order,len(fermions))+1,2):
             for selected in combinations(fermions,count):
                 branch=dict(partition,graph=deepcopy(partition["graph"]),completion_operator=operator)
+                from neutrinomass.completions.species import partition_candidates
                 with kinetic_edges(selected):
-                    completion=partition_completion(branch)
-                if isinstance(completion,FailedCompletion):
-                    continue
-                for candidate in local_physical_expansions(completion,order,
-                        second_derivative_basis=second_derivative_basis):
-                    actual={tuple(sorted(p.edge)) for p in candidate.momentum_contributions
-                            if p.numerator_kind == "momentum"}
-                    if actual != set(selected):
-                        raise ValueError("Constructed kinetic endpoints differ from the selected physical branch")
-                    if unique_projection is not None:
-                        candidate.lorentz_projection=unique_projection
-                    yield candidate
+                    for completion in partition_candidates(branch):
+                        for candidate in local_physical_expansions(completion,order,
+                                second_derivative_basis=second_derivative_basis):
+                            actual={tuple(sorted(p.edge)) for p in candidate.momentum_contributions
+                                    if p.numerator_kind == "momentum"}
+                            if actual != set(selected):
+                                raise ValueError("Constructed kinetic endpoints differ from the selected physical branch")
+                            if unique_projection is not None:
+                                candidate.lorentz_projection=unique_projection
+                            yield candidate
         assignment_boundary(partition)
