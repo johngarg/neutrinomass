@@ -1,0 +1,14 @@
+{
+  "0": {
+    "source": ".Data/exploding-ops/v10-review-20260913/repeated-species-lower-completion-0.jsonl",
+    "sha256": "764f5c2b5b378ce4b9382cb2e19ddf773717033541ca4a3dc858eb9086e909e2"
+  },
+  "1": {
+    "source": ".Data/exploding-ops/v10-review-20260913/repeated-species-lower-completion-1.jsonl",
+    "sha256": "bfff3d60d36a3c09a9ed3a96108df784e2329f12b6e49c4da8024acc7aa04092"
+  },
+  "2": {
+    "source": ".Data/exploding-ops/v10-review-20260913/repeated-species-lower-completion-2.jsonl",
+    "sha256": "394cd13cce91fcca8a99802ecef962c0df3b53885db46cc15371fe3c0b0dab9b"
+  }
+}

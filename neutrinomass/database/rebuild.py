@@ -181,6 +181,12 @@ def validate_completion(completion, *, check_vanishing=True):
         raise ValueError("non-renormalisable or non-singlet UV interaction")
 
     contributions = getattr(completion, "momentum_contributions", ())
+    requested_operator = DERIV_EFF_OPERATORS.get(completion.operator.name)
+    if requested_operator is not None:
+        # Acceptance requires the complete physical derivative budget even
+        # when an older record has no route metadata at all.
+        validate_routes(completion, derivative_order=operator_strip_derivs(
+            requested_operator.operator)["n_derivs"])
     if not contributions:
         return
     for contribution in contributions:
@@ -489,33 +495,11 @@ def _restore_historical_local_numerator(completion):
 
 
 def iter_historical_records(operator_name, historical_path):
-    # Legacy ``ExoticField(IndexedField(...))`` expressions construct an
-    # intermediate generic tensor head before choosing the scalar/fermion
-    # completion class.  For repeated higher representations, that head can
-    # retain the legacy symmetry object even though its metadata says
-    # ``comm='fermi'``.  Reconstructing through the safe schema creates the
-    # concrete field class directly and puts historical validation on the same
-    # tensor-statistics footing as fresh generation.
-    assign_projection = _historical_projection(operator_name)
-    operator = DERIV_EFF_OPERATORS.get(operator_name)
-    # Placement-dependent projection needs its own historical comparison.
-    # Here the archived EFT operator fixes a single Lorentz structure.
-    restore_numerator = (
-        operator is not None
-        and operator_strip_derivs(operator.operator)["n_derivs"] == 1
-        and operator_name not in PROJECTED_LORENTZ_OPERATORS
-        and unique_lorentz_completion_operator(operator) is not None
-    )
+    normalize = historical_record_normalizer(operator_name)
     for item in iter_completions(historical_path, trusted=True):
         if item.operator_name != operator_name:
-            continue
-        completion = loads_completion(
-            dumps_completion(item.force(trusted=True))
-        )
-        if restore_numerator:
-            completion = _restore_historical_local_numerator(completion)
-        assign_projection(completion)
-        yield completion
+            raise ValueError("Historical archive contains another operator")
+        yield from normalize(item.force(trusted=True))
 
 
 def historical_classes(operator_name, historical_path):
@@ -1236,3 +1220,45 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
             "democratic_models": exact["model_artifact"],
         },
     }
+
+
+def historical_record_normalizer(operator_name):
+    # Legacy ``ExoticField(IndexedField(...))`` expressions construct an
+    # intermediate generic tensor head before choosing the scalar/fermion
+    # completion class.  For repeated higher representations, that head can
+    # retain the legacy symmetry object even though its metadata says
+    # ``comm='fermi'``.  Reconstructing through the safe schema creates the
+    # concrete field class directly and puts historical validation on the same
+    # tensor-statistics footing as fresh generation.
+    assign_projection = _historical_projection(operator_name)
+    operator = DERIV_EFF_OPERATORS.get(operator_name)
+    # Placement-dependent projection needs its own historical comparison.
+    # Here the archived EFT operator fixes a single Lorentz structure.
+    restore_numerator = (
+        operator is not None
+        and operator_strip_derivs(operator.operator)["n_derivs"] == 1
+    )
+    order = operator_strip_derivs(operator.operator)["n_derivs"] if operator is not None else 0
+    unique = unique_multi_derivative_projection(operator) if order >= 2 else None
+    basis = (UnreducedSecondDerivativeBasis.from_operator(operator)
+             if order == 2 and unique is None else None)
+    def normalize(completion):
+        completion = loads_completion(dumps_completion(completion))
+        if order >= 2:
+            from neutrinomass.completions.physical_routes import local_physical_expansions
+            if unique is None and basis is None:
+                raise RuntimeError(f"UNSUPPORTED_HISTORICAL_ROUTING: {operator_name}")
+            emitted = False
+            for expanded in local_physical_expansions(completion,order,second_derivative_basis=basis):
+                emitted = True
+                if unique is not None:
+                    expanded.lorentz_projection = unique
+                yield expanded
+            if not emitted:
+                raise RuntimeError(f"HISTORICAL_ROUTING_REQUIRES_DIAGNOSIS: {operator_name}; no physical expansion at order {order}")
+            return
+        if restore_numerator:
+            completion = _restore_historical_local_numerator(completion)
+        assign_projection(completion)
+        yield completion
+    return normalize

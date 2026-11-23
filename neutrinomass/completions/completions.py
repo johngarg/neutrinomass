@@ -1618,6 +1618,11 @@ def exotic_field_and_term(
     exotic_field = cons_completion_field(exotic_indexed_field)
     exotic_field = exotic_field.conj_indices if to_conj else exotic_field
 
+    # Candidate-specific mechanism searches must choose a physical copy
+    # before constructing/rejecting a symmetry-vanishing vertex.
+    from neutrinomass.completions.species import assign_candidate_species
+    exotic_field = assign_candidate_species(exotic_field)
+
     partner = exotic_field
     if isinstance(exotic_field, ComplexScalar):
         partner = exotic_field.conj
@@ -1988,7 +1993,8 @@ def replace_and_mutate(
             return Leaf("Unsupported momentum provenance: unresolved numerator occurrence", None)
         record_routed_derivative_edges(derivative_state, {numerator: selected[0]})
 
-    return Leaf(exotic_field, exotic_edge[0])
+    from neutrinomass.completions.endpoint_choices import transported_endpoint
+    return Leaf(transported_endpoint(exotic_field,exotic_edge), exotic_edge[0])
 
 
 def contains_only_leaves(xs: tuple) -> bool:
@@ -3003,6 +3009,12 @@ def momentum_routed_completion_stream(
         elif historical_basis is None:
             historical_basis = HistoricalDerivativeBasis.from_operator(operator)
 
+    if n_derivs >= 2:
+        from neutrinomass.completions.endpoint_choices import physical_edge_completion_stream
+        yield from physical_edge_completion_stream(operator,
+            second_derivative_basis=second_derivative_basis,unique_projection=unique_projection)
+        return
+
     stripped_operator = EffectiveOperator(
         operator.name, construct_operator(fields, epsilons)
     )
@@ -3051,23 +3063,10 @@ def momentum_routed_completion_stream(
                         completion, denominator_order
                     )
                     if second_derivative_basis is not None:
-                        if numerator_count:
-                            raise ValueError(
-                                "An unreduced two-numerator branch requires "
-                                "an explicit spinor-momentum projection"
-                            )
+                        from neutrinomass.completions.physical_routes import project_second_derivative_tree
                         projected = []
                         for candidate in expanded:
-                            contribution = next(
-                                contribution
-                                for contribution in candidate.momentum_contributions
-                                if contribution.denominator_order
-                            )
-                            projection = second_derivative_basis.project_denominator(
-                                candidate.operator.operator,
-                                candidate.partition,
-                                contribution,
-                            )
+                            projection = project_second_derivative_tree(second_derivative_basis, candidate)
                             if projection is None:
                                 continue
                             candidate.operator = operator
@@ -3244,34 +3243,8 @@ def derivative_combinations(
 def deriv_operator_completion_stream(
     operator: EffectiveOperator, verbose=False, canonical_partitions=False
 ) -> Iterable[Completion]:
-    """Yield completions of every supported derivative placement.
-
-    Unlike :func:`deriv_operator_completions`, this function does not retain
-    generated local completions or compare routed candidates against them.
-    Downstream artifact generation can therefore write each candidate as soon
-    as it is furnished and leave exact uniqueness to the disk-backed
-    deduplicator.  Two-derivative multidimensional operators retain both
-    distributed derivatives and explicit :math:`D^2` placements without EOM
-    reduction.
-
-    """
-    historical_basis = None
-    unique_projection = unique_multi_derivative_projection(operator)
-    second_derivative_basis = None
-    _, _, derivative_count = operator_strip_derivs(operator.operator).values()
-    if (
-        operator.name in PROJECTED_LORENTZ_OPERATORS
-        and unique_lorentz_completion_operator(operator) is None
-    ):
-        historical_basis = HistoricalDerivativeBasis.from_operator(operator)
-        deriv_combos = [placement.operator for placement in historical_basis.placements]
-    elif unique_projection is None and derivative_count == 2:
-        second_derivative_basis = UnreducedSecondDerivativeBasis.from_operator(
-            operator
-        )
-        deriv_combos = [placement.operator for placement in second_derivative_basis.placements]
-    else:
-        deriv_combos = derivative_combinations(operator)
+    """Stream local placements and explicit physical propagator expansions."""
+    derivative_count, deriv_combos, historical_basis, unique_projection, second_derivative_basis = _build_derivative_generation_context(operator)
 
     if verbose:
         print(f"Finding completions of {len(deriv_combos)} IBP-related operators...")
@@ -3284,6 +3257,16 @@ def deriv_operator_completion_stream(
             verbose=verbose,
             canonical_partitions=canonical_partitions,
         ):
+            if derivative_count >= 2:
+                from neutrinomass.completions.physical_routes import local_physical_expansions
+                for candidate in local_physical_expansions(
+                    completion, derivative_count,
+                    second_derivative_basis=second_derivative_basis,
+                ):
+                    if unique_projection is not None:
+                        candidate.lorentz_projection = unique_projection
+                    yield candidate
+                continue
             if historical_basis is not None:
                 projection = historical_basis.project_local_numerator(completion)
                 if projection is None:
@@ -3423,3 +3406,26 @@ def clean_completions(completions: List[Completion]) -> List[Completion]:
         comp_dict[(num, comp.topology)] = comp
 
     return sorted((v for k, v in comp_dict.items()), key=lambda x: x.topology)
+
+
+def _build_derivative_generation_context(operator):
+    """Shared placement inventory for whole-operator and sharded generation."""
+    historical_basis = None
+    unique_projection = unique_multi_derivative_projection(operator)
+    second_derivative_basis = None
+    _, _, derivative_count = operator_strip_derivs(operator.operator).values()
+    if (
+        operator.name in PROJECTED_LORENTZ_OPERATORS
+        and unique_lorentz_completion_operator(operator) is None
+    ):
+        historical_basis = HistoricalDerivativeBasis.from_operator(operator)
+        deriv_combos = [placement.operator for placement in historical_basis.placements]
+    elif unique_projection is None and derivative_count == 2:
+        second_derivative_basis = UnreducedSecondDerivativeBasis.from_operator(
+            operator
+        )
+        deriv_combos = [placement.operator for placement in second_derivative_basis.placements]
+    else:
+        deriv_combos = derivative_combinations(operator)
+
+    return derivative_count, deriv_combos, historical_basis, unique_projection, second_derivative_basis

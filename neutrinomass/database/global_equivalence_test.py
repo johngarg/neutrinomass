@@ -30,6 +30,23 @@ def test_global_equivalence_preserves_copies():
     assert not equivalent_global_lagrangians(one, two)
 
 
+def test_global_comparison_preserves_contractions_and_conjugate_naming():
+    from neutrinomass.tensormethod.core import IndexedField,eps
+    from neutrinomass.tensormethod import H
+    from neutrinomass.completions.core import ComplexScalar
+    from sympy import Rational
+    a,b,c,d=[IndexedField(label,f"i{i}",charges={"y":0,"3b":0})
+             for i,label in enumerate("abcd")]
+    first=a*b*c*d*eps("-i0 -i1")*eps("-i2 -i3")
+    second=a*b*c*d*eps("-i0 -i2")*eps("-i1 -i3")
+    assert not equivalent_global_lagrangians(make_completion([],[first]),make_completion([],[second]))
+    positive=doublet("positive","i4")
+    negative=ComplexScalar("negative","i5",charges={"y":Rational(-1,2),"3b":0})
+    assert equivalent_global_lagrangians(
+        make_completion([positive],[higgs_interaction(positive,"i6")]),
+        make_completion([negative],[negative*H("i7")*eps("-i5 -i7")]))
+
+
 def test_global_index_merges_relabelled_class_and_unions_filtered_status():
     from neutrinomass.completions.completions import operator_completions
     from neutrinomass.completions.operators import EFF_OPERATORS
