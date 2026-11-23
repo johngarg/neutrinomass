@@ -3261,6 +3261,10 @@ _DERIVATIVE_CONTEXT_CACHE = {}
 
 def derivative_generation_context(operator):
     """Bounded cache of immutable placement bases with complete tensor keys."""
+    if not isinstance(operator,EffectiveOperator) or not isinstance(operator.operator,Operator):
+        # Protocol adapters used by streaming clients need not have a
+        # serializable tensor payload. They retain the uncached entry point.
+        return _build_derivative_generation_context(operator)
     import json
     from neutrinomass.database.serialization import operator_to_data
     key=(id(operator),operator.name,json.dumps(operator_to_data(operator.operator),sort_keys=True))
