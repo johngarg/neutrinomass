@@ -108,16 +108,19 @@ def cycle_assignments(states,external):
         yield from extend([edge])
 
 
-def loop_records(fields):
+def loop_records(fields,*,start_cycle=0,boundary=None):
     states=CandidateAssignment(fields,()).states
     shapes=[]
     for leptons in combinations(range(4),2):
         shapes.append(tuple((L,) if i in leptons else (H,) for i in range(4)))
     shapes.append(((L,),(L,),(H,H)))
-    vertex_cache={}
+    vertex_cache={};cycle=0
     for external in shapes:
         size=len(external)
         for edges in cycle_assignments(states,external):
+            cycle+=1
+            if cycle<=start_cycle:
+                continue
             vertices=[]
             for i in range(size):
                 inputs=(edges[i-1][1],edges[i][0],*external[i])
@@ -169,6 +172,8 @@ def loop_records(fields):
                     used={f for edge in edges for f in edge[:2]}
                     yield Completion(EFF_OPERATORS["1"],tuple(leaves),branch,used,list(terms),
                         topology="T1" if size==4 else "T3"),tuple(edge[2] for edge in edges)
+            if boundary is not None:
+                boundary(cycle)
 
 
 def colour_reduced_record(record):
@@ -204,7 +209,7 @@ def colour_reduced_record(record):
         {strip(field) for field in record.exotics},terms,topology=record.topology)
 
 
-def candidate_loop_witness(candidate):
+def candidate_loop_witness(candidate,*,start_cycle=0,boundary=None):
     """Return a fully contracted nonzero heavy-loop template, or exhaust them.
 
     The fermions form an open chain between the two external L fields. With
@@ -214,7 +219,7 @@ def candidate_loop_witness(candidate):
     identical-field cancellation are checked on the sewn tensor itself.
     """
     available=species_descriptors(candidate)
-    for record,numerators in loop_records(candidate.exotics):
+    for record,numerators in loop_records(candidate.exotics,start_cycle=start_cycle,boundary=boundary):
         # The closed irreducible colour line contributes Tr(1_R)=dim(R), not
         # the dimension of an unprojected tensor product such as 3 x 3-bar.
         colours={tuple(sorted(map(int,f.dynkin[2:4]))) for f in record.exotics}
