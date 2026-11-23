@@ -68,3 +68,35 @@ def test_chain_will_not_resubmit_an_ambiguous_unbound_reservation(tmp_path):
     # also retains the reservation and cannot send a duplicate sbatch.
     assert chain_driver.external(ledger,pilot,chain,"fault",spec)=="running"
     assert len(ledger.summary()["jobs"])==1
+
+
+def test_active_production_allocations_do_not_block_their_own_accounting_tick(tmp_path,monkeypatch):
+    ledger,pilot,chain,spec=setup(tmp_path)
+    config=dict(root=str(tmp_path/"pilot"),ledger=str(ledger.path),queue=str(tmp_path/"pilot-queue.sqlite3"),
+                source="/producer",source_commit="producer",worker_limit=4)
+    atomic_json(pilot,config)
+    def ref(path):return dict(path=str(path),sha256=chain_driver.digest_file(path))
+    certificates=[]
+    for seed in (0,1):
+        path=tmp_path/f"test-{seed}.json"
+        atomic_json(path,dict(full_suite_passed=True,environment=dict(source_commit="finaliser",dirty_worktree=False,hash_seed=str(seed))))
+        certificates.append(ref(path))
+    generation=tmp_path/"generation"
+    atomic_json(generation/"recovery-evidence.json",dict(complete=True,ordered_exact_agreement=True))
+    atomic_json(tmp_path/"pilot/seed-0/71p/structural/checkpoint.json",dict(complete=True))
+    atomic_json(tmp_path/"pilot/seed-0/71p/report.json",{})
+    baseline=tmp_path/"baseline.json";atomic_json(baseline,{})
+    chain.update(pilot_config=str(pilot),scripts=str(tmp_path/"scripts"),orchestrator_sources=[],
+        finaliser_commit="finaliser",finaliser_validation=certificates,generation_recovery=str(generation),
+        baseline=ref(baseline),baseline_models=ref(baseline),production_root=str(tmp_path/"production"))
+    ledger.reserve("production-worker")
+    with ledger.transaction() as state:
+        state["jobs"]["production-worker"].update(command="work",queue_config=str(tmp_path/"production/production-config.json"))
+    monkeypatch.setattr(chain_driver,"reconcile",lambda *a:None)
+    monkeypatch.setattr(chain_driver,"external",lambda *a:"complete")
+    monkeypatch.setattr(chain_driver,"tick",lambda *a:dict(status="complete"))
+    called=[]
+    monkeypatch.setattr(chain_driver,"queue_tick",lambda path:called.append(path) or dict(status="running"))
+    result=chain_driver.step(chain)
+    assert result["status"]=="running" and result["phase"]=="production"
+    assert called==[tmp_path/"production/production-config.json"]
