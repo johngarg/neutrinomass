@@ -496,6 +496,48 @@ def _restore_historical_local_numerator(completion):
     return restored
 
 
+def historical_record_normalizer(operator_name):
+    # Legacy ``ExoticField(IndexedField(...))`` expressions construct an
+    # intermediate generic tensor head before choosing the scalar/fermion
+    # completion class.  For repeated higher representations, that head can
+    # retain the legacy symmetry object even though its metadata says
+    # ``comm='fermi'``.  Reconstructing through the safe schema creates the
+    # concrete field class directly and puts historical validation on the same
+    # tensor-statistics footing as fresh generation.
+    assign_projection = _historical_projection(operator_name)
+    operator = DERIV_EFF_OPERATORS.get(operator_name)
+    # Placement-dependent projection needs its own historical comparison.
+    # Here the archived EFT operator fixes a single Lorentz structure.
+    restore_numerator = (
+        operator is not None
+        and operator_strip_derivs(operator.operator)["n_derivs"] == 1
+    )
+    order = operator_strip_derivs(operator.operator)["n_derivs"] if operator is not None else 0
+    unique = unique_multi_derivative_projection(operator) if order >= 2 else None
+    basis = (UnreducedSecondDerivativeBasis.from_operator(operator)
+             if order == 2 and unique is None else None)
+    def normalize(completion):
+        completion = loads_completion(dumps_completion(completion))
+        if order >= 2:
+            from neutrinomass.completions.physical_routes import local_physical_expansions
+            if unique is None and basis is None:
+                raise RuntimeError(f"UNSUPPORTED_HISTORICAL_ROUTING: {operator_name}")
+            emitted = False
+            for expanded in local_physical_expansions(completion,order,second_derivative_basis=basis):
+                emitted = True
+                if unique is not None:
+                    expanded.lorentz_projection = unique
+                yield expanded
+            if not emitted:
+                raise RuntimeError(f"HISTORICAL_ROUTING_REQUIRES_DIAGNOSIS: {operator_name}; no physical expansion at order {order}")
+            return
+        if restore_numerator:
+            completion = _restore_historical_local_numerator(completion)
+        assign_projection(completion)
+        yield completion
+    return normalize
+
+
 def iter_historical_records(operator_name, historical_path):
     normalize = historical_record_normalizer(operator_name)
     for item in iter_completions(historical_path, trusted=True):
@@ -856,6 +898,15 @@ def audit_exact_artifact(
     }
 
 
+def operator_scale_tev(operator):
+    return float(
+        max(
+            numerical_np_scale_estimate(estimate)
+            for estimate in neutrino_mass_estimate(operator)
+        )
+    )
+
+
 def operator_scale_gev(operator):
     """Physical GeV value; new report schema explicitly stores TeV instead."""
     return 1000 * operator_scale_tev(operator)
@@ -991,7 +1042,7 @@ def write_filtered_registry(path, survivors):
     return {"records": count, "sha256": file_sha256(path)}
 
 
-def census_operator(operator_name, historical_path, output_dir, *, hash_seed=None):
+def reference_census_operator(operator_name, historical_path, output_dir, *, hash_seed=None):
     """Generate and verify one registry operator from first principles."""
 
     started = perf_counter()
@@ -1221,52 +1272,13 @@ def census_operator(operator_name, historical_path, output_dir, *, hash_seed=Non
     }
 
 
-def historical_record_normalizer(operator_name):
-    # Legacy ``ExoticField(IndexedField(...))`` expressions construct an
-    # intermediate generic tensor head before choosing the scalar/fermion
-    # completion class.  For repeated higher representations, that head can
-    # retain the legacy symmetry object even though its metadata says
-    # ``comm='fermi'``.  Reconstructing through the safe schema creates the
-    # concrete field class directly and puts historical validation on the same
-    # tensor-statistics footing as fresh generation.
-    assign_projection = _historical_projection(operator_name)
-    operator = DERIV_EFF_OPERATORS.get(operator_name)
-    # Placement-dependent projection needs its own historical comparison.
-    # Here the archived EFT operator fixes a single Lorentz structure.
-    restore_numerator = (
-        operator is not None
-        and operator_strip_derivs(operator.operator)["n_derivs"] == 1
-    )
-    order = operator_strip_derivs(operator.operator)["n_derivs"] if operator is not None else 0
-    unique = unique_multi_derivative_projection(operator) if order >= 2 else None
-    basis = (UnreducedSecondDerivativeBasis.from_operator(operator)
-             if order == 2 and unique is None else None)
-    def normalize(completion):
-        completion = loads_completion(dumps_completion(completion))
-        if order >= 2:
-            from neutrinomass.completions.physical_routes import local_physical_expansions
-            if unique is None and basis is None:
-                raise RuntimeError(f"UNSUPPORTED_HISTORICAL_ROUTING: {operator_name}")
-            emitted = False
-            for expanded in local_physical_expansions(completion,order,second_derivative_basis=basis):
-                emitted = True
-                if unique is not None:
-                    expanded.lorentz_projection = unique
-                yield expanded
-            if not emitted:
-                raise RuntimeError(f"HISTORICAL_ROUTING_REQUIRES_DIAGNOSIS: {operator_name}; no physical expansion at order {order}")
-            return
-        if restore_numerator:
-            completion = _restore_historical_local_numerator(completion)
-        assign_projection(completion)
-        yield completion
-    return normalize
-
-
-def operator_scale_tev(operator):
-    return float(
-        max(
-            numerical_np_scale_estimate(estimate)
-            for estimate in neutrino_mass_estimate(operator)
-        )
-    )
+def census_operator(operator_name,historical_path,output_dir,*,hash_seed=None,**options):
+    """Compatibility entry point using the same durable staged implementation."""
+    from neutrinomass.database.pipeline import run_operator
+    from neutrinomass.database.provenance import runtime_provenance,scientific_contract
+    from neutrinomass.database.checkpoints import atomic_json
+    provenance=runtime_provenance(allow_dirty=options.pop("allow_dirty",False))
+    if hash_seed is not None and str(hash_seed) != provenance["hash_seed"]:
+        raise ValueError("Hash seed must be set before starting the Python interpreter")
+    atomic_json(Path(output_dir)/"environment.json",provenance)
+    return run_operator(operator_name,historical_path,output_dir,scientific_contract(provenance),**options)

@@ -261,6 +261,7 @@ def partition_stream(operator: EffectiveOperator, verbose=False) -> Iterable[dic
     information required to find the completion.
 
     """
+    from neutrinomass.completions.selection import selected_partition_family
     topology_data_list = get_topology_data(**operator.topology_type)
 
     colour_ops = colour_singlets([operator.operator], overcomplete=True)
@@ -281,10 +282,12 @@ def partition_stream(operator: EffectiveOperator, verbose=False) -> Iterable[dic
             print(f"Furnishing topology {counter}...")
             counter += 1
 
-        for op in colour_ops:
+        for colour_index, op in enumerate(colour_ops):
+            if not selected_partition_family(topology_data["canonical_topology"], colour_index):
+                continue
             epsilons = op.operator.epsilons
 
-            for perm in _field_assignments(fields, topology_data["partition"]):
+            for assignment, perm in enumerate(_field_assignments(fields, topology_data["partition"])):
                 g = topology_data["graph"]
                 g = set_external_fields(perm, g, fields_and_counters)
 
@@ -295,6 +298,8 @@ def partition_stream(operator: EffectiveOperator, verbose=False) -> Iterable[dic
                     "graph": g,
                     "topology": topology_data["topology"],
                     "canonical_topology": topology_data["canonical_topology"],
+                    "colour_structure": colour_index,
+                    "assignment": assignment,
                 }
                 yield data
 
@@ -2396,21 +2401,28 @@ def operator_completions(
 
     Both raw and canonical modes furnish partitions incrementally.
     """
+    from neutrinomass.completions.selection import selected_assignment, assignment_boundary
     parts = partition_stream(operator, verbose=verbose)
     if canonical_partitions:
         parts = _nonisomorphic_partitions(parts)
     if verbose:
         with alive_bar() as bar:
             for part in parts:
+                if not selected_assignment(part):
+                    continue
                 completion = partition_completion(part)
                 if not isinstance(completion, FailedCompletion):
                     yield completion
+                assignment_boundary(part)
                 bar()
     else:
         for part in parts:
+            if not selected_assignment(part):
+                continue
             completion = partition_completion(part)
             if not isinstance(completion, FailedCompletion):
                 yield completion
+            assignment_boundary(part)
 
 
 def check_remapping_on_terms(terms1, terms2, remapping):
@@ -2992,6 +3004,7 @@ def momentum_routed_completion_stream(
     applied.
     """
 
+    from neutrinomass.completions.selection import selected_assignment, assignment_boundary
     fields, epsilons, n_derivs = operator_strip_derivs(operator.operator).values()
     if not n_derivs:
         return
@@ -3022,6 +3035,8 @@ def momentum_routed_completion_stream(
     if canonical_partitions:
         routed_partitions = _nonisomorphic_partitions(routed_partitions)
     for partition in routed_partitions:
+        if not selected_assignment(partition):
+            continue
         partition_candidates = []
         for numerator_count in range(n_derivs % 2, n_derivs + 1, 2):
             denominator_order = (n_derivs - numerator_count) // 2
@@ -3077,6 +3092,7 @@ def momentum_routed_completion_stream(
         partition_branches = []
         append_unique_completions(partition_branches, partition_candidates)
         yield from partition_branches
+        assignment_boundary(partition)
 
 
 def momentum_routed_completions(
@@ -3240,16 +3256,64 @@ def derivative_combinations(
     return out
 
 
+_DERIVATIVE_CONTEXT_CACHE = {}
+
+
+def derivative_generation_context(operator):
+    """Bounded cache of immutable placement bases with complete tensor keys."""
+    import json
+    from neutrinomass.database.serialization import operator_to_data
+    key=(id(operator),operator.name,json.dumps(operator_to_data(operator.operator),sort_keys=True))
+    cached=_DERIVATIVE_CONTEXT_CACHE.get(key)
+    if cached is not None and cached[0] is operator:
+        # Insertion order supplies a bounded LRU without hashing the mutable
+        # EffectiveOperator (whose __hash__ also simplifies its tensor).
+        _DERIVATIVE_CONTEXT_CACHE.pop(key)
+        _DERIVATIVE_CONTEXT_CACHE[key]=cached
+        return cached[1]
+    result=_build_derivative_generation_context(operator)
+    _DERIVATIVE_CONTEXT_CACHE[key]=(operator,result)
+    if len(_DERIVATIVE_CONTEXT_CACHE)>4:
+        _DERIVATIVE_CONTEXT_CACHE.pop(next(iter(_DERIVATIVE_CONTEXT_CACHE)))
+    return result
+
+
+def _build_derivative_generation_context(operator):
+    """Shared placement inventory for whole-operator and sharded generation."""
+    historical_basis = None
+    unique_projection = unique_multi_derivative_projection(operator)
+    second_derivative_basis = None
+    _, _, derivative_count = operator_strip_derivs(operator.operator).values()
+    if (
+        operator.name in PROJECTED_LORENTZ_OPERATORS
+        and unique_lorentz_completion_operator(operator) is None
+    ):
+        historical_basis = HistoricalDerivativeBasis.from_operator(operator)
+        deriv_combos = [placement.operator for placement in historical_basis.placements]
+    elif unique_projection is None and derivative_count == 2:
+        second_derivative_basis = UnreducedSecondDerivativeBasis.from_operator(
+            operator
+        )
+        deriv_combos = [placement.operator for placement in second_derivative_basis.placements]
+    else:
+        deriv_combos = derivative_combinations(operator)
+
+    return derivative_count, deriv_combos, historical_basis, unique_projection, second_derivative_basis
+
+
 def deriv_operator_completion_stream(
     operator: EffectiveOperator, verbose=False, canonical_partitions=False
 ) -> Iterable[Completion]:
     """Stream local placements and explicit physical propagator expansions."""
+    from neutrinomass.completions.selection import selected_producer
     derivative_count, deriv_combos, historical_basis, unique_projection, second_derivative_basis = derivative_generation_context(operator)
 
     if verbose:
         print(f"Finding completions of {len(deriv_combos)} IBP-related operators...")
 
-    for combo in deriv_combos:
+    for placement_index, combo in enumerate(deriv_combos):
+        if not selected_producer("local", placement_index):
+            continue
         if combo.operator.simplify() == 0:
             continue
         for completion in operator_completions(
@@ -3282,13 +3346,14 @@ def deriv_operator_completion_stream(
                 )
             yield completion
 
-    yield from momentum_routed_completion_stream(
-        operator,
-        verbose=verbose,
-        canonical_partitions=canonical_partitions,
-        historical_basis=historical_basis,
-        second_derivative_basis=second_derivative_basis,
-    )
+    if selected_producer("routed"):
+        yield from momentum_routed_completion_stream(
+            operator,
+            verbose=verbose,
+            canonical_partitions=canonical_partitions,
+            historical_basis=historical_basis,
+            second_derivative_basis=second_derivative_basis,
+        )
 
 
 def deriv_operator_completions(
@@ -3406,48 +3471,3 @@ def clean_completions(completions: List[Completion]) -> List[Completion]:
         comp_dict[(num, comp.topology)] = comp
 
     return sorted((v for k, v in comp_dict.items()), key=lambda x: x.topology)
-
-
-def _build_derivative_generation_context(operator):
-    """Shared placement inventory for whole-operator and sharded generation."""
-    historical_basis = None
-    unique_projection = unique_multi_derivative_projection(operator)
-    second_derivative_basis = None
-    _, _, derivative_count = operator_strip_derivs(operator.operator).values()
-    if (
-        operator.name in PROJECTED_LORENTZ_OPERATORS
-        and unique_lorentz_completion_operator(operator) is None
-    ):
-        historical_basis = HistoricalDerivativeBasis.from_operator(operator)
-        deriv_combos = [placement.operator for placement in historical_basis.placements]
-    elif unique_projection is None and derivative_count == 2:
-        second_derivative_basis = UnreducedSecondDerivativeBasis.from_operator(
-            operator
-        )
-        deriv_combos = [placement.operator for placement in second_derivative_basis.placements]
-    else:
-        deriv_combos = derivative_combinations(operator)
-
-    return derivative_count, deriv_combos, historical_basis, unique_projection, second_derivative_basis
-
-
-_DERIVATIVE_CONTEXT_CACHE = {}
-
-
-def derivative_generation_context(operator):
-    """Bounded cache of immutable placement bases with complete tensor keys."""
-    import json
-    from neutrinomass.database.serialization import operator_to_data
-    key=(id(operator),operator.name,json.dumps(operator_to_data(operator.operator),sort_keys=True))
-    cached=_DERIVATIVE_CONTEXT_CACHE.get(key)
-    if cached is not None and cached[0] is operator:
-        # Insertion order supplies a bounded LRU without hashing the mutable
-        # EffectiveOperator (whose __hash__ also simplifies its tensor).
-        _DERIVATIVE_CONTEXT_CACHE.pop(key)
-        _DERIVATIVE_CONTEXT_CACHE[key]=cached
-        return cached[1]
-    result=_build_derivative_generation_context(operator)
-    _DERIVATIVE_CONTEXT_CACHE[key]=(operator,result)
-    if len(_DERIVATIVE_CONTEXT_CACHE)>4:
-        _DERIVATIVE_CONTEXT_CACHE.pop(next(iter(_DERIVATIVE_CONTEXT_CACHE)))
-    return result

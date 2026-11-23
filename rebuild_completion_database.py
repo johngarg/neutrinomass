@@ -199,6 +199,10 @@ def run_seed(
             "--report",
             str(report_path),
         ]
+        if resume:
+            command.append("--resume")
+        if allow_dirty:
+            command.append("--allow-dirty")
         environment = os.environ.copy()
         environment["PYTHONHASHSEED"] = str(seed)
         environment["PYTHONWARNINGS"] = "ignore::SyntaxWarning"
@@ -257,6 +261,7 @@ def stable_report_data(report):
         "generation_rejections": report["generation_rejections"],
         "structural_exact_classes": report["structural_exact_classes"],
         "exact_classes": report["exact_classes"],
+        "global_lagrangians": report.get("global_lagrangians"),
         "amplitude_symmetrisation": amplitude_symmetrisation,
         "democratic_models": report["democratic_models"],
         "species_models": report["species_models"],

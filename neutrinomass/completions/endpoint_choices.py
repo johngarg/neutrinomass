@@ -34,10 +34,13 @@ def physical_edge_completion_stream(operator,*,second_derivative_basis=None,uniq
         canonical_propagator_cut,partition_completion,
     )
     from neutrinomass.completions.core import EffectiveOperator,FailedCompletion
+    from neutrinomass.completions.selection import selected_assignment,assignment_boundary
     from neutrinomass.completions.physical_routes import local_physical_expansions
     fields,epsilons,order=operator_strip_derivs(operator.operator).values()
     stripped=EffectiveOperator(operator.name,construct_operator(fields,epsilons))
     for partition in partition_stream(stripped):
+        if not selected_assignment(partition):
+            continue
         leaves={leaf.node:leaf.field for leaf in partition_leaves(partition["partition"])}
         fermions=[]
         for edge in partition["graph"].edges:
@@ -63,3 +66,4 @@ def physical_edge_completion_stream(operator,*,second_derivative_basis=None,uniq
                     if unique_projection is not None:
                         candidate.lorentz_projection=unique_projection
                     yield candidate
+        assignment_boundary(partition)
