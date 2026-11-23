@@ -16,6 +16,7 @@ from neutrinomass.database.stages import (
 )
 from neutrinomass.database.resumable_reduction import reduce_resumable,lines_from_paths,input_contract
 from neutrinomass.database.coverage import historical_coverage
+from neutrinomass.database.sharded import sharded_map,sharded_coverage
 from neutrinomass.database.rebuild import (
     operator_registry,operator_kind,operator_scale_tev,operator_strip_derivs,
     amplitude_survival_rank,unique_multi_derivative_projection,DERIVATIVE_KIND,
@@ -58,7 +59,7 @@ def digest_strings(values,*,sort=False):
 
 
 def run_operator(operator_name,historical_path,output_dir,contract,*,budget=None,scratch=None,
-                 assignment_size=256,stage="all",unit=None,resume=False):
+                 assignment_size=256,stage="all",unit=None,resume=False,stage_unit=None):
     """Execute stable work, then publish only a fully closed historical audit.
 
     ``unit`` is a zero-based index into the persisted generation plan. A
@@ -67,6 +68,8 @@ def run_operator(operator_name,historical_path,output_dir,contract,*,budget=None
     """
     started=time.monotonic()
     budget=budget or WorkBudget()
+    if stage_unit is not None and stage not in {"amplitudes","coverage"}:
+        raise ValueError("Stage unit selection requires amplitudes or coverage")
     root=Path(output_dir)
     historical_path=Path(historical_path)
     operator=operator_registry()[operator_name]
@@ -108,8 +111,11 @@ def run_operator(operator_name,historical_path,output_dir,contract,*,budget=None
     structural_path=artifact_path(root/"structural",structural)
     if stage == "structural":
         return structural
-    amplitude=map_records([structural_path],root/"amplitudes",contract,amplitude_record,
-        algorithm="amplitudes-v1",budget=budget,scratch=scratch)
+    amplitude=sharded_map([structural_path],structural["progress"]["exact_classes"],root/"amplitudes",contract,amplitude_record,
+        algorithm="amplitudes-v1",budget=budget,scratch=scratch,
+        selected_unit=stage_unit if stage=="amplitudes" else None)
+    if stage=="amplitudes" and stage_unit is not None:
+        return amplitude
     exact_path=artifact_path(root/"amplitudes",amplitude)
     if stage == "amplitudes":
         return amplitude
@@ -120,7 +126,8 @@ def run_operator(operator_name,historical_path,output_dir,contract,*,budget=None
     historical_exact=artifact_path(root/"historical-reduction",historical_reduced)
     if stage == "historical":
         return historical_reduced
-    coverage=historical_coverage([exact_path],[historical_exact],root/"coverage",contract,budget=budget,scratch=scratch)
+    coverage=sharded_coverage([exact_path],[historical_exact],historical_reduced["progress"]["exact_classes"],
+        root/"coverage",contract,budget=budget,scratch=scratch,selected_unit=stage_unit)
     if coverage["progress"]["counts"].get("missing",0):
         raise RuntimeError("MISSING_HISTORICAL_CLASSES: production and publication blocked; see coverage evidence")
     if stage == "coverage":

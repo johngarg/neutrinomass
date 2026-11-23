@@ -42,6 +42,7 @@ def main():
     parser.add_argument("--report", type=Path)
     parser.add_argument("--stage",choices=("all","generation","decoded","local-reduction","structural","amplitudes","historical","coverage","package"),default="all")
     parser.add_argument("--unit",type=int,help="Stable zero-based generation-plan unit")
+    parser.add_argument("--stage-unit",type=int,help="Stable 128-class amplitude or historical-coverage shard")
     parser.add_argument("--topology",help="Select matching topology units from the stable plan")
     parser.add_argument("--assignment-start",type=int,default=0)
     parser.add_argument("--assignment-stop",type=int)
@@ -85,6 +86,7 @@ def main():
                     args.operator,args.historical_path,args.output_dir,
                     hash_seed=os.environ.get("PYTHONHASHSEED", ""),
                     stage=args.stage,unit=unit,assignment_size=args.assignment_size,
+                    stage_unit=args.stage_unit,
                     resume=args.resume or count>0,budget=budget,scratch=args.scratch,allow_dirty=args.allow_dirty,
                 )
     except BudgetExpired as error:

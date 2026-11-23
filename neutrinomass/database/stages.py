@@ -69,11 +69,18 @@ def generate_unit(operator_name, selection, directory, contract, *, budget=None)
             return store.state
 
 
-def map_records(paths, directory, contract, transform, *, algorithm, budget=None, scratch=None):
+def map_records(paths, directory, contract, transform, *, algorithm, budget=None, scratch=None,
+                record_start=0,record_stop=None,ordinal_offset=0):
     """Checkpoint an ordered per-record transform and its scientific witnesses."""
     paths = tuple(Path(p) for p in paths)
     budget = budget or WorkBudget()
     identity = dict(contract, algorithm=algorithm, inputs=input_contract(paths))
+    if record_start or record_stop is not None:
+        if record_start<0 or (record_stop is not None and record_stop<record_start):
+            raise ValueError("Invalid record range")
+        identity["record_range"]=[record_start,record_stop]
+    if ordinal_offset:
+        identity["ordinal_offset"]=ordinal_offset
     with CheckpointStore(directory,identity) as store:
         if store.state["complete"]:
             return store.state
@@ -83,10 +90,12 @@ def map_records(paths, directory, contract, transform, *, algorithm, budget=None
                     PRIMARY KEY(input,part));
                 CREATE TABLE IF NOT EXISTS evidence (input INTEGER PRIMARY KEY, payload TEXT);
             """)
-            progress = dict(store.state["progress"] or dict(processed=0, accepted=0, rejected=0))
+            progress = dict(store.state["progress"] or dict(processed=record_start, accepted=0, rejected=0))
             def save():
                 store.snapshot(db,progress)
-            for ordinal,payload in enumerate(lines_from_paths(paths),1):
+            for ordinal,payload in enumerate(lines_from_paths(paths),ordinal_offset+1):
+                if record_stop is not None and ordinal>record_stop:
+                    break
                 if ordinal <= progress["processed"]:
                     continue
                 output, evidence = transform(payload)
