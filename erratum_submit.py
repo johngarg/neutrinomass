@@ -131,6 +131,9 @@ def submit(ledger,config,config_path,*,command,seed):
 def _tick(config_path,*,prepare=False):
     config_path=Path(config_path).resolve()
     config=json.loads(config_path.read_text())
+    worker_limit=config.get("worker_limit",4)
+    if type(worker_limit) is not int or not 1<=worker_limit<=4:
+        raise ValueError("Worker limit must be between one and four")
     ledger=CampaignLedger(config["ledger"])
     queue=WorkQueue(config["queue"])
     reconcile(ledger,queue,config_path)
@@ -158,7 +161,7 @@ def _tick(config_path,*,prepare=False):
                 WHERE d.unit=u.id AND (p.status IS NULL OR p.status!='complete'))""",(seed,)).fetchone()[0]
         live=[j for j in ledger.summary()["jobs"].values() if "allocated_core_seconds" not in j]
         same=sum(j.get("queue_config")==str(config_path) and j.get("seed")==seed for j in live)
-        if not ready or same>=ready or len(live)>=4:
+        if not ready or same>=ready or len(live)>=worker_limit:
             break
         try:
             submitted.append(submit(ledger,config,config_path,command="work",seed=seed))

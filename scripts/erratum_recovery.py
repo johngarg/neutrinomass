@@ -115,6 +115,7 @@ def main():
     parser.add_argument("config",type=Path);parser.add_argument("reference",type=Path)
     parser.add_argument("replica",type=Path);parser.add_argument("--unit",type=int,required=True)
     parser.add_argument("--fault-after",type=int);parser.add_argument("--recovered-generation",type=Path)
+    parser.add_argument("--checkpoint-seconds",type=float,default=300)
     args=parser.parse_args()
     if not os.environ.get("SLURM_JOB_ID"):
         parser.error("Recovery acceptance must run in Slurm")
@@ -126,7 +127,7 @@ def main():
     # Pipeline adds these operator-specific fields before calling its stages.
     operator=config.get("recovery_operator","71p")
     stage_contract=dict(contract,operator=operator,historical_sha256=digest_file(Path(config["historical"])/f"op_{operator}.dat"))
-    budget=WorkBudget(3300,fault_after=args.fault_after)
+    budget=WorkBudget(3300,fault_after=args.fault_after,checkpoint_seconds=args.checkpoint_seconds)
     try:
         with budget.signals():
             if args.kind=="generation":

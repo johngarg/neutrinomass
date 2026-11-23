@@ -16,8 +16,11 @@ def configuration(tmp_path):
     return path,config
 
 
-def test_submission_preserves_reservations_and_respects_ready_dependencies(tmp_path,monkeypatch):
+@pytest.mark.parametrize("limit",[1,3,4])
+def test_submission_preserves_reservations_and_respects_ready_dependencies(tmp_path,monkeypatch,limit):
     path,config=configuration(tmp_path)
+    config["worker_limit"]=limit
+    path.write_text(json.dumps(config))
     queue=WorkQueue(config["queue"])
     for i in range(8):
         queue.add(str(i),{},phase="validation",seed=0)
@@ -30,10 +33,10 @@ def test_submission_preserves_reservations_and_respects_ready_dependencies(tmp_p
     monkeypatch.setattr(controller.subprocess,"run",sbatch)
     monkeypatch.setattr(controller,"accounting",lambda ids:{})
     report=controller.tick(path)
-    assert len(report["submitted"])==4
-    assert report["accounting"]["charged_core_hours"]==8
+    assert len(report["submitted"])==limit
+    assert report["accounting"]["charged_core_hours"]==2*limit
     assert not controller.tick(path)["submitted"]
-    assert len(calls)==4
+    assert len(calls)==limit
     assert all("--export=ALL,PYTHONHASHSEED=0" in call for call in calls)
     assert "exec /pinned/python -u erratum_worker.py work" in (root/"launch-work.sh").read_text()
 
