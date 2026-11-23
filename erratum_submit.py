@@ -102,6 +102,7 @@ def submit(ledger,config,config_path,*,command,seed):
         ordinal=len(state["jobs"])
         retry_of=next((key for key,job in reversed(list(state["jobs"].items()))
             if job.get("queue_config")==str(config_path) and job.get("seed")==seed
+            and job.get("command")==command
             and job.get("failure_class")=="infrastructure" and not job.get("retry_assigned")),None)
     work_id=f"{config['campaign_id']}/{command}/seed-{seed}/{ordinal:06d}"
     ledger.reserve(work_id,phase=config["phase"],retry_of=retry_of)

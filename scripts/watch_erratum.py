@@ -12,7 +12,12 @@ def watch(config_path):
     config_path=Path(config_path).resolve()
     root=Path(json.loads(config_path.read_text())["root"])
     while True:
-        result=tick(config_path)
+        try:
+            result=tick(config_path)
+        except BlockingIOError:
+            # Another authorized submission holds the short controller lock.
+            time.sleep(1)
+            continue
         accounting=result["accounting"]
         snapshot=dict(status=result["status"],submitted=result.get("submitted",[]),
             queue=result.get("queue"),charged_core_hours=accounting["charged_core_hours"],

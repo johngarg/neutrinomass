@@ -1,5 +1,6 @@
 """Reserve one bounded Slurm slot for a pilot fault replica in the active task."""
 import argparse
+import fcntl
 import json
 from pathlib import Path
 import shlex
@@ -43,11 +44,14 @@ def main():
     if not json.loads(checkpoint.read_text())["complete"]:
         raise ValueError("REFERENCE_UNIT_NOT_COMPLETE")
     print(json.dumps(dict(event="waiting_for_fault_slot",work_id=work_id)),flush=True)
+    controller_lock=path.with_suffix(".controller.lock").open("a+")
     while True:
         try:
+            fcntl.flock(controller_lock,fcntl.LOCK_EX)
             ledger.reserve(work_id,phase="validation")
             break
         except CampaignBudgetError as error:
+            fcntl.flock(controller_lock,fcntl.LOCK_UN)
             if str(error)!="Four-worker concurrency limit":raise
             time.sleep(10)
     with ledger.transaction() as state:
@@ -87,6 +91,8 @@ exec {q(config['interpreter'])} -u {q(str(driver))} {args.kind} {q(str(path))} {
     if not job_id.isdigit():raise RuntimeError("AMBIGUOUS_FAULT_SUBMISSION")
     ledger.submitted(work_id,job_id)
     worker_limit(path,4)
+    fcntl.flock(controller_lock,fcntl.LOCK_UN)
+    controller_lock.close()
     print(json.dumps(dict(event="fault_submitted",work_id=work_id,job_id=job_id,replica=str(replica))),flush=True)
 
 

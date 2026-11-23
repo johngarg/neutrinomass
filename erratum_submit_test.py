@@ -69,3 +69,15 @@ def test_unbound_submission_never_causes_duplicate_job(tmp_path):
         state["jobs"]["uncertain"]["queue_config"]=str(path)
     with pytest.raises(RuntimeError,match="AMBIGUOUS_SUBMISSION"):
         controller.reconcile(ledger,queue,path)
+
+
+def test_pilot_worker_is_not_a_retry_of_an_unrelated_validation_job(tmp_path,monkeypatch):
+    path,config=configuration(tmp_path)
+    ledger=CampaignLedger(config["ledger"])
+    ledger.reserve("fault-replica")
+    ledger.finished("fault-replica",elapsed_seconds=1,allocated_cpus=1,status="NODE_FAIL",failure_class="infrastructure")
+    with ledger.transaction() as state:
+        state["jobs"]["fault-replica"].update(queue_config=str(path),seed=0,command="recovery-generation")
+    monkeypatch.setattr(controller.subprocess,"run",lambda *a,**k:SimpleNamespace(returncode=0,stdout="102\n",stderr=""))
+    result=controller.submit(ledger,config,path,command="work",seed=0)
+    assert ledger.summary()["jobs"][result["work_id"]]["retry_of"] is None
