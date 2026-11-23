@@ -51,3 +51,16 @@ def test_reduction_can_stop_after_a_failed_exact_comparison(tmp_path,monkeypatch
     assert resumed["progress"]["exact_classes"] == 2
     assert resumed["progress"]["comparisons"] == full["progress"]["comparisons"]
     assert list(lines_from_paths([artifact_path(tmp_path/"full",full)])) == list(lines_from_paths([artifact_path(tmp_path/"resumed",resumed)]))
+
+
+def test_unsupported_historical_routing_cannot_be_counted_as_invalid(tmp_path,monkeypatch):
+    from neutrinomass.completions.routing import InvalidMomentumGraph
+    first,_=bucket_pair()
+    source=tmp_path/"source.jsonl"
+    source.write_text(dumps_completion(first)+"\n")
+    def unknown(_):
+        raise InvalidMomentumGraph("Ambiguous repeated-species ports")
+    monkeypatch.setattr("neutrinomass.database.coverage.validate_completion",unknown)
+    with pytest.raises(InvalidMomentumGraph):
+        historical_coverage([source],[source],tmp_path/"blocked",{})
+    assert not (tmp_path/"blocked/checkpoint.json").exists()

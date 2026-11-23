@@ -147,6 +147,7 @@ def historical_transform(operator_name):
     from neutrinomass.database.database import LazyCompletion
     from neutrinomass.database.rebuild import historical_record_normalizer, validate_completion, _invalid_historical_class, HistoricalRecordRejection
     from neutrinomass.completions.completions import exact_completion_bucket_key
+    from neutrinomass.completions.routing import InvalidMomentumGraph
     normalize=historical_record_normalizer(operator_name)
     def transform(line):
         call=ast.parse(line,mode="eval").body
@@ -165,6 +166,8 @@ def historical_transform(operator_name):
                 except ValueError:
                     try:
                         validate_completion(completion)
+                    except InvalidMomentumGraph:
+                        raise
                     except ValueError as error:
                         invalid.append(_invalid_historical_class(completion,error))
                     else:

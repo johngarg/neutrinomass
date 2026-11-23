@@ -4,6 +4,7 @@ from pathlib import Path
 
 from neutrinomass.completions.completions import are_equivalent_completions, exact_completion_bucket_key
 from neutrinomass.completions.amplitudes import audit_amplitude_symmetrisation
+from neutrinomass.completions.routing import InvalidMomentumGraph
 from neutrinomass.database.checkpoints import CheckpointStore, WorkBudget, canonical_json
 from neutrinomass.database.resumable_reduction import lines_from_paths, input_contract
 from neutrinomass.database.global_equivalence import DecodedCache
@@ -44,6 +45,10 @@ def historical_coverage(exact_paths, historical_paths, directory, contract, *, b
                 if pending is None:
                     try:
                         validate_completion(completion)
+                    except InvalidMomentumGraph:
+                        # Unknown or ambiguous physical routing is not a
+                        # demonstrated vanishing historical class.
+                        raise
                     except ValueError as error:
                         db.execute("INSERT INTO coverage VALUES (?,?,?)",(ordinal,"invalid",canonical_json(_invalid_historical_class(completion,error))))
                         progress["processed"]=ordinal
