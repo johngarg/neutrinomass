@@ -48,10 +48,6 @@ def test_export_operator():
 def test_export_completion():
     for _, op in list(EFF_OPERATORS.items())[:5]:
         comp = list(operator_completions(op))[0]
-        comp.derivative_edges = ((1, 2),)
-        comp.derivative_routes = (
-            DerivativeRoute((1, 2), "ψ", "10", "L", "10"),
-        )
         new_str, old = export_completion(comp, lazy=False), comp
         new = eval(new_str)
 
@@ -63,11 +59,8 @@ def test_export_completion():
         assert new.canonical_topology == old.canonical_topology
         assert new.derivative_edges == old.derivative_edges
         assert new.derivative_routes == old.derivative_routes
-        assert new.momentum_contributions == (
-            PropagatorContribution.from_derivative_route(
-                old.derivative_routes[0]
-            ),
-        )
+        assert new.momentum_contributions == old.momentum_contributions
+        assert dict(new.graph.nodes(data=True)) == dict(old.graph.nodes(data=True))
 
 
 def test_export_completion_preserves_multi_derivative_projection():

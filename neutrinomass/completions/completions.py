@@ -136,19 +136,43 @@ def quick_remove_equivalent_partitions(partitions):
     return list(dict.fromkeys(partitions))
 
 
-def distribute_fields(fields, partition):
-    """Takes the fields and puts them in place of the strings in the partition
-    template in every possible way.
+def _field_assignments(fields, partition):
+    """Yield distinct assignments of indexed field occurrences in historical order.
 
-        >>> distribute_fields([H('i0_'), H('i1_'), L('u0_ i2_'), L('u1_ i3_')], (('F', 18), ('S', 162), (('F', 6), ('S', 54))))
-        [((L(u0_, i2_), 18), (H(i0_), 162), ...), ((L(u1_, i3_), 18), (H(i0_), 162), ...), ...]
-
-    Returns lots of double ups.
-
+    Only the order *within* each statistics group affects the partition. The
+    first interleaving of two such orders in itertools.permutations always
+    takes the smaller of their two head indices. Visit exactly those merges
+    in source-index order.
     """
-    perms = permutations(fields)
-    parts = (replace_fields(permutation, partition) for permutation in perms)
-    return quick_remove_equivalent_partitions(parts)
+    bosons = tuple(field.is_boson for field in fields)
+
+    def visit(remaining, limits, current):
+        if not remaining:
+            yield current
+            return
+
+        for offset, index in enumerate(remaining):
+            kind = bosons[index]
+            if index < limits[kind]:
+                continue
+            rest = remaining[:offset] + remaining[offset + 1:]
+            # The next head of the other group has to follow all the indices
+            # emitted while it waited. Prune if it has no eligible head.
+            other = [i for i in rest if bosons[i] != kind]
+            threshold = max(index, limits[not kind])
+            if other and max(other) < threshold:
+                continue
+            next_limits = [-1, -1]
+            next_limits[not kind] = threshold
+            updated, _ = replace(current, "S" if kind else "F", fields[index])
+            yield from visit(rest, next_limits, updated)
+
+    yield from visit(tuple(range(len(fields))), (-1, -1), partition)
+
+
+def distribute_fields(fields, partition):
+    """Return the ordered assignments, including for repeated equal fields."""
+    return quick_remove_equivalent_partitions(_field_assignments(tuple(fields), partition))
 
 
 def node_dictionary(
@@ -257,12 +281,10 @@ def partition_stream(operator: EffectiveOperator, verbose=False) -> Iterable[dic
             print(f"Furnishing topology {counter}...")
             counter += 1
 
-        perms = distribute_fields(fields, topology_data["partition"])
         for op in colour_ops:
-            # col_out = []
             epsilons = op.operator.epsilons
 
-            for perm in perms:
+            for perm in _field_assignments(fields, topology_data["partition"]):
                 g = topology_data["graph"]
                 g = set_external_fields(perm, g, fields_and_counters)
 
@@ -275,11 +297,6 @@ def partition_stream(operator: EffectiveOperator, verbose=False) -> Iterable[dic
                     "canonical_topology": topology_data["canonical_topology"],
                 }
                 yield data
-
-            # if remove_isomorphic_diagrams:
-            #     col_out = remove_isomorphic(col_out)
-
-            # out += col_out
 
 
 def partitions(operator: EffectiveOperator, verbose=False) -> List[dict]:
@@ -307,11 +324,12 @@ def graph_fingerprint(part):
 
 
 def remove_isomorphic(partitions: List[dict]) -> List[dict]:
-    """Same algorithm as removeIsomorphic in ``wolfram/`` directory. Remove
-    isomorphic graphs (by side effect) to reduce double-ups of completions.
+    """Return the first representative of each bare-graph class."""
+    return list(_nonisomorphic_partitions(partitions))
 
-    """
-    retained = []
+
+def _nonisomorphic_partitions(partitions):
+    """Keep bare reference graphs independent of later furnishing mutations."""
     by_coarse_key = defaultdict(list)
     for partition in partitions:
         graph = partition["graph"]
@@ -328,9 +346,8 @@ def remove_isomorphic(partitions: List[dict]) -> List[dict]:
             for known in by_coarse_key[coarse_key]
         ):
             continue
-        retained.append(partition)
-        by_coarse_key[coarse_key].append(partition)
-    return retained
+        by_coarse_key[coarse_key].append({"graph": graph.copy()})
+        yield partition
 
 
 # The approach to finding the completions is the following: contract off fields
@@ -867,17 +884,8 @@ class HistoricalDerivativeBasis:
 
     def project_routed(self, explicit, partition, graph, route):
         contraction = self._closed_routed_contraction(explicit)
-        cut_graph = graph.copy()
-        cut_graph.remove_edge(*route.edge)
         external = {leaf.node: leaf.field for leaf in partition_leaves(partition)}
-        sides = []
-        for component in nx.connected_components(cut_graph):
-            nodes = tuple(sorted(node for node in component if node in external))
-            if nodes:
-                sides.append(nodes)
-        if len(sides) != 2:
-            raise ValueError("A routed propagator must split external fields in two")
-        side = min(sides)
+        side = canonical_propagator_cut(partition, graph, route.edge)
 
         by_occurrence = {
             placement.occurrence_key: placement for placement in self.placements
@@ -895,6 +903,42 @@ class HistoricalDerivativeBasis:
         if not any(coordinates):
             return None
         return self._metadata(coordinates)
+
+    def project_local_numerator(self, completion):
+        """Sew the UV Weyl chains and project the full momentum on the cut."""
+        from neutrinomass.completions.routing import validate_routes
+
+        audit = validate_routes(completion, derivative_order=1)
+        route, = completion.derivative_routes
+        external = {
+            leaf.node: leaf.field.strip_derivs_with_indices()
+            for leaf in partition_leaves(completion.partition)
+        }
+        # Yukawa vertices pair two Weyl ports. Mass propagators continue the
+        # epsilon chain. The kinetic propagator leaves its two spinor ports open.
+        chains = nx.Graph()
+        for node, field in external.items():
+            if field.is_fermion:
+                chains.add_edges_from(completion.graph.edges(node))
+        chains.add_edges_from(
+            edge for edge, kind in audit.edge_kinds.items() if kind == "mass"
+        )
+        contractions = []
+        for component in nx.connected_components(chains):
+            ends = sorted(component & external.keys())
+            if len(ends) == 1:
+                continue
+            if len(ends) != 2:
+                raise ValueError("A UV fermion chain must end on external Weyl fields")
+            left, right = (external[node] for node in ends)
+            if left.lorentz_irrep != right.lorentz_irrep:
+                raise ValueError("A mass-propagator chain must join like chiralities")
+            kind = "Undotted" if left.dynkin[:2] == "10" else "Dotted"
+            a, = left.indices_by_type[kind]
+            b, = right.indices_by_type[kind]
+            contractions.append(eps(f"{-a} {-b}"))
+        explicit = Operator(*external.values(), *contractions)
+        return self.project_routed(explicit, completion.partition, completion.graph, route)
 
 
 def _derivative_irrep_dynkins(field):
@@ -1317,12 +1361,17 @@ def derivative_route_alternatives(fields):
     alternatives = []
     selected_numerators = set()
     for candidate in derivative_route_candidates(fields):
-        if isinstance(candidate, FieldType):
-            numerator = candidate
-        elif len(internal_fermions) == 1:
-            numerator = internal_fermions[0]
-        else:
+        # Processing strips the helper derivative and changes the *other*,
+        # undifferentiated heavy endpoint (conjugation for Majorana; partner
+        # conjugation for Dirac). That endpoint supplies the kinetic numerator.
+        # Selecting a heavy helper with only a light companion cannot produce
+        # a renormalizable vertex via this processing convention.
+        changed_endpoints = tuple(
+            field for field in internal_fermions if field is not candidate
+        )
+        if len(changed_endpoints) != 1:
             continue
+        numerator = changed_endpoints[0]
 
         if numerator in selected_numerators:
             continue
@@ -1767,6 +1816,9 @@ def contract(
 
     consume_routed_derivative(derivative_state, derivative_route)
 
+    if derivative_state is not None:
+        derivative_state["term_sources"] = (*fields, partner)
+
     return exotic, no_deriv_maybe_term, spectator_gauge_eps, lorentz_epsilons
 
 
@@ -1803,6 +1855,51 @@ def get_connecting_edge(graph: nx.Graph, nodes: List[int]) -> Tuple[int, int]:
 
     assert len(other_nodes) == 1
     return (connecting_node, other_nodes[0])
+
+
+def record_vertex_ports(graph, vertex, term_index, term, sources, edges):
+    """Carry concrete input occurrences through the endpoint transformation.
+
+    Match full physical states and spectator gauge indices. If tensor algebra
+    erased the distinction between equal occurrences, fail visibly rather than
+    assigning their edges by sorting species labels.
+    """
+    from neutrinomass.completions.routing import state_key, InvalidMomentumGraph
+
+    has_derivative = any(f.derivs for f in sources)
+    available = set(range(len(term.tensors)))
+    ports = []
+    for source, edge in zip(sources, edges):
+        if edge is None:
+            continue
+        if source.derivs:
+            target = source.strip_derivs_with_indices()
+        elif has_derivative and isinstance(source, VectorLikeDiracFermion):
+            target = source.dirac_partner().conj
+        elif has_derivative and isinstance(source, MajoranaFermion):
+            target = source.conj
+        else:
+            target = source
+        matches = [i for i in available
+                   if isinstance(term.tensors[i], IndexedField)
+                   and state_key(term.tensors[i]) == state_key(target)]
+        if len(matches) > 1:
+            # Untransformed factors can retain the original object even when
+            # two identical heavy singlets have no gauge indices to compare.
+            original = [i for i in matches if term.tensors[i] is target]
+            if len(original) == 1:
+                matches = original
+        if len(matches) > 1:
+            matches = [i for i in matches
+                       if tuple(map(str, term.tensors[i].gauge_indices))
+                       == tuple(map(str, target.gauge_indices))]
+        if len(matches) != 1:
+            raise InvalidMomentumGraph("Unresolved equal heavy occurrences during vertex processing")
+        index = matches[0]
+        available.remove(index)
+        ports.append({"tensor": index, "edge": list(edge)})
+    graph.nodes[vertex]["interaction"] = term_index
+    graph.nodes[vertex]["heavy_ports"] = ports
 
 
 def replace_and_mutate(
@@ -1868,8 +1965,28 @@ def replace_and_mutate(
     # species-level bookkeeping can discard an earlier propagator edge.
     graph.edges[exotic_edge]["particle"] = exotic_field.label
 
+    vertex = exotic_edge[0]
+    incoming_edges = [
+        (node, vertex) if isinstance(field, FieldType) else None
+        for field, node in zip(fields, nodes)
+    ]
+    try:
+        if derivative_state is not None:
+            record_vertex_ports(graph, vertex, len(terms) - 1, term,
+                                derivative_state["term_sources"],
+                                (*incoming_edges, exotic_edge))
+    except ValueError as error:
+        return Leaf(f"Unsupported momentum provenance: {error}", None)
+
     if derivative_state is not None and derivative_state["pending_route"] is not None:
-        record_routed_derivative_edges(derivative_state, edge_dict)
+        # Resolve from this vertex's concrete input occurrence, never from the
+        # global species-keyed dictionary (which may already be overwritten).
+        numerator, _ = derivative_state["pending_route"]
+        selected = [edge for field, edge in zip(fields, incoming_edges)
+                    if field is numerator]
+        if len(selected) != 1 or selected[0] is None:
+            return Leaf("Unsupported momentum provenance: unresolved numerator occurrence", None)
+        record_routed_derivative_edges(derivative_state, {numerator: selected[0]})
 
     return Leaf(exotic_field, exotic_edge[0])
 
@@ -2066,8 +2183,50 @@ def construct_completion(
     # append the processed term to terms
     terms.append(proc_term)
 
+    vertices = set.intersection(*(set(graph.neighbors(leaf.node))
+                                  for leaf in reduced_partition))
+    if len(vertices) != 1:
+        return "Unsupported momentum provenance: unresolved final interaction vertex"
+    vertex = vertices.pop()
+    incoming_edges = [
+        (leaf.node, vertex) if isinstance(leaf.field, FieldType) else None
+        for leaf in reduced_partition
+    ]
+    # Product ordering need not coincide with the reduced partition ordering.
+    source_edges = []
+    for source in fields:
+        original = source.strip_derivs_with_indices() if source.derivs else source
+        candidates = [i for i, leaf in enumerate(reduced_partition)
+                      if leaf.field.label == original.label
+                      and tuple(map(str, leaf.field.gauge_indices))
+                      == tuple(map(str, original.gauge_indices))]
+        if len(candidates) > 1 and isinstance(source, FieldType):
+            # Untransformed factors can carry their precise occurrence through
+            # multiplication, including singlets with distinct spinor indices.
+            identical = [i for i in candidates if reduced_partition[i].field is source]
+            if len(identical) == 1:
+                candidates = identical
+        if len(candidates) != 1:
+            # Equal external legs have no heavy port; their permutation is
+            # handled by the separate external provenance/symmetrisation path.
+            if not any(isinstance(reduced_partition[i].field, FieldType) for i in candidates):
+                source_edges.append(None)
+                continue
+            return "Unsupported momentum provenance: repeated final heavy occurrence"
+        source_edges.append(incoming_edges[candidates[0]])
+    try:
+        record_vertex_ports(graph, vertex, len(terms) - 1, proc_term, fields, source_edges)
+    except ValueError as error:
+        return f"Unsupported momentum provenance: {error}"
+
     consume_routed_derivative(derivative_state, derivative_route)
-    record_routed_derivative_edges(derivative_state, edge_dict)
+    if derivative_route is not None:
+        numerator, _ = derivative_route
+        candidates = [incoming_edges[i] for i, leaf in enumerate(reduced_partition)
+                      if leaf.field is numerator or leaf.field == numerator]
+        if len(candidates) != 1 or candidates[0] is None:
+            return "Unsupported momentum provenance: unresolved final numerator occurrence"
+        record_routed_derivative_edges(derivative_state, {numerator: candidates[0]})
     if derivative_state["remaining"]:
         return "Unresolved derivative insertion."
     if len(derivative_state["routes"]) != derivative_count:
@@ -2169,7 +2328,32 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
     if not isinstance(args, str):
         terms, edge_dict, field_dict, lorentz_epsilons, derivative_routes = args
     else:
+        if args.startswith("Unsupported momentum provenance:"):
+            from neutrinomass.completions.routing import InvalidMomentumGraph
+            raise InvalidMomentumGraph(args)
         return FailedCompletion(args)
+
+    new_edge_attrs = {v: {"particle": k.label} for k, v in edge_dict.items()}
+    nx.set_edge_attributes(graph, new_edge_attrs)
+    completion = Completion(
+        operator=op, partition=part, graph=graph, exotics=set(edge_dict),
+        terms=terms, topology=topo, canonical_topology=canonical_topo,
+        derivative_routes=derivative_routes,
+    )
+    # The local constructor uses an external D to furnish each vertex. The
+    # processed interactions determine which propagator actually carries p.
+    from neutrinomass.completions.routing import local_fermion_numerator, validate_routes
+
+    if derivative_count:
+        validate_routes(completion, derivative_order=derivative_count)
+    else:
+        differentiated = [f for f in op.operator.indexed_fields if f.derivs]
+        if len(differentiated) == 1 and differentiated[0].derivs == 1:
+            numerator = local_fermion_numerator(completion, differentiated[0])
+            if numerator is None:
+                return FailedCompletion("Local tree does not supply one kinetic numerator.")
+            completion = _completion_with_momentum_contributions(completion, (numerator,))
+            validate_routes(completion, derivative_order=1)
 
     completion_operator = partition.get("completion_operator")
     historical_basis = partition.get("historical_derivative_basis")
@@ -2194,23 +2378,9 @@ def partition_completion(partition) -> Union[Completion, FailedCompletion]:
         explicit_op = reduce(lambda a, b: a * b, lorentz_epsilons, op.operator)
     else:
         explicit_op = completion_operator.operator
-    exotics = set(f for f in edge_dict.keys())
-    eff_operator = EffectiveOperator(op.name, explicit_op)
-
-    new_edge_attrs = {v: {"particle": k.label} for k, v in edge_dict.items()}
-    nx.set_edge_attributes(graph, new_edge_attrs)
-
-    return Completion(
-        operator=eff_operator,
-        partition=part,
-        graph=graph,
-        exotics=exotics,
-        terms=terms,
-        topology=topo,
-        canonical_topology=canonical_topo,
-        derivative_routes=derivative_routes,
-        lorentz_projection=lorentz_projection,
-    )
+    completion.operator = EffectiveOperator(op.name, explicit_op)
+    completion.lorentz_projection = lorentz_projection
+    return completion
 
 
 def operator_completions(
@@ -2218,44 +2388,23 @@ def operator_completions(
 ) -> Iterable[Completion]:
     """Yield completions of an effective operator.
 
-    Raw generation consumes furnished partitions as a stream so large regular
-    operators do not retain every deep-copied partition graph.  Canonical
-    preflight remains list-backed because its isomorphism pass compares the
-    complete partition collection.
+    Both raw and canonical modes furnish partitions incrementally.
     """
-
+    parts = partition_stream(operator, verbose=verbose)
     if canonical_partitions:
-        parts = partitions(operator, verbose=verbose)
-        parts = remove_isomorphic(parts)
-    elif verbose:
-        # The progress bar requires a known total.  Production census calls are
-        # deliberately non-verbose and use the bounded-memory stream below.
-        parts = partitions(operator, verbose=verbose)
-    else:
-        parts = partition_stream(operator)
+        parts = _nonisomorphic_partitions(parts)
     if verbose:
-        mode = "canonical" if canonical_partitions else "raw"
-        print(f"Starting with {len(parts)} {mode} partitions...")
-
-    if verbose:
-        print(f"Finding completions of {len(parts)} partitions...")
-        with alive_bar(len(parts)) as bar:
-            for p in parts:
-                # completions.append(partition_completion(p))
-                comp = partition_completion(p)
-                if not isinstance(comp, FailedCompletion):
-                    yield comp
+        with alive_bar() as bar:
+            for part in parts:
+                completion = partition_completion(part)
+                if not isinstance(completion, FailedCompletion):
+                    yield completion
                 bar()
     else:
-        for p in parts:
-            comp = partition_completion(p)
-            if not isinstance(comp, FailedCompletion):
-                yield comp
-
-        # completions = [partition_completion(p) for p in parts]
-
-    # good_completions = [c for c in completions if not isinstance(c, FailedCompletion)]
-    # return good_completions
+        for part in parts:
+            completion = partition_completion(part)
+            if not isinstance(completion, FailedCompletion):
+                yield completion
 
 
 def check_remapping_on_terms(terms1, terms2, remapping):
@@ -2409,10 +2558,12 @@ def momentum_contributions_equivalent(comp1, comp2, oriented_remapping):
 
     contributions1 = getattr(comp1, "momentum_contributions", ())
     contributions2 = getattr(comp2, "momentum_contributions", ())
-    if not contributions1 or not contributions2:
-        return True
+    # An unrecorded route cannot establish equality with a specific
+    # propagator term, even if the two UV interaction lists coincide.
     if len(contributions1) != len(contributions2):
         return False
+    if not contributions1:
+        return True
 
     legacy_numerators = all(
         contribution.numerator_kind == "momentum"
@@ -2475,6 +2626,9 @@ def compare_terms(comp1: Completion, comp2: Completion) -> Dict[str, str]:
        {"φ": "φ", "η": "η", ...}
 
     """
+    from neutrinomass.completions.routing import validate_routed_completion
+    validate_routed_completion(comp1)
+    validate_routed_completion(comp2)
     # cannot be equivalent
     if len(comp1.terms) != len(comp2.terms):
         return {}
@@ -2492,12 +2646,8 @@ def compare_terms(comp1: Completion, comp2: Completion) -> Dict[str, str]:
 
 
 def are_equivalent_completions(comp1: Completion, comp2: Completion) -> bool:
-    """Checks to see if the Lagrangian terms describing two completions are
-    equivalent.
-
-    Two completions are equivalent if their exact contraction graphs are the same
-    up to representation-preserving field relabellings.
-
+    """Compare the interaction graphs, projections and recorded propagator
+    contributions up to representation-preserving field relabellings.
     """
     return bool(compare_terms(comp1, comp2))
 
@@ -2856,9 +3006,9 @@ def momentum_routed_completion_stream(
     stripped_operator = EffectiveOperator(
         operator.name, construct_operator(fields, epsilons)
     )
-    routed_partitions = partitions(stripped_operator, verbose=verbose)
+    routed_partitions = partition_stream(stripped_operator, verbose=verbose)
     if canonical_partitions:
-        routed_partitions = remove_isomorphic(routed_partitions)
+        routed_partitions = _nonisomorphic_partitions(routed_partitions)
     for partition in routed_partitions:
         partition_candidates = []
         for numerator_count in range(n_derivs % 2, n_derivs + 1, 2):
@@ -3114,22 +3264,19 @@ def deriv_operator_completion_stream(
         and unique_lorentz_completion_operator(operator) is None
     ):
         historical_basis = HistoricalDerivativeBasis.from_operator(operator)
-        placements = historical_basis.placements
-        deriv_combos = [placement.operator for placement in placements]
+        deriv_combos = [placement.operator for placement in historical_basis.placements]
     elif unique_projection is None and derivative_count == 2:
         second_derivative_basis = UnreducedSecondDerivativeBasis.from_operator(
             operator
         )
-        placements = second_derivative_basis.placements
-        deriv_combos = [placement.operator for placement in placements]
+        deriv_combos = [placement.operator for placement in second_derivative_basis.placements]
     else:
-        placements = None
         deriv_combos = derivative_combinations(operator)
 
     if verbose:
         print(f"Finding completions of {len(deriv_combos)} IBP-related operators...")
 
-    for combo_number, combo in enumerate(deriv_combos):
+    for combo in deriv_combos:
         if combo.operator.simplify() == 0:
             continue
         for completion in operator_completions(
@@ -3138,10 +3285,10 @@ def deriv_operator_completion_stream(
             canonical_partitions=canonical_partitions,
         ):
             if historical_basis is not None:
-                placement = placements[combo_number]
-                completion.lorentz_projection = historical_basis.project_local(
-                    placement, completion.operator.operator
-                )
+                projection = historical_basis.project_local_numerator(completion)
+                if projection is None:
+                    continue
+                completion.lorentz_projection = projection
             elif unique_projection is not None:
                 completion.lorentz_projection = unique_projection
             elif second_derivative_basis is not None:
@@ -3177,17 +3324,21 @@ def deriv_operator_completions(
         verbose=verbose,
         canonical_partitions=canonical_partitions,
     ):
-        if completion.momentum_contributions:
-            routed.append(completion)
-        else:
+        # Local placement multiplicities belong to the compatibility list.
+        # Both producers record propagator terms; only the local producer
+        # furnishes the partition with differentiated external fields.
+        if any(leaf.field.derivs for leaf in partition_leaves(completion.partition)):
             local.append(completion)
+        else:
+            routed.append(completion)
     append_unique_completions(local, routed)
 
     return local
 
 
 def exact_completions(operator: EffectiveOperator, verbose=False) -> List[Completion]:
-    """Return exact UV-Lagrangian classes after symbolic construction.
+    """Return exact completions after symbolic construction. Distinct recorded
+    propagator terms can give multiple representatives of one UV Lagrangian.
 
     The canonical-partition preflight is safe for ordinary operators and
     one-dimensional one-derivative spaces.  Historical projected spaces retain

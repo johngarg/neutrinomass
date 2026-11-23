@@ -90,7 +90,9 @@ def proc_dicts(expr):
 
 def export_graph(g: nx.Graph):
     dict_of_dicts = nx.to_dict_of_dicts(g)
-    return "Graph(" + str(proc_dicts(dict_of_dicts)).replace('"', "") + ")"
+    graph = "Graph(" + str(proc_dicts(dict_of_dicts)).replace('"', "") + ")"
+    nodes = list(g.nodes(data=True))
+    return f"(lambda g: (g.add_nodes_from({nodes!r}), g)[1])({graph})"
 
 
 def proc_partition(expr):
@@ -115,7 +117,8 @@ def export_exotics(exotics: set):
 
 
 def export_completion(c: Completion, lazy=True):
-
+    from neutrinomass.completions.routing import validate_routed_completion
+    validate_routed_completion(c)
     name = c.operator.name
     op = export_operator(c.operator.operator)
     eff_op = f"EffectiveOperator(name={name!r}, operator={op})"

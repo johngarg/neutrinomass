@@ -5,6 +5,7 @@
 from collections import Counter, defaultdict
 from hashlib import sha256
 from itertools import combinations
+import gzip
 import json
 import math
 import os
@@ -16,6 +17,7 @@ import tempfile
 from time import perf_counter
 
 from neutrinomass.completions.completions import (
+    _completion_with_momentum_contributions,
     HistoricalDerivativeBasis,
     PROJECTED_LORENTZ_OPERATORS,
     UnreducedSecondDerivativeBasis,
@@ -30,10 +32,15 @@ from neutrinomass.completions.completions import (
     is_singlet,
     operator_completions,
     operator_strip_derivs,
+    partition_leaves,
+    unique_lorentz_completion_operator,
     unique_multi_derivative_projection,
 )
 from neutrinomass.completions.amplitudes import (
     audit_amplitude_symmetrisation,
+)
+from neutrinomass.completions.routing import (
+    InvalidMomentumGraph, local_fermion_numerator, validate_routes,
 )
 from neutrinomass.completions.equivalence import clear_interaction_graph_cache
 from neutrinomass.completions.fingerprints import (
@@ -303,10 +310,9 @@ def write_generated_artifact(
     source_stats = _new_stats()
     source_digest = OrderedSignatureDigest()
     source_temporary = tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
+        mode="wb",
         prefix=f".{path.name}.",
-        suffix=".tmp",
+        suffix=".tmp.gz",
         dir=path.parent,
         delete=False,
     )
@@ -328,14 +334,18 @@ def write_generated_artifact(
     decoded_rejection_topologies = Counter()
     last_progress_record = 0
     try:
-        with source_temporary:
+        # Keep generation and decoding in separate passes so tensor construction
+        # and representative order are identical to the original census.
+        with source_temporary, gzip.open(
+            source_temporary, "wt", encoding="utf-8", compresslevel=1
+        ) as source_stream:
             for completion in completions:
                 validate_completion(
                     completion, check_vanishing=not terms_prevalidated
                 )
                 _update_stats(source_stats, completion)
                 source_digest.update(round_trip_signature(completion))
-                source_temporary.write(dumps_completion(completion) + "\n")
+                source_stream.write(dumps_completion(completion) + "\n")
                 if progress is not None and source_stats["records"] % 1000 == 0:
                     progress(source_stats["records"])
                     last_progress_record = source_stats["records"]
@@ -349,13 +359,14 @@ def write_generated_artifact(
         with decoded_temporary:
             for completion in iter_completion_jsonl(source_temporary_path):
                 _update_stats(round_trip_stats, completion)
-                round_trip_digest.update(round_trip_signature(completion))
+                signature = round_trip_signature(completion)
+                round_trip_digest.update(signature)
                 if any(term.safe_simplify() == 0 for term in completion.terms):
                     decoded_vertex_rejections += 1
                     decoded_rejection_topologies[topology_key(completion)] += 1
                     continue
                 _update_stats(decoded_stats, completion)
-                decoded_digest.update(round_trip_signature(completion))
+                decoded_digest.update(signature)
                 decoded_temporary.write(dumps_completion(completion) + "\n")
 
         source = _serialise_stats(source_stats)
@@ -454,6 +465,29 @@ def _historical_projection(operator_name):
     return lambda completion: None
 
 
+def _restore_historical_local_numerator(completion):
+    """Recover a missing order-one route from the archived UV tree itself."""
+    if (completion.momentum_contributions or completion.derivative_edges
+            or completion.derivative_routes):
+        validate_routes(completion, derivative_order=1)
+        return completion
+    if any(f.derivs for term in completion.terms for f in term.indexed_fields):
+        # A literal vertex derivative can account for the entire order.
+        validate_routes(completion, derivative_order=1)
+        return completion
+    placements = [
+        leaf.field for leaf in partition_leaves(completion.partition) if leaf.field.derivs
+    ]
+    if len(placements) != 1 or placements[0].derivs != 1:
+        raise InvalidMomentumGraph("Historical tree lacks a unique order-one placement")
+    numerator = local_fermion_numerator(completion, placements[0])
+    if numerator is None:
+        raise InvalidMomentumGraph("Historical tree lacks a unique kinetic fermion line")
+    restored = _completion_with_momentum_contributions(completion, (numerator,))
+    validate_routes(restored, derivative_order=1)
+    return restored
+
+
 def iter_historical_records(operator_name, historical_path):
     # Legacy ``ExoticField(IndexedField(...))`` expressions construct an
     # intermediate generic tensor head before choosing the scalar/fermion
@@ -463,12 +497,23 @@ def iter_historical_records(operator_name, historical_path):
     # concrete field class directly and puts historical validation on the same
     # tensor-statistics footing as fresh generation.
     assign_projection = _historical_projection(operator_name)
+    operator = DERIV_EFF_OPERATORS.get(operator_name)
+    # Placement-dependent projection needs its own historical comparison.
+    # Here the archived EFT operator fixes a single Lorentz structure.
+    restore_numerator = (
+        operator is not None
+        and operator_strip_derivs(operator.operator)["n_derivs"] == 1
+        and operator_name not in PROJECTED_LORENTZ_OPERATORS
+        and unique_lorentz_completion_operator(operator) is not None
+    )
     for item in iter_completions(historical_path, trusted=True):
         if item.operator_name != operator_name:
             continue
         completion = loads_completion(
             dumps_completion(item.force(trusted=True))
         )
+        if restore_numerator:
+            completion = _restore_historical_local_numerator(completion)
         assign_projection(completion)
         yield completion
 

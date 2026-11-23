@@ -5,6 +5,7 @@ from neutrinomass.tensormethod.sm import L, Q, H, eb, ub, db
 from neutrinomass.tensormethod.core import D
 
 from neutrinomass.completions.operators import EFF_OPERATORS, DERIV_EFF_OPERATORS
+from neutrinomass.completions.routing import validate_routes
 from neutrinomass.completions.fingerprints import (
     completion_digest,
     propagator_model_fingerprint,
@@ -16,6 +17,7 @@ from neutrinomass.database.rebuild import validate_completion
 from sympy import Rational
 import networkx as nx
 
+from itertools import islice
 from importlib import import_module
 from pathlib import Path
 from collections import Counter, defaultdict
@@ -486,6 +488,49 @@ print(len(operator_partitions), hashlib.sha256(data.encode()).hexdigest())
     assert outputs[0] == outputs[1]
 
 
+def test_field_assignments_preserve_first_occurrence_order():
+    fields = [H("i0"), L("u0 i1"), H("i2"), L("u1 i3")]
+    tree = (Leaf("F", 0), (Leaf("S", 1), Leaf("F", 2)), Leaf("S", 3))
+    for ordered in permutations(fields):
+        expected = list(dict.fromkeys(replace_fields(p, tree) for p in permutations(ordered)))
+        assert distribute_fields(ordered, tree) == expected
+    repeated = [fields[0], fields[1], fields[0], fields[3]]
+    expected = list(dict.fromkeys(replace_fields(p, tree) for p in permutations(repeated)))
+    assert distribute_fields(repeated, tree) == expected
+
+
+@pytest.mark.parametrize("canonical", [False, True])
+def test_routed_stream_yields_before_fetching_next_partition(monkeypatch, canonical):
+    module = import_module("neutrinomass.completions.completions")
+    topology = next(t for t in module.get_topology_data(5, 2)
+                    if Path(t["partition_file"]).stem == "5s2f_19")
+    monkeypatch.setattr(module, "get_topology_data", lambda **kwargs: [topology])
+    original = module.partition_stream
+
+    def first_only(operator, verbose=False):
+        yield next(original(operator, verbose=verbose))
+        pytest.fail("Routed generation read ahead of the first productive partition")
+
+    monkeypatch.setattr(module, "partition_stream", first_only)
+    stream = module.momentum_routed_completion_stream(
+        DERIV_EFF_OPERATORS["D20"], canonical_partitions=canonical
+    )
+    validate_routes(next(stream), derivative_order=1)
+
+
+def test_streamed_canonical_classes_survive_furnishing_mutation():
+    module = import_module("neutrinomass.completions.completions")
+    def parts():
+        for _ in range(2):
+            graph = nx.Graph()
+            graph.add_edge(0, 1, particle="H")
+            yield {"graph": graph, "topology": "same"}
+    stream = module._nonisomorphic_partitions(parts())
+    first = next(stream)
+    first["graph"].edges[0, 1]["particle"] = "changed"
+    assert list(stream) == []
+
+
 def test_raw_operator_completions_stream_partitions(monkeypatch):
     completions_module = import_module("neutrinomass.completions.completions")
     first = partitions(EFF_OPERATORS["1"])[0]
@@ -493,7 +538,7 @@ def test_raw_operator_completions_stream_partitions(monkeypatch):
     monkeypatch.setattr(
         completions_module,
         "partition_stream",
-        lambda operator: iter((first,)),
+        lambda operator, verbose=False: iter((first,)),
     )
     monkeypatch.setattr(
         completions_module,
@@ -626,12 +671,12 @@ def test_derivative_routing_branches_and_is_order_independent(monkeypatch):
         completions_module, "get_topology_data", lambda **kwargs: topology_19
     )
 
-    original_partitions = completions_module.partitions
+    original_partitions = completions_module.partition_stream
 
     def first_partition(operator, verbose=False):
-        return original_partitions(operator, verbose=verbose)[:1]
+        return islice(original_partitions(operator, verbose=verbose), 1)
 
-    monkeypatch.setattr(completions_module, "partitions", first_partition)
+    monkeypatch.setattr(completions_module, "partition_stream", first_partition)
     baseline = completions_module.momentum_routed_completions(
         DERIV_EFF_OPERATORS["D20"]
     )
@@ -657,7 +702,7 @@ def test_derivative_routing_branches_and_is_order_independent(monkeypatch):
         return tuple(reverse_children(branch) for branch in reversed(partition))
 
     def rerooted_partition(operator, verbose=False):
-        partition = original_partitions(operator, verbose=verbose)[0]
+        partition = next(original_partitions(operator, verbose=verbose))
         roots = canonical_rooted_partitions(
             partition["partition"], partition["graph"]
         )
@@ -665,7 +710,7 @@ def test_derivative_routing_branches_and_is_order_independent(monkeypatch):
         partition["partition"] = reverse_children(roots[-1])
         return [partition]
 
-    monkeypatch.setattr(completions_module, "partitions", rerooted_partition)
+    monkeypatch.setattr(completions_module, "partition_stream", rerooted_partition)
     rerooted = completions_module.momentum_routed_completions(
         DERIV_EFF_OPERATORS["D20"]
     )
@@ -801,17 +846,22 @@ def test_historical_derivative_basis_covers_every_projected_operator(
 
 def test_d6a_projected_routing_has_a_positive_uv_model(monkeypatch):
     completions_module = import_module("neutrinomass.completions.completions")
-    original_partitions = completions_module.partitions
+    original_partitions = completions_module.partition_stream
 
     def projected_partition(operator, verbose=False):
-        return original_partitions(operator, verbose=verbose)[144:145]
+        return islice(original_partitions(operator, verbose=verbose), 144, 145)
 
-    monkeypatch.setattr(completions_module, "partitions", projected_partition)
+    monkeypatch.setattr(completions_module, "partition_stream", projected_partition)
     completions = completions_module.momentum_routed_completions(
         DERIV_EFF_OPERATORS["D6a"]
     )
 
-    assert len(completions) == 4
+    assert len(completions) == 2  # wrong-cut duplicates now collapse
+    basis = HistoricalDerivativeBasis.from_operator(DERIV_EFF_OPERATORS["D6a"])
+    for completion in completions:
+        # Sewing the UV chains independently reproduces the explicit
+        # open-spinor contraction for both known numerator placements.
+        assert basis.project_local_numerator(completion) == completion.lorentz_projection
     assert {
         completion.lorentz_projection.coordinates for completion in completions
     } == {
@@ -894,6 +944,19 @@ def test_d6a_historical_local_basis_keeps_every_derivative_placement():
         )
 
 
+def test_d6a_local_generation_projects_the_verified_cut():
+    local = next(deriv_operator_completion_stream(
+        DERIV_EFF_OPERATORS["D6a"], canonical_partitions=True
+    ))
+    assert any(leaf.field.derivs for leaf in partition_leaves(local.partition))
+    validate_routes(local, derivative_order=1)
+    # The D on a lepton was the construction seed. The cut also carries the
+    # charged-lepton momenta, which project onto two other placement blocks.
+    assert local.lorentz_projection.coordinates == (
+        "0", "1", "0", "0", "1", "0", "0", "1", "0"
+    )
+
+
 def test_operator_strip_derivs_preserves_field_statistics():
     stripped = operator_strip_derivs(DERIV_EFF_OPERATORS["D20"].operator)
     higgs_fields = [
@@ -955,22 +1018,29 @@ def test_d3_full_census_baseline_is_stable():
     unique = []
     append_unique_completions(unique, completions)
 
-    assert len(completions) == 26
-    assert sum(bool(item.derivative_routes) for item in completions) == 2
+    # All 24 local placements now carry a verified route. They represent
+    # five of the six classes independently produced by explicit routing.
+    assert len(completions) == 25
+    local = [
+        item for item in completions
+        if any(leaf.field.derivs for leaf in partition_leaves(item.partition))
+    ]
+    assert len(local) == 24
+    for item in completions:
+        validate_routes(item, derivative_order=1)
     assert Counter(
         (item.topology, item.canonical_topology) for item in completions
     ) == {
-        ("3s2f_3", "3s2f_3"): 18,
+        ("3s2f_3", "3s2f_3"): 17,
         ("3s2f_4", "3s2f_4"): 8,
     }
     assert completion_digest(completions) == (
-        "dd82599a00ecd0ed202fa9c677e66ae06801828fa7b2b723f275e3515f5e1d4b"
+        "a8feeecca74277eba11031017da284abf6cc11988ce70e46c6583b201e73ddf6"
     )
 
-    assert len(unique) == 7
-    assert sum(bool(item.derivative_routes) for item in unique) == 2
+    assert len(unique) == 6
     assert completion_digest(unique) == (
-        "db7f3b19d4a595b62bf008a98829030e9ae44c199764c70217bba39fb4db7ebf"
+        "abb5a39db05fff81f2ab6704697c7b13370b01acd2848bfe6adef07ac882db1a"
     )
 
     canonical = exact_completions(DERIV_EFF_OPERATORS["D3"])
@@ -1541,3 +1611,14 @@ def test_remove_duplicate_completions():
     comps_len = len(comps)
     comps = clean_completions(comps)
     assert comps_len > len(comps)
+
+
+def test_71p_final_vertex_keeps_both_mass_edges(monkeypatch):
+    module = import_module("neutrinomass.completions.completions")
+    operator = EFF_OPERATORS["71p"]
+    topology = next(t for t in module.get_topology_data(**operator.topology_type)
+                    if t["canonical_topology"] == "5s4f_38")
+    monkeypatch.setattr(module, "get_topology_data", lambda **kwargs: [topology])
+    completion = module.partition_completion(next(module.partition_stream(operator)))
+    audit = validate_routes(completion, derivative_order=0)
+    assert list(audit.edge_kinds.values()).count("mass") == 2
