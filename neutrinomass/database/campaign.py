@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import time
 
-from neutrinomass.database.checkpoints import atomic_json
+from neutrinomass.database.checkpoints import atomic_json,digest_file
 
 
 class CampaignBudgetError(RuntimeError):
@@ -45,8 +45,19 @@ class CampaignLedger:
                 raise CampaignBudgetError("Unresolved Slurm allocation accounting anomaly")
             if work_id in state["jobs"]:
                 raise ValueError("Stable submission identifier already reserved")
-            if phase != "validation" and state["production_gate"] is None:
-                raise CampaignBudgetError("71p production gate has not passed")
+            if phase != "validation":
+                gate=state["production_gate"]
+                if gate is None:
+                    raise CampaignBudgetError("71p production gate has not passed")
+                try:
+                    path=Path(gate["path"])
+                    report=json.loads(path.read_text())
+                    valid=(digest_file(path)==gate["sha256"] and report.get("passed") is True
+                           and report["producer_commit"]==gate["producer_commit"])
+                except (OSError,KeyError,ValueError,TypeError):
+                    valid=False
+                if not valid:
+                    raise CampaignBudgetError("71p production gate artifact is missing, corrupt or incompatible")
             live=[j for j in state["jobs"].values() if "allocated_core_seconds" not in j]
             if len(live) >= state["max_workers"]:
                 raise CampaignBudgetError("Four-worker concurrency limit")

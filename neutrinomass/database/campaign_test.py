@@ -1,5 +1,7 @@
 import pytest
+import json
 from neutrinomass.database.campaign import CampaignLedger, CampaignBudgetError
+from neutrinomass.database.checkpoints import digest_file
 
 
 def test_reservations_include_failed_allocations_and_inflight_maximum(tmp_path):
@@ -36,3 +38,18 @@ def test_scientific_failure_and_retry_limit_require_diagnosis(tmp_path):
         ledger.finished(str(i),elapsed_seconds=3,allocated_cpus=1,status="FAILED",failure_class="infrastructure")
     with pytest.raises(ValueError,match="exhausted"):
         ledger.reserve("third-retry",retry_of="2")
+
+
+def test_production_revalidates_gate_bytes_before_every_reservation(tmp_path):
+    ledger=CampaignLedger(tmp_path/"ledger.json")
+    gate=tmp_path/"gate.json"
+    gate.write_text(json.dumps(dict(passed=True,producer_commit="tested")))
+    with ledger.transaction() as state:
+        state["production_gate"]=dict(path=str(gate),sha256=digest_file(gate),producer_commit="tested")
+    ledger.reserve("approved",phase="production")
+    gate.write_text(json.dumps(dict(passed=False,producer_commit="tested")))
+    with pytest.raises(CampaignBudgetError,match="gate artifact"):
+        ledger.reserve("corrupt",phase="production")
+    gate.unlink()
+    with pytest.raises(CampaignBudgetError,match="gate artifact"):
+        ledger.reserve("missing",phase="finalisation")
