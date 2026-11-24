@@ -9,7 +9,8 @@ permissions:
 
 jobs:
   pytest:
-    runs-on: ubuntu-latest
+    # Keep an image with a published setup-python build for Python 3.11.3.
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
