@@ -164,7 +164,11 @@ def _tick(config_path,*,prepare=False):
                 AND NOT EXISTS (SELECT 1 FROM dependencies d LEFT JOIN units p ON p.id=d.dependency
                 WHERE d.unit=u.id AND (p.status IS NULL OR p.status!='complete'))""",(seed,)).fetchone()[0]
         live=[j for j in ledger.summary()["jobs"].values() if "allocated_core_seconds" not in j]
-        same=sum(j.get("queue_config")==str(config_path) and j.get("seed")==seed for j in live)
+        # External validation allocations share this accounting config, but
+        # cannot claim pending census units. Count them only toward the total
+        # concurrency limit, not as workers already serving ready queue work.
+        same=sum(j.get("queue_config")==str(config_path) and j.get("seed")==seed
+                 and j.get("command")=="work" for j in live)
         if not ready or same>=ready or len(live)>=worker_limit:
             break
         try:

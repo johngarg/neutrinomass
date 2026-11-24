@@ -61,6 +61,22 @@ def test_saved_continuation_is_charged_but_scientific_failure_blocks(tmp_path,mo
         controller.submit(ledger,config,path,command="work",seed=0)
 
 
+def test_external_recovery_does_not_occupy_ready_census_work(tmp_path,monkeypatch):
+    path,config=configuration(tmp_path)
+    queue=WorkQueue(config["queue"]);ledger=CampaignLedger(config["ledger"])
+    queue.add("finalise",{},phase="validation",seed=0)
+    root=tmp_path/"run";root.mkdir();(root/"prepared.json").write_text("{}")
+    ledger.reserve("recovery");ledger.submitted("recovery","100")
+    with ledger.transaction() as state:
+        state["jobs"]["recovery"].update(queue_config=str(path),seed=0,command="chain-reduction")
+    monkeypatch.setattr(controller,"accounting",lambda ids:{})
+    monkeypatch.setattr(controller.subprocess,"run",lambda *a,**k:SimpleNamespace(returncode=0,stdout="101\n",stderr=""))
+    result=controller.tick(path)
+    assert len(result["submitted"])==1
+    assert result["accounting"]["charged_core_hours"]==4
+    assert not controller.tick(path)["submitted"]
+
+
 def test_unbound_submission_never_causes_duplicate_job(tmp_path):
     path,config=configuration(tmp_path)
     ledger=CampaignLedger(config["ledger"]);queue=WorkQueue(config["queue"])
