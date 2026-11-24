@@ -21,8 +21,12 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          # Match the pinned Spartan erratum runtime. Python 3.12 changes
+          # legacy archive escape warnings under the strict pytest policy;
+          # support for that interpreter requires a separate migration.
+          python-version: "3.11.3"
           cache: pip
           cache-dependency-path: requirements-test.lock
+      - run: python --version
       - run: python -m pip install -r requirements-test.lock
       - run: python -m pytest -q

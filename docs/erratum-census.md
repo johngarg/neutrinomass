@@ -83,6 +83,13 @@ use `285fe12`. The global model comparison is at `c3c22f8`. Run configurations,
 installed dependency pins, lockfile hashes and imported package paths are
 recorded independently of the moving development branch.
 
+GitHub Actions uses Python 3.11.3 and the same dependency lock as Spartan.
+The inherited Python 3.12 workflow rejected archived LaTeX backslash escapes
+under pytest's warnings-as-errors policy. Supporting that newer interpreter
+requires explicit legacy-reader migration; the erratum campaign does not
+claim Python 3.12 compatibility. The historical inputs and warning checks
+remain unchanged.
+
 `scripts/run_erratum_campaign.py` follows the pilot, real process-loss
 replicas, `scripts/validate_71p_gate.py`, execution/reuse manifests, the
 remaining census and finalisation. The gate requires both complete
