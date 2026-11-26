@@ -295,7 +295,13 @@ def validate(config_path,recoveries,baseline,*,budget):
         module_spec=importlib.util.spec_from_file_location("gate_performance_validator",
             Path(__file__).with_name("erratum_performance_worker.py"))
         module=importlib.util.module_from_spec(module_spec);module_spec.loader.exec_module(module)
-        module.verify_backend(backend)
+        module.install(config)
+        # This module imported the reducer before backend installation. Bind
+        # its certified wrapper explicitly so a nonidentical-byte fallback
+        # records the same backend provenance and uses the accelerated match.
+        from neutrinomass.database import resumable_reduction
+        global reduce_resumable
+        reduce_resumable=resumable_reduction.reduce_resumable
     summary=WorkQueue(config["queue"]).summary()
     require(not summary["blocked"] and all(row["status"]=="complete" for row in summary["counts"]),"GATE_WORK_QUEUE_INCOMPLETE")
     historical=json.loads(Path(baseline).read_text())
@@ -335,6 +341,7 @@ def validate(config_path,recoveries,baseline,*,budget):
     resources=resource_gate(root,accounting,config_path)
     require(max(x["peak_checkpoint_rss_mib"] for x in verified)<6*1024,"GATE_CHECKPOINT_MEMORY_HEADROOM")
     result=dict(schema_version=1,passed=True,producer_commit=producer,validator_sha256=digest_file(__file__),
+        performance_backend=backend,
         verified=verified,exact_seed_coverage=exact,global_seed_union=global_union,resources=resources,
         recovery=recovery,controls=controls,baseline=dict(path=str(baseline),sha256=digest_file(baseline)),
         reports=[dict(path=str(root/f"seed-{seed}"/"71p/report.json"),sha256=digest_file(root/f"seed-{seed}"/"71p/report.json")) for seed in (0,1)],
