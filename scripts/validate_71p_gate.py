@@ -8,6 +8,7 @@ from collections import Counter
 import json
 import os
 from pathlib import Path
+from itertools import zip_longest
 
 from neutrinomass.database.campaign import CampaignLedger
 from neutrinomass.database.checkpoints import CheckpointStore,WorkBudget,BudgetExpired,atomic_json,digest_file
@@ -48,6 +49,37 @@ def identical_artifacts(references):
                 return True
 
 
+def ordered_seed_agreement(references, directory, contract, relation, budget):
+    """Try a complete exact bijection in saved order, with resumable progress.
+
+    A failed pair does not imply unequal sets: callers must fall back to the
+    unordered comparison. Both directions use the original exact relation.
+    """
+    from neutrinomass.completions.completions import are_equivalent_completions
+    from neutrinomass.database.global_equivalence import equivalent_global_lagrangians
+    from neutrinomass.database.serialization import loads_completion
+    equivalent = {"physical": are_equivalent_completions,
+                  "global-lagrangian": equivalent_global_lagrangians}[relation]
+    paths=[verify_reference(ref) for ref in references]
+    identity=dict(contract,algorithm="ordered-exact-seed-agreement-v1",relation=relation,inputs=references)
+    with CheckpointStore(directory,identity) as store:
+        if store.state["complete"]:return store.state["progress"]
+        progress=dict(store.state["progress"] or dict(compared_pairs=0,comparisons=0,agreement=True))
+        for ordinal,(a,b) in enumerate(zip_longest(*(lines_from_paths([path]) for path in paths)),1):
+            if ordinal<=progress["compared_pairs"]:continue
+            if a is None or b is None:
+                progress.update(agreement=False,mismatch_at=ordinal);break
+            left,right=loads_completion(a),loads_completion(b)
+            forward=equivalent(left,right);reverse=equivalent(right,left)
+            progress["comparisons"]+=2
+            if not (forward and reverse):
+                progress.update(agreement=False,mismatch_at=ordinal);break
+            progress["compared_pairs"]=ordinal
+            budget.boundary(lambda:store.save(progress),progress=dict(stage="ordered-seed-"+relation,**progress))
+        store.save(progress,complete=True)
+        return progress
+
+
 def compare_seed_artifacts(reports, directory, contract, budget):
     exact_refs = [r["artifacts"]["exact_classes"] for r in reports]
     global_refs = [r["artifacts"]["global_lagrangians"] for r in reports]
@@ -57,23 +89,33 @@ def compare_seed_artifacts(reports, directory, contract, budget):
         exact = [dict(method="identical-serialized-bytes", counts=dict(reproduced=count),
                       comparisons=0, references=exact_refs)]
     else:
-        exact = []
-        for source, target in ((0, 1), (1, 0)):
-            coverage = historical_coverage([exact_refs[target]["path"]], [exact_refs[source]["path"]],
-                directory/f"seed-{source}-to-{target}", contract, budget=budget,
-                scratch=os.environ.get("SLURM_TMPDIR"))
-            require(coverage["progress"]["counts"] == {"reproduced": reports[source]["exact_classes"]["all"]},
-                    "GATE_EXACT_SEED_CLASSES_DIFFER")
-            exact.append(coverage["progress"])
+        ordered=ordered_seed_agreement(exact_refs,directory/"ordered-physical",contract,"physical",budget)
+        if ordered["agreement"]:
+            require(ordered["compared_pairs"]==reports[0]["exact_classes"]["all"]==reports[1]["exact_classes"]["all"],
+                    "GATE_EXACT_SEED_COUNTS_DIFFER")
+            exact=[dict(ordered,method="ordered-exact-bijection",references=exact_refs)]
+        else:
+            exact = []
+            for source, target in ((0, 1), (1, 0)):
+                coverage = historical_coverage([exact_refs[target]["path"]], [exact_refs[source]["path"]],
+                    directory/f"seed-{source}-to-{target}", contract, budget=budget,
+                    scratch=os.environ.get("SLURM_TMPDIR"))
+                require(coverage["progress"]["counts"] == {"reproduced": reports[source]["exact_classes"]["all"]},
+                        "GATE_EXACT_SEED_CLASSES_DIFFER")
+                exact.append(coverage["progress"])
     if identical_artifacts(global_refs):
         count = reports[0]["global_lagrangians"]
         require(count == reports[1]["global_lagrangians"], "GATE_GLOBAL_SEED_CLASSES_DIFFER")
         union = dict(method="identical-serialized-bytes", exact_classes=count,
                      comparisons=0, references=global_refs)
     else:
-        result = reduce_resumable([ref["path"] for ref in global_refs], directory/"global-seed-union",
-            contract, relation="global-lagrangian", budget=budget, scratch=os.environ.get("SLURM_TMPDIR"))
-        union = result["progress"]
+        ordered=ordered_seed_agreement(global_refs,directory/"ordered-global",contract,"global-lagrangian",budget)
+        if ordered["agreement"]:
+            union=dict(ordered,method="ordered-exact-bijection",exact_classes=ordered["compared_pairs"],references=global_refs)
+        else:
+            result = reduce_resumable([ref["path"] for ref in global_refs], directory/"global-seed-union",
+                contract, relation="global-lagrangian", budget=budget, scratch=os.environ.get("SLURM_TMPDIR"))
+            union = result["progress"]
         require(union["exact_classes"] == reports[0]["global_lagrangians"] == reports[1]["global_lagrangians"],
                 "GATE_GLOBAL_SEED_CLASSES_DIFFER")
     return exact, union
@@ -333,6 +375,7 @@ def validate(config_path,recoveries,baseline,*,budget):
                  for line in lines_from_paths([r["artifacts"]["democratic_models"]["path"]])} for r in reports]
     require(model_sets[0]==model_sets[1],"GATE_SEED_MODEL_SETS_DIFFER")
     contract=dict(scientific_contract(provenance),validation="71p-exact-cross-seed-v1")
+    if backend is not None:contract["performance_backend"]=backend
     exact,global_union=compare_seed_artifacts(reports,directory,contract,budget)
     recovery=recovery_gate(recoveries,producer)
     ledger=CampaignLedger(config["ledger"])

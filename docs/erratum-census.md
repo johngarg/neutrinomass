@@ -156,6 +156,9 @@ and archived transition as well as ordinary stage integrity.
 
 The final cross-seed gate compares actual serialized artifact bytes first.
 Byte identity is an exact agreement proof, not a fingerprint decision. If
-bytes differ, both directional physical coverage checks and the exact global
-union remain mandatory. This avoids repeating a full reduction solely to
-compare two already independently computed, byte-identical results.
+bytes differ, the gate tries a resumable exact bijection in saved record order,
+checking each pair in both directions with the full physical/global relation.
+If ordering differs, both directional physical coverage checks and the exact
+global union remain available as the fallback. No stage is accepted from
+matching fingerprints alone. A checksum-bound `gate_script` controller option
+can select the certified validator while preserving earlier recovery commands.

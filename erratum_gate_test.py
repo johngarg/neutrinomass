@@ -39,8 +39,33 @@ def test_different_seed_bytes_keep_both_exact_coverage_checks_and_union(tmp_path
         calls.append('union');return dict(progress=dict(exact_classes=1))
     monkeypatch.setattr(gate,'historical_coverage',coverage)
     monkeypatch.setattr(gate,'reduce_resumable',union)
+    monkeypatch.setattr(gate,'ordered_seed_agreement',lambda *args:dict(agreement=False))
     gate.compare_seed_artifacts(reports,tmp_path,{},None)
     assert calls==['coverage','coverage','union']
+
+
+@pytest.mark.parametrize('relation',['physical','global-lagrangian'])
+def test_ordered_seed_proof_resumes_and_rejects_reordered_pair(tmp_path,relation):
+    from scripts.validate_71p_gate import ordered_seed_agreement
+    from neutrinomass.database.checkpoints import WorkBudget,BudgetExpired
+    from neutrinomass.completions.completions import operator_completions
+    from neutrinomass.completions.operators import EFF_OPERATORS
+    from neutrinomass.database.serialization import dumps_completion
+    records=list(operator_completions(EFF_OPERATORS['1']))
+    refs=[]
+    for seed in (0,1):
+        p=tmp_path/f'seed-{seed}.jsonl';p.write_text('\n'.join(map(dumps_completion,records))+'\n')
+        refs.append(dict(path=str(p),sha256=digest_file(p)))
+    with pytest.raises(BudgetExpired):
+        ordered_seed_agreement(refs,tmp_path/'proof',{},relation,WorkBudget(fault_after=1))
+    result=ordered_seed_agreement(refs,tmp_path/'proof',{},relation,WorkBudget())
+    assert result==dict(agreement=True,compared_pairs=len(records),comparisons=2*len(records))
+    p=tmp_path/'seed-1.jsonl';p.write_text('\n'.join(map(dumps_completion,reversed(records)))+'\n')
+    changed=[refs[0],dict(path=str(p),sha256=digest_file(p))]
+    with pytest.raises(ValueError,match='Incompatible checkpoint'):
+        ordered_seed_agreement(changed,tmp_path/'proof',{},relation,WorkBudget())
+    result=ordered_seed_agreement(changed,tmp_path/'different-order',{},relation,WorkBudget())
+    assert not result['agreement']
 
 
 def report():

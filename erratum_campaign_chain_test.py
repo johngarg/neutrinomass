@@ -70,7 +70,8 @@ def test_chain_will_not_resubmit_an_ambiguous_unbound_reservation(tmp_path):
     assert len(ledger.summary()["jobs"])==1
 
 
-def test_active_production_allocations_do_not_block_their_own_accounting_tick(tmp_path,monkeypatch):
+@pytest.mark.parametrize('gate_override',[False,True])
+def test_active_production_allocations_do_not_block_their_own_accounting_tick(tmp_path,monkeypatch,gate_override):
     ledger,pilot,chain,spec=setup(tmp_path)
     config=dict(root=str(tmp_path/"pilot"),ledger=str(ledger.path),queue=str(tmp_path/"pilot-queue.sqlite3"),
                 source="/producer",source_commit="producer",worker_limit=4)
@@ -93,10 +94,20 @@ def test_active_production_allocations_do_not_block_their_own_accounting_tick(tm
     with ledger.transaction() as state:
         state["jobs"]["production-worker"].update(command="work",queue_config=str(tmp_path/"production/production-config.json"))
     monkeypatch.setattr(chain_driver,"reconcile",lambda *a:None)
-    monkeypatch.setattr(chain_driver,"external",lambda *a:"complete")
+    submissions=[]
+    monkeypatch.setattr(chain_driver,"external",lambda *a:submissions.append(a) or "complete")
+    if gate_override:
+        script=tmp_path/'certified-gate.py';script.write_text('# verified gate\n')
+        chain['gate_script']=ref(script)
     monkeypatch.setattr(chain_driver,"tick",lambda *a:dict(status="complete"))
     called=[]
     monkeypatch.setattr(chain_driver,"queue_tick",lambda path:called.append(path) or dict(status="running"))
     result=chain_driver.step(chain)
     assert result["status"]=="running" and result["phase"]=="production"
     assert called==[tmp_path/"production/production-config.json"]
+    gate_spec=next(args[-1] for args in submissions if args[-2]=='gate')
+    assert gate_spec['argv'][0]==str(tmp_path/'certified-gate.py' if gate_override else tmp_path/'scripts/validate_71p_gate.py')
+    if gate_override:
+        script.write_text('# changed\n')
+        with pytest.raises(ValueError,match='CHAIN_REFERENCE_CHANGED'):
+            chain_driver.step(chain)

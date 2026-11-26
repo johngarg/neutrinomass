@@ -176,7 +176,8 @@ def step(chain):
            and job.get("command") in {"prepare","work"} for job in ledger.summary()["jobs"].values()):
         return dict(status="awaiting-accounting")
     acceptance=root/"acceptance"
-    command=[str(scripts/"validate_71p_gate.py"),str(pilot_path),"--baseline",str(verified(chain["baseline"]))]
+    gate_script=verified(chain["gate_script"]) if "gate_script" in chain else scripts/"validate_71p_gate.py"
+    command=[str(gate_script),str(pilot_path),"--baseline",str(verified(chain["baseline"]))]
     for replica in recoveries:command.extend(["--recovery",str(replica)])
     status=external(ledger,pilot_path,chain,"gate",dict(phase="validation",source=pilot["source"],
         argv=command,progress=[str(acceptance)],evidence=[str(acceptance/"gate.json")]))
