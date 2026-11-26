@@ -278,19 +278,61 @@ def equivalent_lagrangians(terms1, terms2, label_mapping=None) -> bool:
     if len(terms1) != len(terms2):
         return False
 
-    candidate_matches = nx.Graph()
-    left_nodes = [("left", index) for index in range(len(terms1))]
-    right_nodes = [("right", index) for index in range(len(terms2))]
-    candidate_matches.add_nodes_from(left_nodes, bipartite=0)
-    candidate_matches.add_nodes_from(right_nodes, bipartite=1)
-
-    left_graphs = [interaction_graph(term, label_mapping) for term in terms1]
+    # Relabelling changes field signatures, not incidence or node degrees.
+    # Reject impossible assignments using the *same* necessary invariant as
+    # the full graph comparator, before building any relabelled graphs or
+    # running isomorphism. Keep counts: repeated interactions and factors matter.
     right_graphs = [
         (interaction_graph(term), conjugated_interaction_graph(term))
         for term in terms2
     ]
+    right_by_key = {}
+    for number, alternatives in enumerate(right_graphs):
+        for graph in alternatives:
+            key = frozenset(graph.graph["coarse_key"])
+            right_by_key.setdefault(key, set()).add(number)
+
+    possible = []
+    for term in terms1:
+        graph = interaction_graph(term)
+        counts = Counter()
+        for (signature, degree), count in graph.graph["coarse_key"]:
+            if signature[0] == "field":
+                signature = (signature[0],
+                    remapped_field_label(signature[1], label_mapping or {}),
+                    *signature[2:])
+            counts[signature, degree] += count
+        matches = right_by_key.get(frozenset(counts.items()))
+        if not matches:
+            return False
+        possible.append(matches)
+
+    # A necessary perfect matching also rejects multiplicity conflicts without
+    # performing expensive contraction isomorphisms. This is not an equality
+    # proof: rebuild the graph below from exact matches only.
+    coarse_matches = nx.Graph()
+    left_nodes = [("left", index) for index in range(len(terms1))]
+    right_nodes = [("right", index) for index in range(len(terms2))]
+    coarse_matches.add_nodes_from(left_nodes, bipartite=0)
+    coarse_matches.add_nodes_from(right_nodes, bipartite=1)
+    coarse_matches.add_edges_from(
+        (("left", i), ("right", j))
+        for i, matches in enumerate(possible) for j in sorted(matches)
+    )
+    coarse_matching = nx.algorithms.bipartite.maximum_matching(
+        coarse_matches, top_nodes=left_nodes
+    )
+    if not all(node in coarse_matching for node in left_nodes):
+        return False
+
+    candidate_matches = nx.Graph()
+    candidate_matches.add_nodes_from(left_nodes, bipartite=0)
+    candidate_matches.add_nodes_from(right_nodes, bipartite=1)
+
+    left_graphs = [interaction_graph(term, label_mapping) for term in terms1]
     for left_number, left_graph in enumerate(left_graphs):
-        for right_number, alternatives in enumerate(right_graphs):
+        for right_number in sorted(possible[left_number]):
+            alternatives = right_graphs[right_number]
             for right_graph in alternatives:
                 if left_graph.graph["coarse_key"] != right_graph.graph["coarse_key"]:
                     continue

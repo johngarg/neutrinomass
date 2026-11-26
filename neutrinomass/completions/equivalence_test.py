@@ -241,3 +241,44 @@ def test_interactions_are_equivalent_to_their_hermitian_conjugates():
     conjugate = left.conj * right.conj * eps("-d0 -d1")
 
     assert equivalent_lagrangians([interaction], [conjugate])
+
+
+def test_impossible_species_assignment_skips_contraction_matching(monkeypatch):
+    a, b = doublet("a", "i0"), doublet("b", "i1")
+    first, second = higgs_interaction(a, "i2"), higgs_interaction(b, "i3")
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("An impossible assignment reached exact matching")
+
+    monkeypatch.setattr(nx, "is_isomorphic", unexpected)
+    assert not equivalent_lagrangians([first], [second])
+    # Each left interaction has a possible partner, but there are not enough
+    # copies of that partner. A set comparison would lose this distinction.
+    assert not equivalent_lagrangians([first, first], [first, second])
+
+
+def test_coarse_match_never_proves_contraction_equivalence(monkeypatch):
+    a, b, c, d = [IndexedField(label, f"i{i}", charges={"y": 0, "3b": 0})
+                  for i, label in enumerate("abcd")]
+    first = a*b*c*d*eps("-i0 -i1")*eps("-i2 -i3")
+    second = a*b*c*d*eps("-i0 -i2")*eps("-i1 -i3")
+    assert interaction_graph(first).graph["coarse_key"] == interaction_graph(second).graph["coarse_key"]
+    calls = []
+    exact = nx.is_isomorphic
+
+    def audited(*args, **kwargs):
+        calls.append(True)
+        return exact(*args, **kwargs)
+
+    monkeypatch.setattr(nx, "is_isomorphic", audited)
+    assert not equivalent_lagrangians([first], [second])
+    assert calls
+
+
+def test_repeated_terms_with_relabelled_conjugate_dirac_species():
+    source = VectorLikeDiracFermion("a", "u0", charges={"y": 0, "3b": 0})
+    target = VectorLikeDiracFermion("x", "u1", charges={"y": 0, "3b": 0}).dirac_partner()
+    first = source * H("i0")
+    second = target * H("i1")
+    assert equivalent_lagrangians([first, first], [second, second], {"a": ("x", False, True)})
+    assert not equivalent_lagrangians([first, first], [second, second], {"a": ("x", True, True)})
