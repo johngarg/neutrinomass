@@ -123,3 +123,39 @@ The live run's manifests, batch scripts, source changes, validation evidence
 and ledger live beneath `erratum-20261123/`. The vault report
 `20261123T151113.md` records measured evidence and remaining limitations.
 Public release and erratum submission are outside this workflow.
+# Certified comparison performance changes
+
+`equivalent_lagrangians` first tests the field-signature/degree multiplicities
+already required by the exact contraction-graph matcher. A necessary bipartite
+perfect matching rejects impossible species/orientation assignments before
+constructing relabelled graphs. Surviving assignments still require full graph
+isomorphism and exact interaction-multiset matching; contractions, statistics,
+charges and repeated species/terms are retained.
+
+`scripts/benchmark_global_equivalence.py PAIRS OUTPUT --reference-revision REV`
+replays saved real completion pairs against the frozen Git implementation and
+adds relabelled, interaction-permuted positive controls. Run under both hash
+seeds with the pinned environment. Whole-stage ordered artifact agreement is
+separate evidence from this sampled timing comparison.
+
+For an existing frozen pilot, `scripts/erratum_performance_worker.py` supports a
+separately certified global-comparison backend without changing the generation
+producer. Its config identifies the original worker and baseline file hashes,
+the backend module/commit/hash, and a checksum-bound validation certificate.
+The certificate requires both local and Spartan test seeds and both complete
+ordered 71p replay seeds. Every referenced evidence file is reverified at worker
+startup. The backend is used only for global interaction matching.
+
+Before continuing an unfinished global reduction, the worker verifies and
+archives its original manifest and immutable database outside the operator
+tree. It atomically adds the backend to the stage contract, preserving the
+representatives, input cursor and in-bucket cursor. Reports and worker
+environments record the backend separately from the original producer.
+Completed stages stay immutable. The gate validates the backend certificate
+and archived transition as well as ordinary stage integrity.
+
+The final cross-seed gate compares actual serialized artifact bytes first.
+Byte identity is an exact agreement proof, not a fingerprint decision. If
+bytes differ, both directional physical coverage checks and the exact global
+union remain mandatory. This avoids repeating a full reduction solely to
+compare two already independently computed, byte-identical results.

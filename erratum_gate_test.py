@@ -4,6 +4,45 @@ from scripts.validate_71p_gate import report_gate,recovery_gate,GateFailure
 from neutrinomass.database.checkpoints import CheckpointStore,atomic_json,digest_file
 
 
+def test_identical_seed_bytes_prove_agreement_without_reducing_again(tmp_path,monkeypatch):
+    from scripts import validate_71p_gate as gate
+    reports=[]
+    for seed in (0,1):
+        p=tmp_path/f"seed-{seed}.jsonl";p.write_text('same complete serialized record\n')
+        ref=dict(path=str(p),sha256=digest_file(p))
+        reports.append(dict(exact_classes=dict(all=1),global_lagrangians=1,
+            artifacts=dict(exact_classes=ref,global_lagrangians=ref)))
+    def unexpected(*args,**kwargs):
+        raise AssertionError("Identical bytes need no repeated scientific computation")
+    monkeypatch.setattr(gate,"historical_coverage",unexpected)
+    monkeypatch.setattr(gate,"reduce_resumable",unexpected)
+    exact,union=gate.compare_seed_artifacts(reports,tmp_path,{},None)
+    assert exact[0]["counts"]==dict(reproduced=1)
+    assert union["method"]=="identical-serialized-bytes" and union["exact_classes"]==1
+    # A stale checksum must never certify altered/truncated bytes.
+    (tmp_path/'seed-1.jsonl').write_text('changed')
+    with pytest.raises(GateFailure,match='GATE_ARTIFACT_HASH_MISMATCH'):
+        gate.compare_seed_artifacts(reports,tmp_path,{},None)
+
+
+def test_different_seed_bytes_keep_both_exact_coverage_checks_and_union(tmp_path,monkeypatch):
+    from scripts import validate_71p_gate as gate
+    reports=[];calls=[]
+    for seed in (0,1):
+        p=tmp_path/f"seed-{seed}.jsonl";p.write_text(str(seed))
+        ref=dict(path=str(p),sha256=digest_file(p))
+        reports.append(dict(exact_classes=dict(all=1),global_lagrangians=1,
+            artifacts=dict(exact_classes=ref,global_lagrangians=ref)))
+    def coverage(*args,**kwargs):
+        calls.append('coverage');return dict(progress=dict(counts=dict(reproduced=1)))
+    def union(*args,**kwargs):
+        calls.append('union');return dict(progress=dict(exact_classes=1))
+    monkeypatch.setattr(gate,'historical_coverage',coverage)
+    monkeypatch.setattr(gate,'reduce_resumable',union)
+    gate.compare_seed_artifacts(reports,tmp_path,{},None)
+    assert calls==['coverage','coverage','union']
+
+
 def report():
     return dict(operator="71p",hash_seed="0",source_commit="tested",records=dict(generator=758208),
         stage_manifest=dict(generation_units=3168,topologies=[str(i) for i in range(264)]),

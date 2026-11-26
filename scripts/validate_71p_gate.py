@@ -36,6 +36,49 @@ def verify_reference(reference):
     return path
 
 
+def identical_artifacts(references):
+    """Prove identity from the actual serialized bytes, never fingerprints."""
+    left, right = [verify_reference(ref) for ref in references]
+    with left.open("rb") as a, right.open("rb") as b:
+        while True:
+            x, y = a.read(1024**2), b.read(1024**2)
+            if x != y:
+                return False
+            if not x:
+                return True
+
+
+def compare_seed_artifacts(reports, directory, contract, budget):
+    exact_refs = [r["artifacts"]["exact_classes"] for r in reports]
+    global_refs = [r["artifacts"]["global_lagrangians"] for r in reports]
+    if identical_artifacts(exact_refs):
+        count = reports[0]["exact_classes"]["all"]
+        require(count == reports[1]["exact_classes"]["all"], "GATE_EXACT_SEED_COUNTS_DIFFER")
+        exact = [dict(method="identical-serialized-bytes", counts=dict(reproduced=count),
+                      comparisons=0, references=exact_refs)]
+    else:
+        exact = []
+        for source, target in ((0, 1), (1, 0)):
+            coverage = historical_coverage([exact_refs[target]["path"]], [exact_refs[source]["path"]],
+                directory/f"seed-{source}-to-{target}", contract, budget=budget,
+                scratch=os.environ.get("SLURM_TMPDIR"))
+            require(coverage["progress"]["counts"] == {"reproduced": reports[source]["exact_classes"]["all"]},
+                    "GATE_EXACT_SEED_CLASSES_DIFFER")
+            exact.append(coverage["progress"])
+    if identical_artifacts(global_refs):
+        count = reports[0]["global_lagrangians"]
+        require(count == reports[1]["global_lagrangians"], "GATE_GLOBAL_SEED_CLASSES_DIFFER")
+        union = dict(method="identical-serialized-bytes", exact_classes=count,
+                     comparisons=0, references=global_refs)
+    else:
+        result = reduce_resumable([ref["path"] for ref in global_refs], directory/"global-seed-union",
+            contract, relation="global-lagrangian", budget=budget, scratch=os.environ.get("SLURM_TMPDIR"))
+        union = result["progress"]
+        require(union["exact_classes"] == reports[0]["global_lagrangians"] == reports[1]["global_lagrangians"],
+                "GATE_GLOBAL_SEED_CLASSES_DIFFER")
+    return exact, union
+
+
 def report_gate(report,*,seed,producer,unit_count):
     require(report["operator"]=="71p" and str(report["hash_seed"])==str(seed),"GATE_OPERATOR_OR_SEED_MISMATCH")
     require(report["source_commit"]==producer,"GATE_PRODUCER_MISMATCH")
@@ -48,12 +91,23 @@ def report_gate(report,*,seed,producer,unit_count):
     require(report["exact_classes"]["all"]>0,"GATE_EMPTY_PHYSICAL_RESULT")
 
 
-def verify_tree(root,producer):
+def verify_tree(root,producer,performance_backend=None):
     peak=0;stages=0
     for path in sorted(root.rglob("checkpoint.json")):
         data=json.loads(path.read_text())
         require(data["complete"],"GATE_INCOMPLETE_CHECKPOINT")
         require(data["contract"].get("source_commit")==producer,"GATE_CHECKPOINT_PRODUCER_MISMATCH")
+        backend=data["contract"].get("performance_backend")
+        if backend is not None:
+            require(backend==performance_backend,"GATE_UNVALIDATED_PERFORMANCE_BACKEND")
+            transition=data.get("performance_transition")
+            if transition:
+                archived=verify_reference(transition["original_checkpoint"])
+                original=json.loads(archived.read_text())
+                expected=dict(original["contract"],performance_backend=backend)
+                require(expected==data["contract"] and transition["validation"]==backend["validation"],
+                        "GATE_PERFORMANCE_TRANSITION_CHANGED_SCIENCE")
+                with CheckpointStore(archived.parent,original["contract"]):pass
         with CheckpointStore(path.parent,data["contract"]) as checked:
             peak=max(peak,checked.state.get("memory",{}).get("peak_rss_mib",0))
         stages+=1
@@ -235,6 +289,13 @@ def validate(config_path,recoveries,baseline,*,budget):
     provenance=runtime_provenance()
     producer=config["source_commit"]
     require(provenance["source_commit"]==producer,"GATE_WRONG_SCIENTIFIC_VALIDATOR")
+    backend=config.get("performance_backend")
+    if backend is not None:
+        import importlib.util
+        module_spec=importlib.util.spec_from_file_location("gate_performance_validator",
+            Path(__file__).with_name("erratum_performance_worker.py"))
+        module=importlib.util.module_from_spec(module_spec);module_spec.loader.exec_module(module)
+        module.verify_backend(backend)
     summary=WorkQueue(config["queue"]).summary()
     require(not summary["blocked"] and all(row["status"]=="complete" for row in summary["counts"]),"GATE_WORK_QUEUE_INCOMPLETE")
     historical=json.loads(Path(baseline).read_text())
@@ -260,22 +321,13 @@ def validate(config_path,recoveries,baseline,*,budget):
                 if stage=="generation":
                     require(data["contract"]["selection"]==selection,"GATE_UNIT_ASSIGNMENT_RANGE_CHANGED")
         for artifact in report["artifacts"].values():verify_reference(artifact)
-        verified.append(verify_tree(operator_root,producer));reports.append(report)
+        verified.append(verify_tree(operator_root,producer,backend));reports.append(report)
     require(stable_report_data(reports[0])==stable_report_data(reports[1]),"GATE_SEED_REPORT_DISAGREEMENT")
     model_sets=[{published_model_key(json.loads(line)["fields"])
                  for line in lines_from_paths([r["artifacts"]["democratic_models"]["path"]])} for r in reports]
     require(model_sets[0]==model_sets[1],"GATE_SEED_MODEL_SETS_DIFFER")
     contract=dict(scientific_contract(provenance),validation="71p-exact-cross-seed-v1")
-    exact=[]
-    for source,target in ((0,1),(1,0)):
-        coverage=historical_coverage([reports[target]["artifacts"]["exact_classes"]["path"]],
-            [reports[source]["artifacts"]["exact_classes"]["path"]],directory/f"seed-{source}-to-{target}",
-            contract,budget=budget,scratch=os.environ.get("SLURM_TMPDIR"))
-        require(coverage["progress"]["counts"]=={"reproduced":reports[source]["exact_classes"]["all"]},"GATE_EXACT_SEED_CLASSES_DIFFER")
-        exact.append(coverage["progress"])
-    global_union=reduce_resumable([r["artifacts"]["global_lagrangians"]["path"] for r in reports],
-        directory/"global-seed-union",contract,relation="global-lagrangian",budget=budget,scratch=os.environ.get("SLURM_TMPDIR"))
-    require(global_union["progress"]["exact_classes"]==reports[0]["global_lagrangians"]==reports[1]["global_lagrangians"],"GATE_GLOBAL_SEED_CLASSES_DIFFER")
+    exact,global_union=compare_seed_artifacts(reports,directory,contract,budget)
     recovery=recovery_gate(recoveries,producer)
     ledger=CampaignLedger(config["ledger"])
     accounting=ledger.summary()
@@ -283,7 +335,7 @@ def validate(config_path,recoveries,baseline,*,budget):
     resources=resource_gate(root,accounting,config_path)
     require(max(x["peak_checkpoint_rss_mib"] for x in verified)<6*1024,"GATE_CHECKPOINT_MEMORY_HEADROOM")
     result=dict(schema_version=1,passed=True,producer_commit=producer,validator_sha256=digest_file(__file__),
-        verified=verified,exact_seed_coverage=exact,global_seed_union=global_union["progress"],resources=resources,
+        verified=verified,exact_seed_coverage=exact,global_seed_union=global_union,resources=resources,
         recovery=recovery,controls=controls,baseline=dict(path=str(baseline),sha256=digest_file(baseline)),
         reports=[dict(path=str(root/f"seed-{seed}"/"71p/report.json"),sha256=digest_file(root/f"seed-{seed}"/"71p/report.json")) for seed in (0,1)],
         allocated_validation_core_hours=accounting["validation_charged_core_hours"],low_scale_genuineness_proved=False)
